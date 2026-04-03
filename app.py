@@ -7,7 +7,7 @@ import altair as alt
 st.set_page_config(page_title="Terminal de Análisis Pro", layout="wide")
 
 st.title("🚀 Terminal de Inversión Inteligente")
-st.write("Análisis Fundamental, Tendencias y Monitor de Noticias en Tiempo Real.")
+st.write("Análisis Fundamental, Tendencias Financieras y Selección de Activos.")
 
 # 2. ENTRADA DE TICKERS
 tickers_input = st.text_input("Tickers (separados por coma):", "AAPL, MSFT, NVDA, GOOGL, AMZN, TSLA").upper()
@@ -15,18 +15,14 @@ tickers_input = st.text_input("Tickers (separados por coma):", "AAPL, MSFT, NVDA
 if tickers_input:
     lista_tickers = [t.strip() for t in tickers_input.split(",")][:20]
     
-    datos_fundamentales = []
-    datos_revenue = []
-    datos_eps = []
-    noticias_dict = {}
+    datos_fundamentales, datos_revenue, datos_eps = [], [], []
     analisis_completo = {}
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    with st.spinner('Sincronizando con los mercados financieros...'):
+    with st.spinner('Analizando estados financieros...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
-                # Forzamos una pequeña espera o acceso a info para "despertar" al objeto
                 info = accion.info
                 
                 # --- A. DATOS FUNDAMENTALES ---
@@ -39,12 +35,13 @@ if tickers_input:
                 }
                 datos_fundamentales.append(fila_fun)
 
-                # --- B. REVENUE Y EPS ---
+                # --- B. REVENUE Y EPS (ESTANDARIZADOS) ---
                 df_q = accion.quarterly_financials
                 rev_growth, eps_growth = 0, 0
                 nombres_trimestres = ["4 Trim. atrás", "3 Trim. atrás", "2 Trim. atrás", "1 Trim. atrás", "Último Trim."]
                 
                 if df_q is not None and not df_q.empty:
+                    # Revenue
                     if "Total Revenue" in df_q.index:
                         rev_s = df_q.loc["Total Revenue"].head(5).iloc[::-1]
                         fila_rev = {"Ticker": ticker}
@@ -54,6 +51,7 @@ if tickers_input:
                         datos_revenue.append(fila_rev)
                         if len(rev_s) >= 2: rev_growth = ((rev_s.iloc[-1] - rev_s.iloc[0]) / abs(rev_s.iloc[0])) * 100
                     
+                    # EPS
                     et_e = "Basic EPS" if "Basic EPS" in df_q.index else "BasicEps" if "BasicEps" in df_q.index else None
                     if et_e:
                         eps_s = df_q.loc[et_e].head(5).iloc[::-1]
@@ -64,13 +62,6 @@ if tickers_input:
                         datos_eps.append(fila_eps)
                         if len(eps_s) >= 2: eps_growth = ((eps_s.iloc[-1] - eps_s.iloc[0]) / abs(eps_s.iloc[0])) * 100
 
-                # --- C. NOTICIAS (CON LOGICA DE SEGURIDAD) ---
-                try:
-                    raw_news = accion.news
-                    noticias_dict[ticker] = raw_news[:5] if raw_news else []
-                except:
-                    noticias_dict[ticker] = []
-
                 analisis_completo[ticker] = {
                     "nombre": info.get('longName', ticker), 
                     "rev_growth": rev_growth, 
@@ -78,10 +69,9 @@ if tickers_input:
                     "ttm_rev": info.get('totalRevenue', 0),
                     "ttm_eps": info.get('trailingEps', 0)
                 }
-            except Exception as e:
-                st.error(f"Error con {ticker}: {e}")
+            except Exception: pass
 
-    # --- FUNCIONES DE FORMATEO (UNIFICADAS) ---
+    # --- FUNCIONES DE FORMATEO ---
     def fmt_cur(n):
         if not isinstance(n, (int, float)): return "-"
         if n >= 1e12: return f"${n/1e12:.2f}T"
@@ -107,7 +97,7 @@ if tickers_input:
         return html + '</table>'
 
     if datos_fundamentales:
-        # 1. TABLA FUNDAMENTAL
+        # --- 1. COMPARATIVA FUNDAMENTAL ---
         df_f = pd.DataFrame(datos_fundamentales).set_index("Ticker")
         df_f_final = df_f.T
         filas_num = df_f_final.index.drop("Empresa")
@@ -140,12 +130,13 @@ if tickers_input:
         html_f += '</table>'
         st.write("### 1. Comparativa Fundamental"); st.write(html_f, unsafe_allow_html=True)
 
-        # 2. REVENUE
+        # --- 2. REVENUE ---
         st.divider()
         if datos_revenue:
             st.write("### 2. Evolución de Ingresos (Total Revenue)")
             df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
             st.write(generar_html_unificado(df_r, tipo="moneda"), unsafe_allow_html=True)
+            
             df_plot_r = df_r.drop(columns=["TTM"], errors='ignore').reset_index().melt(id_vars="Ticker")
             chart_r = alt.Chart(df_plot_r).mark_line(point=True).encode(
                 x=alt.X('variable', sort=None, title='Periodo'),
@@ -154,12 +145,13 @@ if tickers_input:
             ).properties(height=400)
             st.altair_chart(chart_r, use_container_width=True)
 
-        # 3. EPS
+        # --- 3. EPS ---
         if datos_eps:
             st.divider()
-            st.write("### 3. Evolución de Basic EPS")
+            st.write("### 3. Evolución de Beneficio por Acción (Basic EPS)")
             df_e = pd.DataFrame(datos_eps).set_index("Ticker")
             st.write(generar_html_unificado(df_e, tipo="eps"), unsafe_allow_html=True)
+            
             df_plot_e = df_e.drop(columns=["TTM"], errors='ignore').reset_index().melt(id_vars="Ticker")
             chart_e = alt.Chart(df_plot_e).mark_line(point=True).encode(
                 x=alt.X('variable', sort=None, title='Periodo'),
@@ -168,7 +160,7 @@ if tickers_input:
             ).properties(height=400)
             st.altair_chart(chart_e, use_container_width=True)
 
-        # 4. RECOMENDACIÓN
+        # --- 4. RECOMENDACIÓN Y AUDITORÍA ---
         st.divider()
         st.write("### 🏆 4. Recomendación de Inversión (Top 3)")
         puntuacion_final = []
@@ -185,31 +177,14 @@ if tickers_input:
             with cols_rec[i]:
                 st.subheader(f"#{i+1} {rec['ticker']}")
                 st.metric("Score Calidad", f"{rec['score_total']}/9")
-                st.info(f"**{rec['ticker']}** es la opción más sólida del ranking actual.")
+                st.info(f"**Recomendación:** {rec['ticker']} presenta la tendencia más sólida del grupo.")
 
         with st.expander("🔍 Ver Ranking completo y Auditoría"):
             for item in sorted(puntuacion_final, key=lambda x: x["score_total"], reverse=True):
-                st.write(f"**{item['ticker']}**: {item['puntos_fun']}/7 Fundamentales | Crecimiento: {item['score_total']-item['puntos_fun']} pts.")
-
-        # 5. MONITOR DE NOTICIAS (CORREGIDO)
-        st.divider()
-        st.write("### 📰 5. Monitor de Noticias Recientes")
-        tabs = st.tabs(lista_tickers)
-        for i, tkr in enumerate(lista_tickers):
-            with tabs[i]:
-                noticias = noticias_dict.get(tkr, [])
-                if not noticias or len(noticias) == 0:
-                    st.warning(f"No se pudieron cargar titulares para {tkr}. Esto puede deberse a límites de conexión con Yahoo Finance.")
-                    st.write(f"[Haz clic aquí para ver noticias de {tkr} directamente en Yahoo Finance](https://finance.yahoo.com/quote/{tkr}/news)")
-                else:
-                    for n in noticias:
-                        titulo = n.get('title')
-                        link = n.get('link')
-                        if titulo and link:
-                            with st.container():
-                                col_n1, col_n2 = st.columns([1, 5])
-                                col_n1.caption(f"📌 {n.get('publisher', 'Noticias')}")
-                                col_n2.markdown(f"**[{titulo}]({link})**")
-                                st.write("")
+                st.markdown(f"#### {item['ticker']} - {item['datos'].get('nombre', '')}")
+                st.write(f"🟢 **Fundamentales:** {item['puntos_fun']}/7 indicadores mejores que la media.")
+                st.write(f"💰 **Ingresos:** Variación {item['datos'].get('rev_growth',0):.2f}% (TTM: {fmt_cur(item['datos'].get('ttm_rev', 0))}).")
+                st.write(f"💎 **Beneficios (EPS):** Variación {item['datos'].get('eps_growth',0):.2f}% (TTM: ${item['datos'].get('ttm_eps',0):.2f}).")
+                st.write("---")
 else:
-    st.info("Ingresa los tickers para comenzar.")
+    st.info("Ingresa los tickers para iniciar el análisis.")
