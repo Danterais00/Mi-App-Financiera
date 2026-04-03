@@ -52,7 +52,6 @@ if tickers_input:
                         datos_revenue.append(fila_rev)
                     
                     # Procesar Basic EPS
-                    # A veces yfinance lo llama 'Basic EPS' o 'BasicEps'
                     etiqueta_eps = "Basic EPS" if "Basic EPS" in df_q.index else "BasicEps" if "BasicEps" in df_q.index else None
                     
                     if etiqueta_eps:
@@ -120,19 +119,23 @@ if tickers_input:
             st.write("#### 📈 Tendencia Trimestral de Ingresos")
             st.line_chart(df_r.drop(columns=["TTM (Anual)"], errors='ignore').T)
 
-        # 3. NUEVO: EVOLUCIÓN DE BASIC EPS
+        # 3. EVOLUCIÓN DE BASIC EPS Y GRÁFICO
         st.divider()
         st.write("### 3. Evolución de Beneficio por Acción (Basic EPS)")
         if datos_eps:
             df_e = pd.DataFrame(datos_eps).set_index("Ticker")
-            # Formatear EPS a 2 decimales
             def format_eps(n):
                 return f"{n:.2f}" if isinstance(n, (int, float)) else "-"
             st.table(df_e.map(format_eps))
+            
+            # --- NUEVO: GRÁFICO DE TENDENCIA DE EPS ---
+            st.write("#### 📈 Tendencia Trimestral de EPS")
+            df_e_plot = df_e.drop(columns=["TTM (Anual)"], errors='ignore').T
+            st.line_chart(df_e_plot)
         else:
-            st.warning("No se encontraron datos de Basic EPS para estos tickers.")
+            st.warning("No se encontraron datos de Basic EPS.")
 
-        # 4. RANKING Y RESUMEN
+        # 4. RANKING Y RESUMEN CON ANÁLISIS DE INGRESOS
         st.divider()
         st.write("### 🏆 4. Resumen de Selección")
         ranking_ordenado = sorted(ranking_puntos.items(), key=lambda x: x[1], reverse=True)
@@ -143,6 +146,7 @@ if tickers_input:
             st.write(f"Indicadores favorables: **{pts} de 7**")
             st.progress(pts / 7)
             
+            # Análisis de tendencia basado en la tabla de ingresos (mantenido)
             if datos_revenue:
                 df_rev_check = pd.DataFrame(datos_revenue).set_index("Ticker")
                 if ticker in df_rev_check.index:
@@ -154,4 +158,4 @@ if tickers_input:
                         st.info(txt)
             st.write("---")
 else:
-    st.info("Ingresa tickers para comenzar el análisis.")
+    st.info("Ingresa los tickers para comenzar el análisis completo.")
