@@ -5,40 +5,44 @@ import pandas as pd
 st.set_page_config(page_title="Analizador Financiero", layout="centered")
 
 st.title("📈 Mi Terminal de Inversiones")
-st.write("Introduce el ticker de una acción para ver su salud financiera.")
 
-# Entrada de Ticker
-ticker_input = st.text_input("Ticker (ej: AAPL, TSLA, MELI, BTC-USD)", "AAPL").upper()
+ticker_input = st.text_input("Ticker (ej: NVDA, AAPL, MSFT)", "NVDA").upper()
 
 if ticker_input:
     try:
+        # Creamos el objeto de la acción
         accion = yf.Ticker(ticker_input)
-        info = accion.info
         
-        # Nombre y Precio
-        nombre_empresa = info.get('longName', ticker_input)
-        precio_actual = info.get('currentPrice', info.get('regularMarketPrice', 'N/A'))
-        moneda = info.get('currency', 'USD')
+        # Intentamos obtener el precio de una forma más directa y rápida
+        # Esto falla menos que el método .info
+        hist = accion.history(period="5d")
+        
+        if not hist.empty:
+            precio_actual = hist['Close'].iloc[-1]
+            precio_anterior = hist['Close'].iloc[-2]
+            cambio = precio_actual - precio_anterior
+            porcentaje = (cambio / precio_anterior) * 100
 
-        st.header(f"{nombre_empresa}")
-        st.subheader(f"Precio Actual: {precio_actual} {moneda}")
+            # Mostrar métricas principales
+            st.header(f"Resultados para: {ticker_input}")
+            col1, col2 = st.columns(2)
+            col1.metric("Precio Actual", f"${precio_actual:.2f}")
+            col2.metric("Variación diaria", f"{cambio:.2f}", f"{porcentaje:.2f}%")
 
-        # Columnas de datos clave
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Market Cap", f"{info.get('marketCap', 0):,}")
-        col2.metric("P/E Ratio", info.get('trailingPE', 'N/A'))
-        col3.metric("Div. Yield", f"{info.get('dividendYield', 0)*100:.2f}%" if info.get('dividendYield') else "0%")
-
-        # Gráfico
-        st.write("### Evolución del último año")
-        hist = accion.history(period="1y")
-        st.line_chart(hist['Close'])
-
-        # Recomendaciones de analistas
-        if st.checkbox("Mostrar recomendaciones de analistas"):
-            st.write(accion.recommendations)
+            # Gráfico de un año
+            st.write("### Histórico del último año")
+            hist_year = accion.history(period="1y")
+            st.line_chart(hist_year['Close'])
+            
+            # Datos adicionales (Si Yahoo los permite)
+            with st.expander("Ver detalles avanzados"):
+                info = accion.info
+                st.write(f"**Sector:** {info.get('sector', 'N/A')}")
+                st.write(f"**Resumen:** {info.get('longBusinessSummary', 'No disponible')}")
+        else:
+            st.error("Yahoo Finance no devolvió datos. Intenta con otro ticker o espera unos minutos.")
 
     except Exception as e:
-        st.error(f"No pudimos encontrar datos para {ticker_input}. Revisa si el ticker es correcto.")
+        st.error(f"Error técnico: {e}")
 
-st.info("Nota: Los datos provienen de Yahoo Finance.")
+st.info("Tip: Si no carga, intenta refrescar la página. A veces Yahoo bloquea temporalmente la conexión.")
