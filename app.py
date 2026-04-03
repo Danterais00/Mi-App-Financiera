@@ -2,61 +2,61 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-st.set_page_config(page_title="Analizador Fundamental", layout="wide")
+st.set_page_config(page_title="Comparador Fundamental", layout="wide")
 
-st.title("📊 Terminal de Análisis Fundamental")
+st.title("⚖️ Comparador de Acciones")
+st.write("Introduce los tickers separados por coma (ej: AAPL, TSLA, MSFT, NVDA)")
 
-ticker_input = st.text_input("Ingresa el Ticker:", "NVDA").upper()
+# Entrada de múltiples tickers
+tickers_input = st.text_input("Tickers:", "AAPL, MSFT, GOOGL").upper()
 
-if ticker_input:
-    try:
-        accion = yf.Ticker(ticker_input)
-        info = accion.info
+if tickers_input:
+    # Convertimos el texto en una lista (quitando espacios vacíos)
+    lista_tickers = [t.strip() for t in tickers_input.split(",")]
+    
+    datos_tabla = []
+    
+    with st.spinner('Obteniendo datos de Yahoo Finance...'):
+        for ticker in lista_tickers:
+            try:
+                accion = yf.Ticker(ticker)
+                info = accion.info
+                
+                # Extraemos solo los datos que pediste
+                # Usamos .get() para que si no existe el dato, ponga "N/A"
+                fila = {
+                    "Ticker": ticker,
+                    "Precio": info.get('currentPrice', 'N/A'),
+                    "PER (P/E)": info.get('trailingPE', 'N/A'),
+                    "EPS": info.get('trailingEps', 'N/A'),
+                    "ROE (%)": f"{info.get('returnOnEquity', 0) * 100:.2f}%" if info.get('returnOnEquity') else "N/A",
+                    "ROA (%)": f"{info.get('returnOnAssets', 0) * 100:.2f}%" if info.get('returnOnAssets') else "N/A",
+                    "Debt/Equity": info.get('debtToEquity', 'N/A'),
+                    "Current Ratio": info.get('currentRatio', 'N/A'),
+                    "Quick Ratio": info.get('quickRatio', 'N/A')
+                }
+                datos_tabla.append(fila)
+            except Exception:
+                st.warning(f"No se pudieron obtener datos para: {ticker}")
+
+    if datos_tabla:
+        # Creamos la tabla
+        df = pd.DataFrame(datos_tabla)
         
-        # --- ENCABEZADO ---
-        st.header(f"{info.get('longName', ticker_input)}")
+        # Invertimos la tabla (Transponer) para que los Tickers sean las columnas
+        # y los indicadores sean las filas, como pediste.
+        df.set_index("Ticker", inplace=True)
+        df_final = df.T
         
-        # --- MÉTRICAS DE PRECIO ---
-        hist = accion.history(period="2d")
-        if not hist.empty:
-            precio_actual = hist['Close'].iloc[-1]
-            st.subheader(f"Precio Actual: ${precio_actual:.2f} {info.get('currency', 'USD')}")
-
-        st.divider()
-
-        # --- ANÁLISIS FUNDAMENTAL ---
-        st.write("### Indicadores Clave")
+        st.write("### Tabla Comparativa")
+        st.table(df_final) # st.table muestra una tabla estática y limpia
         
-        # Creamos dos filas de columnas para que no se vea amontonado
-        col1, col2, col3, col4 = st.columns(4)
-        col5, col6, col7, col8 = st.columns(4)
-
-        # Función auxiliar para formatear porcentajes
-        def fmt_pct(val):
-            return f"{val*100:.2f}%" if val else "N/A"
-
-        # Fila 1: Ratios de Liquidez y Deuda
-        col1.metric("Current Ratio", info.get('currentRatio', 'N/A'))
-        col2.metric("Quick Ratio", info.get('quickRatio', 'N/A'))
-        col3.metric("Debt/Equity", info.get('debtToEquity', 'N/A'))
-        col4.metric("EPS (Upa)", info.get('trailingEps', 'N/A'))
-
-        # Fila 2: Rentabilidad y Valoración
-        col5.metric("ROA", fmt_pct(info.get('returnOnAssets')))
-        col6.metric("ROE", fmt_pct(info.get('returnOnEquity')))
-        col7.metric("P/E Ratio (PER)", info.get('trailingPE', 'N/A'))
-        col8.metric("Beta (Riesgo)", info.get('beta', 'N/A'))
-
-        st.divider()
-
-        # --- GRÁFICO ---
-        st.write("### Evolución del Precio (1 Año)")
-        hist_year = accion.history(period="1y")
-        st.line_chart(hist_year['Close'])
-
-        # --- DESCRIPCIÓN ---
-        with st.expander("Ver descripción de la empresa"):
-            st.write(info.get('longBusinessSummary', 'No hay descripción disponible.'))
-
-    except Exception as e:
-        st.error(f"Error al cargar datos: {e}")
+        # Botón extra por si quieres descargar los datos a Excel/CSV
+        st.download_button(
+            label="Descargar tabla como CSV",
+            data=df_final.to_csv(),
+            file_name="comparativa_financiera.csv",
+            mime="text/csv",
+        )
+else:
+    st.info("Ingresa al menos un ticker para comenzar.")
