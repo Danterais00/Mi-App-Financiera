@@ -155,4 +155,61 @@ if tickers_input:
         # --- SECCIÓN 3: EPS ---
         if datos_eps:
             st.divider()
-            st.write("### 3. Evolución
+            st.write("### 3. Evolución de Beneficio por Acción (Basic EPS)")
+            df_e = pd.DataFrame(datos_eps).set_index("Ticker")
+            st.write(generar_html_unificado(df_e, tipo="eps"), unsafe_allow_html=True)
+            
+            df_plot_e = df_e.drop(columns=["TTM"], errors='ignore').reset_index().melt(id_vars="Ticker")
+            chart_e = alt.Chart(df_plot_e).mark_line(point=True).encode(
+                x=alt.X('variable', sort=None, title='Periodo'),
+                y=alt.Y('value', title='EPS USD'),
+                color=alt.Color('Ticker', legend=alt.Legend(orient='right'))
+            ).properties(height=400)
+            st.altair_chart(chart_e, use_container_width=True)
+
+        # --- SECCIÓN 4: RECOMENDACIÓN ---
+        st.divider()
+        st.write("### 🏆 4. Recomendación de Inversión (Top 3)")
+        puntuacion_final = []
+        for ticker, pts in ranking_puntos.items():
+            c_extra = 0
+            if ticker in analisis_completo:
+                if analisis_completo[ticker]["rev_growth"] > 0: c_extra += 1
+                if analisis_completo[ticker]["eps_growth"] > 0: c_extra += 1
+            puntuacion_final.append({"ticker": ticker, "puntos_fun": pts, "score_total": pts + c_extra, "datos": analisis_completo.get(ticker, {})})
+
+        top_3 = sorted(puntuacion_final, key=lambda x: x["score_total"], reverse=True)[:3]
+        cols_rec = st.columns(3)
+        for i, rec in enumerate(top_3):
+            with cols_rec[i]:
+                st.subheader(f"#{i+1} {rec['ticker']}")
+                st.metric("Score Calidad", f"{rec['score_total']}/9")
+                st.info(f"**{rec['ticker']}** presenta la mejor combinación de balance y crecimiento trimestral.")
+
+        with st.expander("🔍 Ver Ranking completo y Auditoría"):
+            for item in sorted(puntuacion_final, key=lambda x: x["score_total"], reverse=True):
+                st.markdown(f"#### {item['ticker']} - {item['datos'].get('nombre', '')}")
+                st.write(f"🟢 **Fundamentales:** {item['puntos_fun']}/7 mejores que la media.")
+                st.write(f"💰 **Ingresos:** Variación {item['datos'].get('rev_growth',0):.2f}% (TTM: {fmt_cur(item['datos'].get('ttm_rev', 0))}).")
+                st.write(f"💎 **Beneficios (EPS):** Variación {item['datos'].get('eps_growth',0):.2f}% (TTM: ${item['datos'].get('ttm_eps',0):.2f}).")
+                st.write("---")
+
+        # --- SECCIÓN 5: NOTICIAS ---
+        st.divider()
+        st.write("### 📰 5. Monitor de Noticias Recientes")
+        tabs = st.tabs(lista_tickers)
+        for i, tkr in enumerate(lista_tickers):
+            with tabs[i]:
+                noticias = noticias_dict.get(tkr, [])
+                if not noticias:
+                    st.write("No hay noticias recientes para este ticker.")
+                for n in noticias:
+                    titulo = n.get('title')
+                    if titulo:
+                        with st.container():
+                            col_n1, col_n2 = st.columns([1, 5])
+                            col_n1.caption(f"📌 {n.get('publisher', 'Info')}")
+                            col_n2.markdown(f"**[{titulo}]({n.get('link', '#')})**")
+                            st.write("") 
+else:
+    st.info("Ingresa los tickers para comenzar.")
