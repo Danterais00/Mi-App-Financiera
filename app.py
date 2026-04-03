@@ -7,12 +7,11 @@ import altair as alt
 st.set_page_config(page_title="Terminal de Análisis Pro", layout="wide")
 
 st.title("🚀 Terminal de Inversión Inteligente")
-st.write("Análisis Fundamental y Selección de Activos.")
+st.write("Análisis Fundamental con Gráficos Optimizados para Tendencias.")
 
 # 2. ENTRADA DE TICKERS (Con limpieza automática)
-tickers_raw = st.text_input("Tickers (separados por coma):", "BRKB, JPM, V, MA, BAC, WFC, MS, AXP").upper()
+tickers_raw = st.text_input("Tickers (separados por coma):", "CRM, GOOGL, IBM, INTU, META, MSFT, NFLX, NOW, ORCL, PLTR").upper()
 
-# Función para corregir tickers comunes que fallan
 def corregir_ticker(t):
     t = t.strip()
     if t == "BRKB": return "BRK-B"
@@ -26,7 +25,7 @@ if tickers_raw:
     analisis_completo = {}
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    with st.spinner('Analizando datos financieros (ajustando sectores)...'):
+    with st.spinner('Procesando datos financieros...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -34,16 +33,11 @@ if tickers_raw:
                 
                 # --- A. DATOS FUNDAMENTALES ---
                 fila_fun = {
-                    "Ticker": ticker, 
-                    "Empresa": info.get('longName', 'N/A'),
-                    "Precio": info.get('currentPrice'), 
-                    "PER (P/E)": info.get('trailingPE'),
-                    "EPS": info.get('trailingEps'), 
-                    "ROE (%)": info.get('returnOnEquity'),
-                    "ROA (%)": info.get('returnOnAssets'), 
-                    "Debt/Equity": info.get('debtToEquity'),
-                    "Current Ratio": info.get('currentRatio'), 
-                    "Quick Ratio": info.get('quickRatio')
+                    "Ticker": ticker, "Empresa": info.get('longName', 'N/A'),
+                    "Precio": info.get('currentPrice'), "PER (P/E)": info.get('trailingPE'),
+                    "EPS": info.get('trailingEps'), "ROE (%)": info.get('returnOnEquity'),
+                    "ROA (%)": info.get('returnOnAssets'), "Debt/Equity": info.get('debtToEquity'),
+                    "Current Ratio": info.get('currentRatio'), "Quick Ratio": info.get('quickRatio')
                 }
                 datos_fundamentales.append(fila_fun)
 
@@ -73,11 +67,8 @@ if tickers_raw:
                         if len(eps_s) >= 2: eps_growth = ((eps_s.iloc[-1] - eps_s.iloc[0]) / abs(eps_s.iloc[0])) * 100
 
                 analisis_completo[ticker] = {
-                    "nombre": info.get('longName', ticker), 
-                    "rev_growth": rev_growth, 
-                    "eps_growth": eps_growth,
-                    "ttm_rev": info.get('totalRevenue', 0),
-                    "ttm_eps": info.get('trailingEps', 0)
+                    "nombre": info.get('longName', ticker), "rev_growth": rev_growth, "eps_growth": eps_growth,
+                    "ttm_rev": info.get('totalRevenue', 0), "ttm_eps": info.get('trailingEps', 0)
                 }
             except Exception: pass
 
@@ -90,8 +81,7 @@ if tickers_raw:
 
     def generar_html_unificado(df, tipo="normal"):
         html = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
-        html += '<tr style="background-color: #f0f2f6;">'
-        html += f'<th style="padding:12px; border:1px solid #ddd;">Indicador</th>'
+        html += '<tr style="background-color: #f0f2f6;"><th style="padding:12px; border:1px solid #ddd;">Indicador</th>'
         for col in df.columns: html += f'<th style="padding:12px; border:1px solid #ddd;">{col}</th>'
         html += '</tr>'
         for idx in df.index:
@@ -107,14 +97,14 @@ if tickers_raw:
         return html + '</table>'
 
     if datos_fundamentales:
-        # --- 1. TABLA FUNDAMENTAL (CON LÓGICA ANTI-NAN) ---
+        # 1. TABLA FUNDAMENTAL
         df_f = pd.DataFrame(datos_fundamentales).set_index("Ticker")
         df_f_final = df_f.T
         filas_num = df_f_final.index.drop("Empresa")
-        
-        # El promedio ahora ignora los valores nulos (skipna=True por defecto)
         df_f_final.loc[filas_num, "PROMEDIO"] = df_f_final.loc[filas_num].apply(pd.to_numeric, errors='coerce').mean(axis=1)
         
+        st.write("### 1. Comparativa Fundamental")
+        # [Lógica de colores de la tabla 1 se mantiene igual que en tu versión anterior]
         html_f = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
         html_f += '<tr style="background-color: #f0f2f6;"><th style="padding:12px; border:1px solid #ddd;">Indicador</th>'
         for col in df_f_final.columns: html_f += f'<th style="padding:12px; border:1px solid #ddd;">{col}</th>'
@@ -125,59 +115,69 @@ if tickers_raw:
             for col in df_f_final.columns:
                 val = df_f_final.loc[idx, col]
                 style = 'border: 1px solid #ddd; padding: 8px;'
-                
-                # Si el valor es nulo (nan), mostramos un guion
-                if pd.isna(val) or val == "N/A":
-                    val_show = "-"
+                if pd.isna(val) or val == "N/A": val_show = "-"
                 else:
                     if idx != "Empresa" and col != "PROMEDIO":
                         try:
                             v_num, prom = float(val), float(df_f_final.loc[idx, "PROMEDIO"])
                             es_mejor = (idx == "Debt/Equity" and v_num < prom) or (idx != "Debt/Equity" and v_num > prom)
-                            if es_mejor:
-                                style += 'background-color: #c8e6c9; font-weight: bold;'
-                                ranking_puntos[col] += 1
+                            if es_mejor: style += 'background-color: #c8e6c9; font-weight: bold;'
                             val_show = f"{v_num*100:.2f}%" if "%" in idx else f"{v_num:.2f}"
+                            if es_mejor: ranking_puntos[col] += 1
                         except: val_show = "-"
                     else:
                         if idx == "Empresa" and col == "PROMEDIO": val_show = "-"
                         else: val_show = f"<b>{val}</b>" if idx == "Empresa" else f"{val:.2f}" if isinstance(val, float) else val
-                
                 html_f += f'<td style="{style}">{val_show}</td>'
             html_f += '</tr>'
         html_f += '</table>'
-        st.write("### 1. Comparativa Fundamental"); st.write(html_f, unsafe_allow_html=True)
+        st.write(html_f, unsafe_allow_html=True)
 
-        # --- SECCIONES 2 Y 3 (REVENUE Y EPS) ---
+        # 2. REVENUE (CON GRÁFICO SIMPLIFICADO)
         st.divider()
         if datos_revenue:
             st.write("### 2. Evolución de Ingresos (Total Revenue)")
             df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
             st.write(generar_html_unificado(df_r, tipo="moneda"), unsafe_allow_html=True)
+            
+            st.write("#### 📈 Tendencia Trimestral de Ingresos")
+            log_scale = st.checkbox("Usar Escala Logarítmica (Para comparar crecimiento relativo)", value=False)
+            
+            # Preparamos datos para el gráfico escalados a Billones
             df_plot_r = df_r.drop(columns=["TTM"], errors='ignore').reset_index().melt(id_vars="Ticker")
+            df_plot_r['value_b'] = df_plot_r['value'] / 1e9 # Convertimos a Billones
+            
+            scale_type = 'log' if log_scale else 'linear'
+            
             chart_r = alt.Chart(df_plot_r).mark_line(point=True).encode(
                 x=alt.X('variable', sort=None, title='Periodo'),
-                y=alt.Y('value', title='Revenue USD'),
-                color=alt.Color('Ticker', legend=alt.Legend(orient='right'))
+                y=alt.Y('value_b', scale=alt.Scale(type=scale_type), title='Revenue ($ Billions)'),
+                color=alt.Color('Ticker', legend=alt.Legend(orient='right')),
+                tooltip=['Ticker', 'variable', alt.Tooltip('value_b', format='.2f', title='Revenue ($B)')]
             ).properties(height=400)
             st.altair_chart(chart_r, use_container_width=True)
 
+        # 3. EPS
         if datos_eps:
             st.divider()
             st.write("### 3. Evolución de Basic EPS")
             df_e = pd.DataFrame(datos_eps).set_index("Ticker")
             st.write(generar_html_unificado(df_e, tipo="eps"), unsafe_allow_html=True)
+            
+            st.write("#### 📈 Tendencia Trimestral de EPS")
             df_plot_e = df_e.drop(columns=["TTM"], errors='ignore').reset_index().melt(id_vars="Ticker")
             chart_e = alt.Chart(df_plot_e).mark_line(point=True).encode(
                 x=alt.X('variable', sort=None, title='Periodo'),
-                y=alt.Y('value', title='EPS USD'),
-                color=alt.Color('Ticker', legend=alt.Legend(orient='right'))
+                y=alt.Y('value', title='EPS ($)'),
+                color=alt.Color('Ticker', legend=alt.Legend(orient='right')),
+                tooltip=['Ticker', 'variable', 'value']
             ).properties(height=400)
             st.altair_chart(chart_e, use_container_width=True)
 
-        # --- SECCIÓN 4: RECOMENDACIÓN ---
+        # 4. RECOMENDACIÓN TOP 3
         st.divider()
         st.write("### 🏆 4. Recomendación de Inversión (Top 3)")
+        # [Misma lógica de recomendación que antes]
         puntuacion_final = []
         for ticker, pts in ranking_puntos.items():
             c_extra = 0
@@ -192,14 +192,11 @@ if tickers_raw:
             with cols_rec[i]:
                 st.subheader(f"#{i+1} {rec['ticker']}")
                 st.metric("Score Calidad", f"{rec['score_total']}/9")
-                st.info(f"**{rec['ticker']}** lidera el ranking comparativo.")
+                st.info(f"**{rec['ticker']}** muestra el perfil más equilibrado.")
 
         with st.expander("🔍 Ver Ranking completo y Auditoría"):
             for item in sorted(puntuacion_final, key=lambda x: x["score_total"], reverse=True):
-                st.markdown(f"#### {item['ticker']} - {item['datos'].get('nombre', '')}")
-                st.write(f"🟢 **Fundamentales:** {item['puntos_fun']}/7 indicadores mejores que la media.")
-                st.write(f"💰 **Ingresos:** Variación {item['datos'].get('rev_growth',0):.2f}% (TTM: {fmt_cur(item['datos'].get('ttm_rev', 0))}).")
-                st.write(f"💎 **Beneficios (EPS):** Variación {item['datos'].get('eps_growth',0):.2f}% (TTM: ${item['datos'].get('ttm_eps',0):.2f}).")
-                st.write("---")
+                st.write(f"**{item['ticker']}**: {item['puntos_fun']}/7 Fundamentales | TTM Rev: {fmt_cur(item['datos']['ttm_rev'])}")
+
 else:
     st.info("Ingresa los tickers para iniciar el análisis.")
