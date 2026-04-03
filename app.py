@@ -16,7 +16,7 @@ if tickers_input:
     datos_revenue = []
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    with st.spinner('Extrayendo estados financieros y métricas...'):
+    with st.spinner('Analizando datos y tendencias...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -55,7 +55,7 @@ if tickers_input:
                 st.warning(f"Error procesando {ticker}: {e}")
 
     if datos_fundamentales:
-        # 1. RENDERIZAR TABLA 1
+        # 1. TABLA 1
         df_f = pd.DataFrame(datos_fundamentales).set_index("Ticker")
         df_f_final = df_f.T
         filas_num = df_f_final.index.drop("Empresa")
@@ -93,14 +93,13 @@ if tickers_input:
         st.write("### 1. Tabla Comparativa de Fundamentales")
         st.write(html_f, unsafe_allow_html=True)
 
-        # 2. RENDERIZAR TABLA 2 Y GRÁFICO
+        # 2. TABLA 2 Y GRÁFICO
         st.divider()
         st.write("### 2. Evolución de Ingresos (Total Revenue)")
         
-        if datos_revenue:
-            df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
-            
-            # Formateo para la tabla
+        df_r = pd.DataFrame(datos_revenue).set_index("Ticker") if datos_revenue else None
+        
+        if df_r is not None:
             def format_currency(n):
                 if not isinstance(n, (int, float)): return "-"
                 if n >= 1e12: return f"${n/1e12:.2f} T"
@@ -108,27 +107,48 @@ if tickers_input:
                 if n >= 1e6: return f"${n/1e6:.2f} M"
                 return f"${n:,.0f}"
 
-            df_r_styled = df_r.map(format_currency)
-            st.table(df_r_styled)
-
-            # --- NUEVO: GRÁFICO DE TENDENCIA ---
+            st.table(df_r.map(format_currency))
             st.write("#### 📈 Tendencia Trimestral de Ingresos")
-            # Quitamos el TTM para que el gráfico no tenga un salto irreal
-            df_plot = df_r.drop(columns=["TTM (Anual)"], errors='ignore')
-            # Transponemos para que las fechas queden en el eje X
-            df_plot = df_plot.T
+            df_plot = df_r.drop(columns=["TTM (Anual)"], errors='ignore').T
             st.line_chart(df_plot)
-        else:
-            st.warning("No hay datos de ingresos disponibles.")
 
-        # 3. RANKING
+        # 3. RANKING CON COMENTARIOS DE TENDENCIA
         st.divider()
         st.write("### 🏆 3. Resumen de Selección")
         ranking_ordenado = sorted(ranking_puntos.items(), key=lambda x: x[1], reverse=True)
+        
         mejor = ranking_ordenado[0]
-        st.success(f"La mejor opción es **{mejor[0]}** con **{mejor[1]}/7** puntos.")
+        st.success(f"La mejor opción es **{mejor[0]}** con **{mejor[1]}/7** puntos fundamentales.")
+
         for ticker, pts in ranking_ordenado:
-            st.write(f"- **{ticker}**: {pts} indicadores favorables")
+            st.write(f"#### {ticker}")
+            st.write(f"Indicadores favorables: **{pts} de 7**")
             st.progress(pts / 7)
+            
+            # --- ANÁLISIS DE TENDENCIA NARRATIVO ---
+            if df_r is not None and ticker in df_r.index:
+                # Extraemos solo los ingresos trimestrales (sin el TTM)
+                ingresos = df_r.loc[ticker].drop("TTM (Anual)", errors='ignore').values
+                ingresos = [i for i in ingresos if isinstance(i, (int, float))]
+                
+                if len(ingresos) >= 2:
+                    inicio, fin = ingresos[0], ingresos[-1]
+                    crecimiento_total = ((fin - inicio) / inicio) * 100
+                    
+                    # Determinamos el tipo de tendencia
+                    if crecimiento_total > 5:
+                        trend_text = f"✅ **Tendencia Alcista:** Los ingresos han crecido un **{crecimiento_total:.1f}%** en los últimos 5 trimestres."
+                        if all(x < y for x, y in zip(ingresos, ingresos[1:])):
+                            trend_text += " Este crecimiento ha sido **constante y sostenido** cuatrimestre a cuatrimestre."
+                    elif crecimiento_total < -5:
+                        trend_text = f"⚠️ **Tendencia Bajista:** Se observa una contracción de ingresos del **{abs(crecimiento_total):.1f}%** recientemente."
+                    else:
+                        trend_text = "➡️ **Tendencia Lateral:** Los ingresos se mantienen estables con variaciones mínimas."
+                    
+                    st.info(trend_text)
+                else:
+                    st.write("_Datos históricos insuficientes para análisis de tendencia._")
+            
+            st.write("---")
 else:
-    st.info("Ingresa tickers para comenzar.")
+    st.info("Ingresa los tickers para generar el informe.")
