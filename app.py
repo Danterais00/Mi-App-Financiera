@@ -37,14 +37,10 @@ if tickers_input:
                 }
                 datos_fundamentales.append(fila_fun)
 
-                # --- DATOS TABLA 2 (REVENUE CRONOLÓGICO) ---
+                # --- DATOS TABLA 2 (REVENUE) ---
                 df_q = accion.quarterly_financials
-                
                 if df_q is not None and not df_q.empty and "Total Revenue" in df_q.index:
-                    # Obtenemos los últimos 5 reportes
                     rev_series = df_q.loc["Total Revenue"].head(5)
-                    
-                    # --- EL TRUCO: Invertimos el orden (de antiguo a nuevo) ---
                     rev_series_cronologico = rev_series.iloc[::-1]
                     
                     fila_rev = {"Ticker": ticker}
@@ -52,7 +48,6 @@ if tickers_input:
                         fecha_str = date.strftime('%b %Y')
                         fila_rev[fecha_str] = value
                     
-                    # TTM siempre al final
                     fila_rev["TTM (Anual)"] = info.get('totalRevenue', 'N/A')
                     datos_revenue.append(fila_rev)
 
@@ -98,14 +93,14 @@ if tickers_input:
         st.write("### 1. Tabla Comparativa de Fundamentales")
         st.write(html_f, unsafe_allow_html=True)
 
-        # 2. RENDERIZAR TABLA 2 (REVENUE CRONOLÓGICO)
+        # 2. RENDERIZAR TABLA 2 Y GRÁFICO
         st.divider()
         st.write("### 2. Evolución de Ingresos (Total Revenue)")
         
         if datos_revenue:
-            # Crear DataFrame. Las columnas aparecerán en el orden en que se metieron al dict.
             df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
             
+            # Formateo para la tabla
             def format_currency(n):
                 if not isinstance(n, (int, float)): return "-"
                 if n >= 1e12: return f"${n/1e12:.2f} T"
@@ -115,6 +110,14 @@ if tickers_input:
 
             df_r_styled = df_r.map(format_currency)
             st.table(df_r_styled)
+
+            # --- NUEVO: GRÁFICO DE TENDENCIA ---
+            st.write("#### 📈 Tendencia Trimestral de Ingresos")
+            # Quitamos el TTM para que el gráfico no tenga un salto irreal
+            df_plot = df_r.drop(columns=["TTM (Anual)"], errors='ignore')
+            # Transponemos para que las fechas queden en el eje X
+            df_plot = df_plot.T
+            st.line_chart(df_plot)
         else:
             st.warning("No hay datos de ingresos disponibles.")
 
