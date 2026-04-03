@@ -7,7 +7,7 @@ import altair as alt
 st.set_page_config(page_title="Terminal de Análisis Pro", layout="wide")
 
 st.title("🚀 Terminal de Inversión Inteligente")
-st.write("Análisis Fundamental con Indicadores de Tendencia Visual.")
+st.write("Análisis Fundamental con Indicadores de Tendencia en Ingresos y Beneficios.")
 
 # 2. ENTRADA DE TICKERS
 tickers_raw = st.text_input("Tickers (separados por coma):", "CRM, GOOGL, IBM, INTU, META, MSFT, NFLX, NOW, ORCL, PLTR").upper()
@@ -25,7 +25,7 @@ if tickers_raw:
     analisis_completo = {}
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    with st.spinner('Calculando tendencias y métricas...'):
+    with st.spinner('Analizando tendencias de rentabilidad...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -47,18 +47,16 @@ if tickers_raw:
                 nombres_trimestres = ["4 Trim. atrás", "3 Trim. atrás", "2 Trim. atrás", "1 Trim. atrás", "Último Trim."]
                 
                 if df_q is not None and not df_q.empty:
-                    # Procesar Revenue
+                    # Procesar Revenue (Tendencia)
                     if "Total Revenue" in df_q.index:
                         rev_s = df_q.loc["Total Revenue"].head(5).iloc[::-1]
                         fila_rev = {"Ticker": ticker}
                         for i, value in enumerate(rev_s):
                             if i < len(nombres_trimestres): fila_rev[nombres_trimestres[i]] = value
                         
-                        # Cálculo de Tendencia para la nueva columna
                         if len(rev_s) >= 2:
                             rev_growth = ((rev_s.iloc[-1] - rev_s.iloc[0]) / abs(rev_s.iloc[0])) * 100
                         
-                        # Asignación de Flechas/Iconos
                         if rev_growth > 5: fila_rev["Tendencia"] = "⬆️"
                         elif rev_growth < -5: fila_rev["Tendencia"] = "⬇️"
                         else: fila_rev["Tendencia"] = "🟡"
@@ -66,16 +64,25 @@ if tickers_raw:
                         fila_rev["TTM"] = info.get('totalRevenue')
                         datos_revenue.append(fila_rev)
                     
-                    # Procesar EPS
+                    # Procesar EPS (Tendencia) - NUEVO REQUISITO
                     et_e = "Basic EPS" if "Basic EPS" in df_q.index else "BasicEps" if "BasicEps" in df_q.index else None
                     if et_e:
                         eps_s = df_q.loc[et_e].head(5).iloc[::-1]
                         fila_eps = {"Ticker": ticker}
                         for i, value in enumerate(eps_s):
                             if i < len(nombres_trimestres): fila_eps[nombres_trimestres[i]] = value
+                        
+                        if len(eps_s) >= 2:
+                            # Usamos abs en el denominador para manejar casos donde el EPS inicial es negativo
+                            denom = abs(eps_s.iloc[0]) if abs(eps_s.iloc[0]) > 0.01 else 0.01
+                            eps_growth = ((eps_s.iloc[-1] - eps_s.iloc[0]) / denom) * 100
+                        
+                        if eps_growth > 5: fila_eps["Tendencia"] = "⬆️"
+                        elif eps_growth < -5: fila_eps["Tendencia"] = "⬇️"
+                        else: fila_eps["Tendencia"] = "🟡"
+                        
                         fila_eps["TTM"] = info.get('trailingEps')
                         datos_eps.append(fila_eps)
-                        if len(eps_s) >= 2: eps_growth = ((eps_s.iloc[-1] - eps_s.iloc[0]) / abs(eps_s.iloc[0])) * 100
 
                 analisis_completo[ticker] = {
                     "nombre": info.get('longName', ticker), "rev_growth": rev_growth, "eps_growth": eps_growth,
@@ -100,7 +107,6 @@ if tickers_raw:
             html += f'<td style="font-weight:bold; background-color:#fafafa; border:1px solid #ddd; padding:8px;">{idx}</td>'
             for col in df.columns:
                 val = df.loc[idx, col]
-                # Lógica especial para no formatear la columna Tendencia
                 if col == "Tendencia":
                     val_show = str(val)
                 elif tipo == "moneda":
@@ -150,39 +156,39 @@ if tickers_raw:
         html_f += '</table>'
         st.write(html_f, unsafe_allow_html=True)
 
-        # 2. REVENUE (CON COLUMNA DE TENDENCIA)
+        # 2. REVENUE (Con Tendencia)
         st.divider()
         if datos_revenue:
             st.write("### 2. Evolución de Ingresos (Total Revenue)")
             df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
-            # Reordenar columnas para que Tendencia esté al final (antes o después de TTM según prefieras)
-            columnas = [c for c in df_r.columns if c not in ["TTM", "Tendencia"]] + ["TTM", "Tendencia"]
-            df_r = df_r[columnas]
-            
+            columnas_r = [c for c in df_r.columns if c not in ["TTM", "Tendencia"]] + ["TTM", "Tendencia"]
+            df_r = df_r[columnas_r]
             st.write(generar_html_unificado(df_r, tipo="moneda"), unsafe_allow_html=True)
             
-            # Gráfico escalado
             st.write("#### 📈 Tendencia Trimestral de Ingresos")
             log_scale = st.checkbox("Usar Escala Logarítmica", value=False)
             df_plot_r = df_r.drop(columns=["TTM", "Tendencia"], errors='ignore').reset_index().melt(id_vars="Ticker")
             df_plot_r['value_b'] = df_plot_r['value'] / 1e9
-            
             chart_r = alt.Chart(df_plot_r).mark_line(point=True).encode(
                 x=alt.X('variable', sort=None, title='Periodo'),
                 y=alt.Y('value_b', scale=alt.Scale(type='log' if log_scale else 'linear'), title='Revenue ($ Billions)'),
-                color=alt.Color('Ticker', legend=alt.Legend(orient='right')),
-                tooltip=['Ticker', 'variable', alt.Tooltip('value_b', format='.2f', title='Revenue ($B)')]
+                color=alt.Color('Ticker', legend=alt.Legend(orient='right'))
             ).properties(height=400)
             st.altair_chart(chart_r, use_container_width=True)
 
-        # 3. EPS
+        # 3. EPS (Con Tendencia) - AHORA CON FLECHAS
         if datos_eps:
             st.divider()
             st.write("### 3. Evolución de Beneficio por Acción (Basic EPS)")
             df_e = pd.DataFrame(datos_eps).set_index("Ticker")
+            # Ordenamos columnas para que Tendencia esté al final
+            columnas_e = [c for c in df_e.columns if c not in ["TTM", "Tendencia"]] + ["TTM", "Tendencia"]
+            df_e = df_e[columnas_e]
+            
             st.write(generar_html_unificado(df_e, tipo="eps"), unsafe_allow_html=True)
             
-            df_plot_e = df_e.drop(columns=["TTM"], errors='ignore').reset_index().melt(id_vars="Ticker")
+            st.write("#### 📈 Tendencia Trimestral de EPS")
+            df_plot_e = df_e.drop(columns=["TTM", "Tendencia"], errors='ignore').reset_index().melt(id_vars="Ticker")
             chart_e = alt.Chart(df_plot_e).mark_line(point=True).encode(
                 x=alt.X('variable', sort=None, title='Periodo'),
                 y=alt.Y('value', title='EPS ($)'),
@@ -207,10 +213,6 @@ if tickers_raw:
             with cols_rec[i]:
                 st.subheader(f"#{i+1} {rec['ticker']}")
                 st.metric("Score Calidad", f"{rec['score_total']}/9")
-                st.info(f"**{rec['ticker']}** presenta un crecimiento sólido y balance equilibrado.")
-
-        with st.expander("🔍 Ver Ranking completo"):
-            for item in sorted(puntuacion_final, key=lambda x: x["score_total"], reverse=True):
-                st.write(f"**{item['ticker']}**: {item['score_total']} pts totales.")
+                st.info(f"**{rec['ticker']}** es líder en rentabilidad y balance.")
 else:
-    st.info("Ingresa los tickers para iniciar.")
+    st.info("Ingresa los tickers para iniciar el análisis.")
