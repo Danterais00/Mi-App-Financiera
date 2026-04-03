@@ -6,20 +6,18 @@ import altair as alt
 st.set_page_config(page_title="Terminal de Análisis Pro", layout="wide")
 
 st.title("🚀 Terminal de Inversión: Selección y Auditoría")
-st.write("Análisis estandarizado con leyendas laterales personalizadas.")
+st.write("Análisis estandarizado con diseño visual unificado en todas las tablas.")
 
 tickers_input = st.text_input("Tickers (separados por coma):", "CRM, GOOGL, IBM, INTU, META, MSFT, NFLX, NOW, ORCL, PLTR").upper()
 
 if tickers_input:
     lista_tickers = [t.strip() for t in tickers_input.split(",")][:20]
     
-    datos_fundamentales = []
-    datos_revenue = []
-    datos_eps = []
+    datos_fundamentales, datos_revenue, datos_eps = [], [], []
     analisis_completo = {}
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    with st.spinner('Procesando datos y configurando gráficos...'):
+    with st.spinner('Unificando formatos y extrayendo datos...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -65,8 +63,39 @@ if tickers_input:
                 analisis_completo[ticker] = {"nombre": info.get('longName', ticker), "rev_growth": rev_growth, "eps_growth": eps_growth}
             except Exception: pass
 
+    # --- FUNCIONES DE FORMATEO ---
+    def fmt_cur(n):
+        if not isinstance(n, (int, float)): return "-"
+        if n >= 1e12: return f"${n/1e12:.2f}T"
+        if n >= 1e9: return f"${n/1e9:.2f}B"
+        return f"${n/1e6:.2f}M" if n >= 1e6 else f"${n:,.0f}"
+
+    def fmt_val(n):
+        return f"{n:.2f}" if isinstance(n, (int, float)) else "-"
+
+    # --- FUNCIÓN PARA GENERAR TABLAS HTML CON FORMATO UNIFICADO ---
+    def generar_html_unificado(df, tipo="normal"):
+        html = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
+        # Encabezado Gris
+        html += '<tr style="background-color: #f0f2f6;">'
+        html += f'<th style="padding:12px; border:1px solid #ddd;">{df.index.name if df.index.name else "Indicador"}</th>'
+        for col in df.columns:
+            html += f'<th style="padding:12px; border:1px solid #ddd;">{col}</th>'
+        html += '</tr>'
+        # Filas
+        for idx in df.index:
+            html += '<tr>'
+            # Primera columna Gris y Negrita
+            html += f'<td style="font-weight:bold; background-color:#fafafa; border:1px solid #ddd; padding:8px;">{idx}</td>'
+            for col in df.columns:
+                val = df.loc[idx, col]
+                val_show = fmt_cur(val) if tipo == "moneda" else fmt_val(val) if tipo == "eps" else str(val)
+                html += f'<td style="border: 1px solid #ddd; padding: 8px;">{val_show}</td>'
+            html += '</tr>'
+        return html + '</table>'
+
     if datos_fundamentales:
-        # --- TABLA 1 (FUNDAMENTALES) ---
+        # --- TABLA 1 (FUNDAMENTALES - CON COLORES) ---
         df_f = pd.DataFrame(datos_fundamentales).set_index("Ticker")
         df_f_final = df_f.T
         filas_num = df_f_final.index.drop("Empresa")
@@ -91,73 +120,63 @@ if tickers_input:
                             ranking_puntos[col] += 1
                         val_show = f"{v_num*100:.2f}%" if "%" in idx else f"{v_num:.2f}"
                     except: val_show = "-"
-                else: val_show = f"<b>{val}</b>" if idx == "Empresa" else f"{val:.2f}" if isinstance(val, float) else val
+                else:
+                    if idx == "Empresa" and col == "PROMEDIO": val_show = "-"
+                    else: val_show = f"<b>{val}</b>" if idx == "Empresa" else f"{val:.2f}" if isinstance(val, float) else val
                 html_f += f'<td style="{style}">{val_show}</td>'
             html_f += '</tr>'
         html_f += '</table>'
         st.write("### 1. Comparativa Fundamental"); st.write(html_f, unsafe_allow_html=True)
 
-        # --- FUNCIÓN PARA CREAR GRÁFICOS CON LEYENDA A LA DERECHA ---
-        def crear_grafico_custom(df_input, titulo):
-            # Preparamos los datos para Altair (formato largo)
-            df_plot = df_input.drop(columns=["TTM"], errors='ignore').reset_index()
-            df_melted = df_plot.melt(id_vars="Ticker", var_name="Trimestre", value_name="Valor")
-            
-            # Crear el gráfico
-            chart = alt.Chart(df_melted).mark_line(point=True).encode(
-                x=alt.X('Trimestre', sort=None, title='Periodos Fiscales'),
-                y=alt.Y('Valor', title='Valor USD'),
-                color=alt.Color('Ticker', legend=alt.Legend(
-                    orient='right', 
-                    direction='vertical',
-                    title='Empresas',
-                    symbolType='stroke'
-                )),
-                tooltip=['Ticker', 'Trimestre', 'Valor']
-            ).properties(height=400, width='container')
-            
-            st.write(f"#### {titulo}")
-            st.altair_chart(chart, use_container_width=True)
-
-        # --- TABLA 2 (REVENUE) Y GRÁFICO CUSTOM ---
+        # --- TABLA 2 (REVENUE HTML) ---
         st.divider()
         if datos_revenue:
             st.write("### 2. Evolución de Ingresos (Total Revenue)")
             df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
-            st.table(df_r.map(lambda n: f"${n/1e9:.2f}B" if isinstance(n, (int, float)) and n >= 1e9 else f"${n/1e6:.2f}M" if isinstance(n, (int, float)) else n))
-            crear_grafico_custom(df_r, "📈 Tendencia Trimestral de Ingresos")
+            st.write(generar_html_unificado(df_r, tipo="moneda"), unsafe_allow_html=True)
+            
+            # Gráfico Altair
+            df_plot = df_r.drop(columns=["TTM"], errors='ignore').reset_index().melt(id_vars="Ticker")
+            chart_r = alt.Chart(df_plot).mark_line(point=True).encode(
+                x=alt.X('variable', sort=None, title='Periodo'),
+                y=alt.Y('value', title='Revenue USD'),
+                color=alt.Color('Ticker', legend=alt.Legend(orient='right'))
+            ).properties(height=400)
+            st.altair_chart(chart_r, use_container_width=True)
         
-        # --- TABLA 3 (EPS) Y GRÁFICO CUSTOM ---
+        # --- TABLA 3 (EPS HTML) ---
         if datos_eps:
             st.divider()
             st.write("### 3. Evolución de Basic EPS")
             df_e = pd.DataFrame(datos_eps).set_index("Ticker")
-            st.table(df_e.map(lambda n: f"{n:.2f}" if isinstance(n, (int, float)) else n))
-            crear_grafico_custom(df_e, "📈 Tendencia Trimestral de EPS")
+            st.write(generar_html_unificado(df_e, tipo="eps"), unsafe_allow_html=True)
+            
+            # Gráfico Altair
+            df_plot_e = df_e.drop(columns=["TTM"], errors='ignore').reset_index().melt(id_vars="Ticker")
+            chart_e = alt.Chart(df_plot_e).mark_line(point=True).encode(
+                x=alt.X('variable', sort=None, title='Periodo'),
+                y=alt.Y('value', title='EPS USD'),
+                color=alt.Color('Ticker', legend=alt.Legend(orient='right'))
+            ).properties(height=400)
+            st.altair_chart(chart_e, use_container_width=True)
 
-        # --- 4. RECOMENDACIÓN Y AUDITORÍA ---
+        # --- 4. RECOMENDACIÓN ---
         st.divider()
         st.write("### 🏆 4. Recomendación de Inversión (Top 3)")
         puntuacion_final = []
         for ticker, pts in ranking_puntos.items():
-            c_extra = 0
-            if ticker in analisis_completo:
-                if analisis_completo[ticker]["rev_growth"] > 0: c_extra += 1
-                if analisis_completo[ticker]["eps_growth"] > 0: c_extra += 1
+            c_extra = 2 if (analisis_completo.get(ticker, {}).get("rev_growth", 0) > 0 and analisis_completo.get(ticker, {}).get("eps_growth", 0) > 0) else 0
             puntuacion_final.append({"ticker": ticker, "puntos_fun": pts, "score_total": pts + c_extra, "datos": analisis_completo.get(ticker, {})})
 
         top_3 = sorted(puntuacion_final, key=lambda x: x["score_total"], reverse=True)[:3]
-        cols_rec = st.columns(3)
+        cols = st.columns(3)
         for i, rec in enumerate(top_3):
-            with cols_rec[i]:
+            with cols[i]:
                 st.subheader(f"#{i+1} {rec['ticker']}")
-                st.metric("Score Calidad", f"{rec['score_total']}/9")
-                st.info(f"**Recomendación:** {rec['ticker']} muestra la mejor tendencia.")
+                st.info(f"**Score:** {rec['score_total']}/9. Posee una tendencia de crecimiento sólida.")
 
-        with st.expander("🔍 Ver Ranking completo y Datos Crudos de Auditoría"):
+        with st.expander("🔍 Ver Ranking completo y Auditoría"):
             for item in sorted(puntuacion_final, key=lambda x: x["score_total"], reverse=True):
-                st.markdown(f"#### {item['ticker']} - {item['datos'].get('nombre', '')}")
-                st.write(f"🟢 **Fundamentales:** {item['puntos_fun']}/7 | 💰 **Ingresos:** {item['datos'].get('rev_growth', 0):.2f}% | 💎 **EPS:** {item['datos'].get('eps_growth', 0):.2f}%")
-                st.write("---")
+                st.write(f"**{item['ticker']}**: {item['puntos_fun']}/7 Fundamentales | Ingresos: {item['datos'].get('rev_growth',0):.2f}%")
 else:
-    st.info("Ingresa los tickers para iniciar el análisis.")
+    st.info("Ingresa los tickers para iniciar.")
