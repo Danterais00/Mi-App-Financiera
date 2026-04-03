@@ -37,15 +37,22 @@ if tickers_input:
                 }
                 datos_fundamentales.append(fila_fun)
 
-                # --- DATOS TABLA 2 (REVENUE HISTÓRICO) ---
+                # --- DATOS TABLA 2 (REVENUE CRONOLÓGICO) ---
                 df_q = accion.quarterly_financials
                 
                 if df_q is not None and not df_q.empty and "Total Revenue" in df_q.index:
+                    # Obtenemos los últimos 5 reportes
                     rev_series = df_q.loc["Total Revenue"].head(5)
+                    
+                    # --- EL TRUCO: Invertimos el orden (de antiguo a nuevo) ---
+                    rev_series_cronologico = rev_series.iloc[::-1]
+                    
                     fila_rev = {"Ticker": ticker}
-                    for date, value in rev_series.items():
+                    for date, value in rev_series_cronologico.items():
                         fecha_str = date.strftime('%b %Y')
                         fila_rev[fecha_str] = value
+                    
+                    # TTM siempre al final
                     fila_rev["TTM (Anual)"] = info.get('totalRevenue', 'N/A')
                     datos_revenue.append(fila_rev)
 
@@ -53,7 +60,7 @@ if tickers_input:
                 st.warning(f"Error procesando {ticker}: {e}")
 
     if datos_fundamentales:
-        # Renderizar Tabla 1 (Mantenemos tu lógica de colores)
+        # 1. RENDERIZAR TABLA 1
         df_f = pd.DataFrame(datos_fundamentales).set_index("Ticker")
         df_f_final = df_f.T
         filas_num = df_f_final.index.drop("Empresa")
@@ -91,11 +98,12 @@ if tickers_input:
         st.write("### 1. Tabla Comparativa de Fundamentales")
         st.write(html_f, unsafe_allow_html=True)
 
-        # --- TABLA 2 (REVENUE) CON EL FIX ---
+        # 2. RENDERIZAR TABLA 2 (REVENUE CRONOLÓGICO)
         st.divider()
         st.write("### 2. Evolución de Ingresos (Total Revenue)")
         
         if datos_revenue:
+            # Crear DataFrame. Las columnas aparecerán en el orden en que se metieron al dict.
             df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
             
             def format_currency(n):
@@ -105,13 +113,12 @@ if tickers_input:
                 if n >= 1e6: return f"${n/1e6:.2f} M"
                 return f"${n:,.0f}"
 
-            # AQUÍ ESTÁ EL CAMBIO: .map() en lugar de .applymap()
             df_r_styled = df_r.map(format_currency)
             st.table(df_r_styled)
         else:
-            st.warning("No hay datos de ingresos disponibles para estos tickers.")
+            st.warning("No hay datos de ingresos disponibles.")
 
-        # --- RANKING ---
+        # 3. RANKING
         st.divider()
         st.write("### 🏆 3. Resumen de Selección")
         ranking_ordenado = sorted(ranking_puntos.items(), key=lambda x: x[1], reverse=True)
