@@ -2,47 +2,61 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-st.set_page_config(page_title="Analizador Financiero", layout="centered")
+st.set_page_config(page_title="Analizador Fundamental", layout="wide")
 
-st.title("📈 Mi Terminal de Inversiones")
+st.title("📊 Terminal de Análisis Fundamental")
 
-ticker_input = st.text_input("Ticker (ej: NVDA, AAPL, MSFT)", "NVDA").upper()
+ticker_input = st.text_input("Ingresa el Ticker:", "NVDA").upper()
 
 if ticker_input:
     try:
-        # Creamos el objeto de la acción
         accion = yf.Ticker(ticker_input)
+        info = accion.info
         
-        # Intentamos obtener el precio de una forma más directa y rápida
-        # Esto falla menos que el método .info
-        hist = accion.history(period="5d")
+        # --- ENCABEZADO ---
+        st.header(f"{info.get('longName', ticker_input)}")
         
+        # --- MÉTRICAS DE PRECIO ---
+        hist = accion.history(period="2d")
         if not hist.empty:
             precio_actual = hist['Close'].iloc[-1]
-            precio_anterior = hist['Close'].iloc[-2]
-            cambio = precio_actual - precio_anterior
-            porcentaje = (cambio / precio_anterior) * 100
+            st.subheader(f"Precio Actual: ${precio_actual:.2f} {info.get('currency', 'USD')}")
 
-            # Mostrar métricas principales
-            st.header(f"Resultados para: {ticker_input}")
-            col1, col2 = st.columns(2)
-            col1.metric("Precio Actual", f"${precio_actual:.2f}")
-            col2.metric("Variación diaria", f"{cambio:.2f}", f"{porcentaje:.2f}%")
+        st.divider()
 
-            # Gráfico de un año
-            st.write("### Histórico del último año")
-            hist_year = accion.history(period="1y")
-            st.line_chart(hist_year['Close'])
-            
-            # Datos adicionales (Si Yahoo los permite)
-            with st.expander("Ver detalles avanzados"):
-                info = accion.info
-                st.write(f"**Sector:** {info.get('sector', 'N/A')}")
-                st.write(f"**Resumen:** {info.get('longBusinessSummary', 'No disponible')}")
-        else:
-            st.error("Yahoo Finance no devolvió datos. Intenta con otro ticker o espera unos minutos.")
+        # --- ANÁLISIS FUNDAMENTAL ---
+        st.write("### Indicadores Clave")
+        
+        # Creamos dos filas de columnas para que no se vea amontonado
+        col1, col2, col3, col4 = st.columns(4)
+        col5, col6, col7, col8 = st.columns(4)
+
+        # Función auxiliar para formatear porcentajes
+        def fmt_pct(val):
+            return f"{val*100:.2f}%" if val else "N/A"
+
+        # Fila 1: Ratios de Liquidez y Deuda
+        col1.metric("Current Ratio", info.get('currentRatio', 'N/A'))
+        col2.metric("Quick Ratio", info.get('quickRatio', 'N/A'))
+        col3.metric("Debt/Equity", info.get('debtToEquity', 'N/A'))
+        col4.metric("EPS (Upa)", info.get('trailingEps', 'N/A'))
+
+        # Fila 2: Rentabilidad y Valoración
+        col5.metric("ROA", fmt_pct(info.get('returnOnAssets')))
+        col6.metric("ROE", fmt_pct(info.get('returnOnEquity')))
+        col7.metric("P/E Ratio (PER)", info.get('trailingPE', 'N/A'))
+        col8.metric("Beta (Riesgo)", info.get('beta', 'N/A'))
+
+        st.divider()
+
+        # --- GRÁFICO ---
+        st.write("### Evolución del Precio (1 Año)")
+        hist_year = accion.history(period="1y")
+        st.line_chart(hist_year['Close'])
+
+        # --- DESCRIPCIÓN ---
+        with st.expander("Ver descripción de la empresa"):
+            st.write(info.get('longBusinessSummary', 'No hay descripción disponible.'))
 
     except Exception as e:
-        st.error(f"Error técnico: {e}")
-
-st.info("Tip: Si no carga, intenta refrescar la página. A veces Yahoo bloquea temporalmente la conexión.")
+        st.error(f"Error al cargar datos: {e}")
