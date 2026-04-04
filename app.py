@@ -28,7 +28,7 @@ if tickers_raw:
     
     fechas_headers = []
 
-    with st.spinner('Actualizando tablas y sincronizando nombres de empresa...'):
+    with st.spinner('Sincronizando datos y limpiando sintaxis...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -133,15 +133,14 @@ if tickers_raw:
                         val_show = f"${float(val):,.2f}" if col != "PROMEDIO" else "-"
                     else: val_show = str(val)
                 html_val += f'<td style="{style}">{val_show}</td>'
+            html_f = html_val # Corrección de referencia
             html_val += '</tr>'
         st.write(html_val + '</table>', unsafe_allow_html=True)
 
         # --- 2. COMPARATIVA FUNDAMENTAL AVANZADA ---
         st.divider()
         st.write("### 2. Comparativa Fundamental Avanzada")
-        # Dejamos 'Empresa' pero quitamos el resto de valuación
         df_fun = df_total.drop(["Precio", "Fair Value (Target)", "Upside (%)"])
-        # Promedio solo para filas numéricas (excluyendo Empresa)
         filas_ratios = df_fun.index.drop("Empresa")
         df_fun.loc[filas_ratios, "PROMEDIO"] = df_fun.loc[filas_ratios].apply(pd.to_numeric, errors='coerce').mean(axis=1)
 
@@ -150,7 +149,6 @@ if tickers_raw:
         for col in df_fun.columns: html_f += f'<th style="padding:12px; border:1px solid #ddd;">{col}</th>'
         html_f += '</tr>'
         for idx in df_fun.index:
-            # Si es la fila Empresa, fondo gris
             bg_f = "#f2f2f2" if idx == "Empresa" else "#ffffff"
             html_f += f'<tr style="background-color: {bg_f};"><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{idx}</td>'
             for col in df_fun.columns:
@@ -242,6 +240,9 @@ if tickers_raw:
                 st.markdown(f"<p style='font-size: 1.2em; color: #555;'>{s['Total']} Puntos</p>", unsafe_allow_html=True)
                 st.caption(f"{s['Eficacia']:.1f}% Eficacia Relativa")
                 with st.expander("Racional"):
-                    st.write(f"**Fundamentales:** {s['Fund']} indicadores mejores que la media."); st.write(f"**Crecimiento:** {'Confirmado ▲' if s['Crec']==2 else 'Parcial' if s['Crec']==1 else 'Neutro'}"); if s['Up'] > 0: st.success("Potencial de Revalorización +")
+                    st.write(f"**Fundamentales:** {s['Fund']} indicadores mejores que la media.")
+                    st.write(f"**Crecimiento:** {'Confirmado ▲' if s['Crec']==2 else 'Parcial' if s['Crec']==1 else 'Neutro'}")
+                    if s['Up'] > 0:
+                        st.success("Potencial de Revalorización +")
 else:
     st.info("Ingresa los tickers para iniciar.")
