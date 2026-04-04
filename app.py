@@ -7,10 +7,10 @@ import altair as alt
 st.set_page_config(page_title="Terminal de Análisis Pro", layout="wide")
 
 st.title("🚀 Terminal de Análisis Fundamental Pro")
-st.write("Análisis Integral: Valor Justo, Upside y Selección Elite TOP 5.")
+st.write("Análisis Integral: Valor Justo, Tendencias Trimestrales y Selección Elite TOP 5.")
 
 # 2. ENTRADA DE TICKERS
-tickers_raw = st.text_input("Tickers (separados por coma):", "SHEL, AAPL, MSFT, NVDA, GOOGL, AMZN, TSLA, JPM").upper()
+tickers_raw = st.text_input("Tickers (separados por coma):", "KO, COST, PEP, PG, WMT, AAPL, MSFT, NVDA").upper()
 
 def corregir_ticker(t):
     t = t.strip()
@@ -28,19 +28,19 @@ if tickers_raw:
     
     fechas_headers = []
 
-    with st.spinner('Calculando Fair Value y Margen de Seguridad...'):
+    with st.spinner('Sincronizando balances, fechas y proyecciones de analistas...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
                 info = accion.info
                 df_q = accion.quarterly_financials
                 
-                # --- CÁLCULO DE UPSIDE ---
+                # --- CÁLCULO DE VALOR TÉCNICO (FAIR VALUE) ---
                 precio_actual = info.get('currentPrice')
                 valor_justo = info.get('targetMeanPrice')
                 upside = ((valor_justo / precio_actual) - 1) if precio_actual and valor_justo else None
 
-                # --- A. DATOS FUNDAMENTALES ---
+                # --- A. DATOS FUNDAMENTALES (Sin PEG, Con Free Cash Flow) ---
                 fila_fun = {
                     "Ticker": ticker, 
                     "Empresa": info.get('longName', 'N/A'),
@@ -59,9 +59,10 @@ if tickers_raw:
                 }
                 datos_fundamentales.append(fila_fun)
 
-                # --- B. PROCESAMIENTO DE TENDENCIAS ---
+                # --- B. PROCESAMIENTO DE TENDENCIAS Y FECHAS ---
                 nombres_base = ["4 Trim. atrás", "3 Trim. atrás", "2 Trim. atrás", "1 Trim. atrás", "Último Trim."]
                 icon_r, icon_e = '●', '●'
+                
                 if df_q is not None and not df_q.empty:
                     if not fechas_headers:
                         fechas_raw = df_q.columns[:5][::-1]
@@ -93,10 +94,12 @@ if tickers_raw:
 
                 analisis_completo[ticker] = {
                     "nombre": info.get('longName', ticker), 
-                    "rev_t": icon_r, "eps_t": icon_e, "net_margin": info.get('profitMargins', -1)
+                    "rev_t": icon_r, "eps_t": icon_e, "net_margin": info.get('profitMargins', -1),
+                    "upside_val": upside if upside else -1
                 }
             except Exception: pass
 
+    # --- FUNCIONES DE FORMATEO ---
     def fmt_cur(n):
         if pd.isna(n) or n == 0: return "-"
         p = "$" if n >= 0 else "-$"
@@ -106,7 +109,7 @@ if tickers_raw:
         return f"{p}{num/1e6:.2f}M" if num >= 1e6 else f"{p}{num:,.2f}"
 
     if datos_fundamentales:
-        # --- TABLA 1: COMPARATIVA ---
+        # --- 1. COMPARATIVA FUNDAMENTAL ---
         df_f = pd.DataFrame(datos_fundamentales).set_index("Ticker")
         df_f_final = df_f.T
         filas_num = df_f_final.index.drop(["Empresa"])
@@ -136,10 +139,9 @@ if tickers_raw:
                                 style += 'background-color: #c8e6c9; font-weight: bold;'
                                 ranking_puntos[col] += 1
                         
-                        # Lógica especial para pintar Upside de verde
                         if idx == "Upside (%)" and col != "PROMEDIO" and v_num > 0:
                             style += 'background-color: #c8e6c9; color: #2e7d32; font-weight: bold;'
-                        
+
                         if "%" in idx: val_show = f"{v_num*100:.2f}%"
                         elif idx == "Free Cash Flow": val_show = fmt_cur(v_num)
                         elif idx in ["Precio", "Fair Value (Target)"]: val_show = f"${v_num:,.2f}"
@@ -149,39 +151,6 @@ if tickers_raw:
             html_f += '</tr>'
         st.write(html_f + '</table>', unsafe_allow_html=True)
 
-        # [Se mantienen Tablas 2, 3 y Gráficos...]
-        # (Por brevedad se omite el código repetido de gráficos, pero está incluido en tu app local)
-
-        # --- SECCIÓN 4: TOP 5 ELITE ---
+        # --- 2. REVENUE ---
         st.divider()
-        st.write("### 🏆 4. Selección Elite: TOP 5 Recomendado")
-        final_scores = []
-        for t in lista_tickers:
-            if t in analisis_completo:
-                p_fun = ranking_puntos[t]
-                p_max = posibles_puntos[t]
-                p_crec = (1 if "28a745" in analisis_completo[t]["rev_t"] else 0) + (1 if "28a745" in analisis_completo[t]["eps_t"] else 0)
-                # Punto extra por Upside positivo
-                p_upside = 1 if df_f.loc[t, "Upside (%)"] > 0 else 0
-                
-                efic = (p_fun / p_max * 100) if p_max > 0 else 0
-                final_scores.append({
-                    "Ticker": t, "Nombre": analisis_completo[t]["nombre"],
-                    "Total": p_fun + p_crec + p_upside, "Eficacia": efic, 
-                    "Fund": p_fun, "Crec": p_crec, "Upside": p_upside,
-                    "Margin": analisis_completo[t].get("net_margin", 0)
-                })
-
-        top_5 = sorted(final_scores, key=lambda x: (x['Total'], x['Eficacia'], x['Margin']), reverse=True)[:5]
-        cols_5 = st.columns(5)
-        for idx, s in enumerate(top_5):
-            with cols_5[idx]:
-                st.markdown(f"Puesto #{idx+1}")
-                st.markdown(f"<h1 style='text-align: left; color: #1E1E1E; margin-top: -20px;'><b>{s['Ticker']}</b></h1>", unsafe_allow_html=True)
-                st.markdown(f"<p style='font-size: 1.2em; color: #555;'>{s['Total']} Puntos</p>", unsafe_allow_html=True)
-                with st.expander("Racional"):
-                    st.write(f"**Fundamentales:** {s['Fund']} verdes.")
-                    st.write(f"**Crecimiento:** {'Confirmado ▲' if s['Crec']==2 else 'Parcial'}")
-                    if s['Upside'] > 0: st.success("Acción Subvaluada (Upside +)")
-else:
-    st.info("Ingresa los tickers para iniciar.")
+        if datos_revenue
