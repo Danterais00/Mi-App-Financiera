@@ -7,7 +7,7 @@ import altair as alt
 st.set_page_config(page_title="Terminal de Análisis Pro", layout="wide")
 
 st.title("🚀 Terminal de Análisis Fundamental Pro")
-st.write("Análisis de Tendencias Trimestrales con Fechas de Reporte y Selección Elite.")
+st.write("Análisis de Tendencias, Gráficos y Selección Elite TOP 5.")
 
 # 2. ENTRADA DE TICKERS
 tickers_raw = st.text_input("Tickers (separados por coma):", "KO, COST, PEP, PG, WMT").upper()
@@ -26,10 +26,9 @@ if tickers_raw:
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     posibles_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    # Diccionario para guardar las fechas de los encabezados (se genera una sola vez)
     fechas_headers = []
 
-    with st.spinner('Sincronizando periodos contables y limpiando TTM...'):
+    with st.spinner('Restableciendo gráficos y sincronizando periodos...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -55,13 +54,12 @@ if tickers_raw:
                 rev_growth, eps_growth = 0, 0
 
                 if df_q is not None and not df_q.empty:
-                    # Capturar fechas para los encabezados basado en el primer ticker válido
                     if not fechas_headers:
                         fechas_raw = df_q.columns[:5][::-1]
                         for i, d in enumerate(fechas_raw):
                             fechas_headers.append(f"{nombres_base[i]}<br><small>{d.strftime('%d/%m/%Y')}</small>")
 
-                    # Ingresos (Sin TTM en la tabla)
+                    # Ingresos
                     if "Total Revenue" in df_q.index:
                         rev_s = df_q.loc["Total Revenue"].head(5).iloc[::-1]
                         fila_rev = {"Ticker": ticker}
@@ -72,7 +70,7 @@ if tickers_raw:
                         fila_rev["Tendencia"] = icon_r
                         datos_revenue.append(fila_rev)
                     
-                    # EPS (Sin TTM)
+                    # EPS
                     et_e = "Basic EPS" if "Basic EPS" in df_q.index else "BasicEps" if "BasicEps" in df_q.index else None
                     if et_e:
                         eps_s = df_q.loc[et_e].head(5).iloc[::-1]
@@ -90,7 +88,6 @@ if tickers_raw:
                 }
             except Exception: pass
 
-    # --- FUNCIONES DE FORMATEO ---
     def fmt_cur(n):
         if pd.isna(n) or n == 0: return "-"
         p = "$" if n >= 0 else "-$"
@@ -138,7 +135,7 @@ if tickers_raw:
             html_f += '</tr>'
         st.write(html_f + '</table>', unsafe_allow_html=True)
 
-        # --- TABLA 2: REVENUE (AHORA SIN TTM) ---
+        # --- TABLA 2: REVENUE Y GRÁFICO ---
         st.divider()
         if datos_revenue:
             st.write("### 2. Evolución de Ingresos (Total Revenue)")
@@ -158,7 +155,22 @@ if tickers_raw:
                 h2 += '</tr>'
             st.write(h2 + '</table>', unsafe_allow_html=True)
 
-        # --- TABLA 3: EPS (SIN TTM) ---
+            # GRÁFICO REVENUE
+            st.write("#### 📈 Tendencia de Ingresos")
+            df_p_r = df_r.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
+            df_p_r['value_b'] = df_p_r['value'] / 1e9
+            # Limpiar etiquetas HTML para el eje X del gráfico
+            df_p_r['periodo'] = df_p_r['variable'].str.split('<').str[0]
+            
+            chart_r = alt.Chart(df_p_r).mark_line(point=True).encode(
+                x=alt.X('periodo', sort=None, title="Trimestres"), 
+                y=alt.Y('value_b', title='USD (Billions)'),
+                color=alt.Color('Ticker', legend=alt.Legend(orient='right')),
+                tooltip=['Ticker', 'periodo', alt.Tooltip('value_b', format='.2f')]
+            ).properties(height=350)
+            st.altair_chart(chart_r, use_container_width=True)
+
+        # --- TABLA 3: EPS Y GRÁFICO ---
         st.divider()
         if datos_eps:
             st.write("### 3. Evolución de Beneficio por Acción (Basic EPS)")
@@ -177,6 +189,19 @@ if tickers_raw:
                     h3 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
                 h3 += '</tr>'
             st.write(h3 + '</table>', unsafe_allow_html=True)
+
+            # GRÁFICO EPS
+            st.write("#### 📈 Tendencia de EPS")
+            df_p_e = df_e.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
+            df_p_e['periodo'] = df_p_e['variable'].str.split('<').str[0]
+            
+            chart_e = alt.Chart(df_p_e).mark_line(point=True).encode(
+                x=alt.X('periodo', sort=None, title="Trimestres"), 
+                y=alt.Y('value', title='EPS ($)'),
+                color=alt.Color('Ticker', legend=alt.Legend(orient='right')),
+                tooltip=['Ticker', 'periodo', 'value']
+            ).properties(height=350)
+            st.altair_chart(chart_e, use_container_width=True)
 
         # --- SECCIÓN 4: TOP 5 ELITE ---
         st.divider()
