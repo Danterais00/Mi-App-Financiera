@@ -28,7 +28,7 @@ if tickers_raw:
     
     fechas_headers = []
 
-    with st.spinner('Sincronizando datos y limpiando sintaxis...'):
+    with st.spinner('Sincronizando datos y regenerando el TOP 5 Elite...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -68,6 +68,7 @@ if tickers_raw:
                         for idx_f, d in enumerate(fechas_raw):
                             fechas_headers.append(f"{nombres_base[idx_f]}<br><small>{d.strftime('%d/%m/%Y')}</small>")
 
+                    # Ingresos
                     if "Total Revenue" in df_q.index:
                         rev_s = df_q.loc["Total Revenue"].head(5).iloc[::-1]
                         fila_rev = {"Ticker": ticker}
@@ -78,6 +79,7 @@ if tickers_raw:
                         fila_rev["Tendencia"] = icon_r
                         datos_revenue.append(fila_rev)
                     
+                    # EPS
                     et_e = "Basic EPS" if "Basic EPS" in df_q.index else "BasicEps" if "BasicEps" in df_q.index else None
                     if et_e:
                         eps_s = df_q.loc[et_e].head(5).iloc[::-1]
@@ -133,7 +135,6 @@ if tickers_raw:
                         val_show = f"${float(val):,.2f}" if col != "PROMEDIO" else "-"
                     else: val_show = str(val)
                 html_val += f'<td style="{style}">{val_show}</td>'
-            html_f = html_val # Corrección de referencia
             html_val += '</tr>'
         st.write(html_val + '</table>', unsafe_allow_html=True)
 
@@ -189,8 +190,8 @@ if tickers_raw:
             for i in df_r.index:
                 h2 += f'<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{i}</td>'
                 for c in cols_r:
-                    val_cell = df_r.loc[i, c]
-                    v_s = str(val_cell) if c == "Tendencia" else fmt_cur(val_cell)
+                    val_c = df_r.loc[i, c]
+                    v_s = str(val_c) if c == "Tendencia" else fmt_cur(val_cell := val_c)
                     h2 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
                 h2 += '</tr>'
             st.write(h2 + '</table>', unsafe_allow_html=True)
@@ -211,25 +212,35 @@ if tickers_raw:
             for i in df_e.index:
                 h3 += f'<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{i}</td>'
                 for c in cols_e:
-                    val_cell = df_e.loc[i, c]
-                    v_s = str(val_cell) if c == "Tendencia" else f"{val_cell:.2f}" if pd.notna(val_cell) else "-"
+                    val_c = df_e.loc[i, c]
+                    v_s = str(val_c) if c == "Tendencia" else f"{val_c:.2f}" if pd.notna(val_c) else "-"
                     h3 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
                 h3 += '</tr>'
             st.write(h3 + '</table>', unsafe_allow_html=True)
             df_p_e = df_e.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker"); df_p_e['periodo'] = df_p_e['variable'].str.split('<').str[0]
             st.altair_chart(alt.Chart(df_p_e).mark_line(point=True).encode(x=alt.X('periodo', sort=None), y=alt.Y('value', title='EPS ($)'), color='Ticker').properties(height=300), use_container_width=True)
 
-        # --- 5. TOP 5 ELITE ---
+        # --- 5. TOP 5 ELITE (INFORMACIÓN DETALLADA RESTAURADA) ---
         st.divider()
         st.write("### 🏆 5. Selección Elite: TOP 5 Recomendado")
         final_scores = []
         for t in lista_tickers:
             if t in analisis_completo:
-                p_fun = ranking_puntos[t]; p_max = posibles_puntos[t]
+                p_fun = ranking_puntos[t]
+                p_max = posibles_puntos[t]
                 p_crec = (1 if "28a745" in analisis_completo[t]["rev_t"] else 0) + (1 if "28a745" in analisis_completo[t]["eps_t"] else 0)
                 p_up = 1 if analisis_completo[t]["upside_val"] > 0 else 0
                 efic = (p_fun / p_max * 100) if p_max > 0 else 0
-                final_scores.append({"Ticker": t, "Nombre": analisis_completo[t]["nombre"], "Total": p_fun + p_crec + p_up, "Eficacia": efic, "Fund": p_fun, "Crec": p_crec, "Up": p_up, "Margin": analisis_completo[t]["net_margin"]})
+                final_scores.append({
+                    "Ticker": t, 
+                    "Nombre": analisis_completo[t]["nombre"], 
+                    "Total": p_fun + p_crec + p_up, 
+                    "Eficacia": efic, 
+                    "Fund": p_fun, 
+                    "Crec": p_crec, 
+                    "Up": p_up, 
+                    "Margin": analisis_completo[t]["net_margin"]
+                })
 
         top_5 = sorted(final_scores, key=lambda x: (x['Total'], x['Eficacia'], x['Margin']), reverse=True)[:5]
         cols_5 = st.columns(5)
@@ -239,10 +250,24 @@ if tickers_raw:
                 st.markdown(f"<h1 style='text-align: left; color: #1E1E1E; margin-top: -20px; padding-bottom: 0px;'><b>{s['Ticker']}</b></h1>", unsafe_allow_html=True)
                 st.markdown(f"<p style='font-size: 1.2em; color: #555;'>{s['Total']} Puntos</p>", unsafe_allow_html=True)
                 st.caption(f"{s['Eficacia']:.1f}% Eficacia Relativa")
-                with st.expander("Racional"):
-                    st.write(f"**Fundamentales:** {s['Fund']} indicadores mejores que la media.")
-                    st.write(f"**Crecimiento:** {'Confirmado ▲' if s['Crec']==2 else 'Parcial' if s['Crec']==1 else 'Neutro'}")
+                
+                # --- RACIONAL DETALLADO ---
+                with st.expander("Ver Racional"):
+                    st.write(f"**Fundamentales:**")
+                    st.write(f"Posee **{s['Fund']}** indicadores superiores al promedio del grupo (celdas verdes en la tabla fundamental).")
+                    
+                    st.write(f"**Crecimiento:**")
+                    if s['Crec'] == 2:
+                        st.write("Crecimiento dual confirmado: Ingresos y EPS al alza (▲).")
+                    elif s['Crec'] == 1:
+                        st.write("Crecimiento parcial detectado en ingresos o beneficios.")
+                    else:
+                        st.write("Tendencia de crecimiento neutra o en consolidación.")
+                    
                     if s['Up'] > 0:
-                        st.success("Potencial de Revalorización +")
+                        st.success("Potencial de Revalorización: Acción subvaluada respecto al Fair Value.")
+                    
+                    st.write(f"**Eficiencia:**")
+                    st.write(f"Margen Neto: **{s['Margin']*100:.2f}%**")
 else:
-    st.info("Ingresa los tickers para iniciar.")
+    st.info("Ingresa los tickers para iniciar el análisis.")
