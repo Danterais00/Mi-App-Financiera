@@ -7,7 +7,7 @@ import altair as alt
 st.set_page_config(page_title="Terminal de Análisis Pro", layout="wide")
 
 st.title("🚀 Terminal de Análisis Fundamental Pro")
-st.write("Análisis Integral: Fundamentales, Tendencias y Selección Elite.")
+st.write("Análisis Integral: Fundamentales, Tendencias y Selección Elite (TOP 5).")
 
 # 2. ENTRADA DE TICKERS
 tickers_raw = st.text_input("Tickers (separados por coma):", "SHEL, AAPL, MSFT, NVDA, GOOGL, AMZN, TSLA, JPM").upper()
@@ -26,7 +26,7 @@ if tickers_raw:
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     posibles_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    with st.spinner('Procesando motores de análisis y gráficos...'):
+    with st.spinner('Sincronizando datos y regenerando gráficos...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -53,6 +53,7 @@ if tickers_raw:
                 icon_e = '<span style="color:#ffc107; font-size:1.8em;">●</span>'
 
                 if df_q is not None and not df_q.empty:
+                    # Ingresos
                     if "Total Revenue" in df_q.index:
                         rev_s = df_q.loc["Total Revenue"].head(5).iloc[::-1]
                         fila_rev = {"Ticker": ticker}
@@ -64,6 +65,7 @@ if tickers_raw:
                         fila_rev["TTM"] = info.get('totalRevenue')
                         datos_revenue.append(fila_rev)
                     
+                    # EPS
                     et_e = "Basic EPS" if "Basic EPS" in df_q.index else "BasicEps" if "BasicEps" in df_q.index else None
                     if et_e:
                         eps_s = df_q.loc[et_e].head(5).iloc[::-1]
@@ -77,8 +79,10 @@ if tickers_raw:
                         datos_eps.append(fila_eps)
 
                 analisis_completo[ticker] = {
-                    "nombre": info.get('longName', ticker), "rev_g": rev_growth, "eps_g": eps_growth,
-                    "rev_t": icon_r, "eps_t": icon_e, "net_margin": info.get('profitMargins', -1)
+                    "nombre": info.get('longName', ticker), 
+                    "rev_g": rev_growth, "eps_g": eps_growth,
+                    "rev_t": icon_r, "eps_t": icon_e, 
+                    "net_margin": info.get('profitMargins', -1)
                 }
             except Exception: pass
 
@@ -89,10 +93,11 @@ if tickers_raw:
         num = abs(n)
         if num >= 1e12: return f"{p}{num/1e12:.2f}T"
         if num >= 1e9: return f"{p}{num/1e9:.2f}B"
-        return f"{p}{num/1e6:.2f}M" if num >= 1e6 else f"{p}{num:,.2f}"
+        if num >= 1e6: return f"{p}{num/1e6:.2f}M"
+        return f"{p}{num:,.2f}"
 
     if datos_fundamentales:
-        # --- SECCIÓN 1: COMPARATIVA ---
+        # --- 1. TABLA COMPARATIVA ---
         df_f = pd.DataFrame(datos_fundamentales).set_index("Ticker")
         df_f_final = df_f.T
         filas_num = df_f_final.index.drop(["Empresa"])
@@ -120,7 +125,7 @@ if tickers_raw:
                             if es_mejor:
                                 style += 'background-color: #c8e6c9; font-weight: bold;'
                                 ranking_puntos[col] += 1
-                            val_show = f"{v_num*100:.2f}%" if "Margin" in idx or "ROE" in idx or "ROA" in idx or "Yield" in idx else (fmt_cur(v_num) if idx == "FCF" else f"{v_num:.2f}")
+                            val_show = f"{v_num*100:.2f}%" if any(x in idx for x in ["Margin", "ROE", "ROA", "Yield"]) else (fmt_cur(v_num) if idx == "FCF" else f"{v_num:.2f}")
                         except: val_show = "-"
                     else:
                         val_show = f"<b>{val}</b>" if idx == "Empresa" else (f"${val:,.2f}" if idx == "Precio" else f"{val:.2f}")
@@ -128,7 +133,7 @@ if tickers_raw:
             html_f += '</tr>'
         st.write(html_f + '</table>', unsafe_allow_html=True)
 
-        # --- SECCIÓN 2: REVENUE ---
+        # --- 2. REVENUE ---
         st.divider()
         if datos_revenue:
             st.write("### 2. Evolución de Ingresos (Total Revenue)")
@@ -140,7 +145,7 @@ if tickers_raw:
             for c in cols_r: h2 += f'<th style="padding:12px; border:1px solid #ddd;">{c}</th>'
             h2 += '</tr>'
             for i in df_r.index:
-                h2 += '<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{i}</td>'
+                h2 += f'<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{i}</td>'
                 for c in cols_r:
                     v = df_r.loc[i, c]
                     v_s = str(v) if c == "Tendencia" else fmt_cur(v)
@@ -148,22 +153,45 @@ if tickers_raw:
                 h2 += '</tr>'
             st.write(h2 + '</table>', unsafe_allow_html=True)
 
+            st.write("#### 📈 Tendencia Trimestral de Ingresos")
             log_r = st.checkbox("Escala Logarítmica (Ingresos)")
             df_p_r = df_r.drop(columns=["TTM", "Tendencia"]).reset_index().melt(id_vars="Ticker")
+            df_p_r['value_b'] = df_p_r['value'] / 1e9
             chart_r = alt.Chart(df_p_r).mark_line(point=True).encode(
-                x=alt.X('variable', sort=None), y=alt.Y('value', scale=alt.Scale(type='log' if log_r else 'linear'), title='USD'),
+                x=alt.X('variable', sort=None, title="Trimestres"), 
+                y=alt.Y('value_b', scale=alt.Scale(type='log' if log_r else 'linear'), title='USD (Billions)'),
                 color=alt.Color('Ticker', legend=alt.Legend(orient='right'))
             ).properties(height=400)
             st.altair_chart(chart_r, use_container_width=True)
 
-        # --- SECCIÓN 3: EPS ---
+        # --- 3. EPS ---
         st.divider()
         if datos_eps:
             st.write("### 3. Evolución de Beneficio por Acción (Basic EPS)")
             df_e = pd.DataFrame(datos_eps).set_index("Ticker")
             cols_e = [c for c in df_e.columns if c not in ["TTM", "Tendencia"]] + ["TTM", "Tendencia"]
-            h3 = h2.replace("Revenue", "EPS") # Reutilizamos estructura
-            st.write(h2.replace("Ingresos", "EPS"), unsafe_allow_html=True) # Simplificado para el ejemplo
+            
+            h3 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
+            h3 += '<tr style="background-color: #f0f2f6;"><th style="padding:12px; border:1px solid #ddd;">Ticker</th>'
+            for c in cols_e: h3 += f'<th style="padding:12px; border:1px solid #ddd;">{c}</th>'
+            h3 += '</tr>'
+            for i in df_e.index:
+                h3 += f'<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{i}</td>'
+                for c in cols_e:
+                    v = df_e.loc[i, c]
+                    v_s = str(v) if c == "Tendencia" else f"{v:.2f}" if pd.notna(v) else "-"
+                    h3 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
+                h3 += '</tr>'
+            st.write(h3 + '</table>', unsafe_allow_html=True)
+
+            st.write("#### 📈 Tendencia Trimestral de EPS")
+            df_p_e = df_e.drop(columns=["TTM", "Tendencia"]).reset_index().melt(id_vars="Ticker")
+            chart_e = alt.Chart(df_p_e).mark_line(point=True).encode(
+                x=alt.X('variable', sort=None, title="Trimestres"), 
+                y=alt.Y('value', title='EPS ($)'),
+                color=alt.Color('Ticker', legend=alt.Legend(orient='right'))
+            ).properties(height=400)
+            st.altair_chart(chart_e, use_container_width=True)
 
         # --- SECCIÓN 4: TOP 5 ELITE ---
         st.divider()
@@ -174,8 +202,7 @@ if tickers_raw:
             if t in analisis_completo:
                 p_fun = ranking_puntos[t]
                 p_max = posibles_puntos[t]
-                p_crec = (1 if analisis_completo[t]["rev_t"].find("28a745") != -1 else 0) + (1 if analisis_completo[t]["eps_t"].find("28a745") != -1 else 0)
-                
+                p_crec = (1 if "28a745" in analisis_completo[t]["rev_t"] else 0) + (1 if "28a745" in analisis_completo[t]["eps_t"] else 0)
                 efic = (p_fun / p_max * 100) if p_max > 0 else 0
                 final_scores.append({
                     "Ticker": t, "Nombre": analisis_completo[t]["nombre"],
@@ -189,8 +216,8 @@ if tickers_raw:
             with cols_5[idx]:
                 st.metric(f"#{idx+1} {s['Ticker']}", f"{s['Total']} Pts", f"{s['Eficacia']:.1f}% Efic.")
                 with st.expander("Racional"):
-                    st.write(f"**Fundamentales:** {s['Fund']} verdes.")
+                    st.write(f"**Fundamentales:** {s['Fund']} indicadores mejores que la media.")
                     st.write(f"**Crecimiento:** {'Confirmado ▲' if s['Crec']==2 else 'Parcial' if s['Crec']==1 else 'Neutro'}")
-                    st.write(f"**Margen:** {s['Margin']*100:.1f}%")
+                    st.write(f"**Margen:** {s['Margin']*100:.2f}%")
 else:
-    st.info("Ingresa los tickers para iniciar el análisis completo.")
+    st.info("Ingresa los tickers para iniciar el análisis.")
