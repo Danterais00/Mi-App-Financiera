@@ -7,7 +7,7 @@ import altair as alt
 st.set_page_config(page_title="Terminal de Análisis Pro", layout="wide")
 
 st.title("🚀 Terminal de Análisis Fundamental Pro")
-st.write("Análisis exhaustivo con transparencia en el sistema de puntuación.")
+st.write("Análisis exhaustivo con métricas optimizadas y legibles.")
 
 # 2. ENTRADA DE TICKERS
 tickers_raw = st.text_input("Tickers (separados por coma):", "SHEL, AAPL, MSFT, NVDA, GOOGL, AMZN").upper()
@@ -25,7 +25,7 @@ if tickers_raw:
     analisis_completo = {}
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    with st.spinner('Sincronizando métricas y verificando tendencias...'):
+    with st.spinner('Sincronizando métricas y simplificando grandes valores...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -55,7 +55,6 @@ if tickers_raw:
                 nombres_trim = ["4 Trim. atrás", "3 Trim. atrás", "2 Trim. atrás", "1 Trim. atrás", "Último Trim."]
                 
                 if df_q is not None and not df_q.empty:
-                    # Revenue
                     if "Total Revenue" in df_q.index:
                         rev_s = df_q.loc["Total Revenue"].head(5).iloc[::-1]
                         fila_rev = {"Ticker": ticker}
@@ -66,7 +65,6 @@ if tickers_raw:
                         fila_rev["TTM"] = info.get('totalRevenue')
                         datos_revenue.append(fila_rev)
                     
-                    # EPS
                     et_e = "Basic EPS" if "Basic EPS" in df_q.index else "BasicEps" if "BasicEps" in df_q.index else None
                     if et_e:
                         eps_s = df_q.loc[et_e].head(5).iloc[::-1]
@@ -87,12 +85,15 @@ if tickers_raw:
                 }
             except Exception: pass
 
-    # --- FUNCIONES DE FORMATEO ---
+    # --- FUNCIONES DE FORMATEO (MEJORADAS PARA FCF) ---
     def fmt_cur(n):
         if pd.isna(n) or n == 0: return "-"
-        if n >= 1e12: return f"${n/1e12:.2f}T"
-        if n >= 1e9: return f"${n/1e9:.2f}B"
-        return f"${n/1e6:.2f}M" if n >= 1e6 else f"${n:,.2f}"
+        prefix = "$" if n >= 0 else "-$"
+        num = abs(n)
+        if num >= 1e12: return f"{prefix}{num/1e12:.2f}T"
+        if num >= 1e9: return f"{prefix}{num/1e9:.2f}B"
+        if num >= 1e6: return f"{prefix}{num/1e6:.2f}M"
+        return f"{prefix}{num:,.2f}"
 
     if datos_fundamentales:
         # --- 1. TABLA COMPARATIVA ---
@@ -115,8 +116,11 @@ if tickers_raw:
             for col in df_f_final.columns:
                 val = df_f_final.loc[idx, col]
                 style = 'border: 1px solid #ddd; padding: 8px;'
-                if pd.isna(val) or val == "N/A": val_show = "-"
-                elif idx == "Precio" and col == "PROMEDIO": val_show = "-"
+                
+                if pd.isna(val) or val == "N/A":
+                    val_show = "-"
+                elif idx == "Precio" and col == "PROMEDIO":
+                    val_show = "-"
                 else:
                     if idx not in ["Empresa", "Precio"] and col != "PROMEDIO":
                         try:
@@ -125,20 +129,31 @@ if tickers_raw:
                             if es_mejor:
                                 style += 'background-color: #c8e6c9; font-weight: bold;'
                                 ranking_puntos[col] += 1
-                            val_show = f"{v_num*100:.2f}%" if "%" in idx else f"{v_num:.2f}"
+                            
+                            # Formateo inteligente según el tipo de indicador
+                            if "%" in idx: val_show = f"{v_num*100:.2f}%"
+                            elif idx == "Free Cash Flow": val_show = fmt_cur(v_num)
+                            else: val_show = f"{v_num:.2f}"
                         except: val_show = "-"
                     else:
-                        if idx == "Empresa": val_show = f"<b>{val}</b>" if col != "PROMEDIO" else "-"
-                        elif idx == "Precio": val_show = f"${val:,.2f}"
-                        else: val_show = f"{val*100:.2f}%" if "%" in idx else (fmt_cur(val) if idx == "Free Cash Flow" else f"{val:.2f}")
+                        # Para Empresa, Precio o columna PROMEDIO
+                        if idx == "Empresa":
+                            val_show = f"<b>{val}</b>" if col != "PROMEDIO" else "-"
+                        elif idx == "Precio":
+                            val_show = f"${val:,.2f}"
+                        elif idx == "Free Cash Flow":
+                            val_show = fmt_cur(val)
+                        else:
+                            # Formateo de promedios para porcentajes vs números
+                            val_show = f"{val*100:.2f}%" if "%" in idx else f"{val:.2f}"
+                
                 html_f += f'<td style="{style}">{val_show}</td>'
             html_f += '</tr>'
         html_f += '</table>'
         st.write(html_f, unsafe_allow_html=True)
 
-        # --- SECCIONES 2 Y 3 (REVENUE Y EPS) ---
+        # --- SECCIONES 2 Y 3 ---
         st.divider()
-        # [Lógica simplificada para mostrar tablas 2 y 3...]
         if datos_revenue:
             st.write("### 2. Evolución de Ingresos (Total Revenue)")
             df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
@@ -166,32 +181,23 @@ if tickers_raw:
             cols_e = [c for c in df_e.columns if c not in ["TTM", "Tendencia"]] + ["TTM", "Tendencia"]
             st.write(gen_t(df_e[cols_e], "e"), unsafe_allow_html=True)
 
-        # --- 4. RECOMENDACIÓN CORREGIDA ---
+        # --- 4. RECOMENDACIÓN ---
         st.divider()
         st.write("### 🏆 4. Recomendación de Inversión (Top 3)")
-        
         puntuacion_final = []
         for ticker, pts_fund in ranking_puntos.items():
             pts_crec = 0
             if ticker in analisis_completo:
                 if analisis_completo[ticker]["rev_trend"] == "⬆️": pts_crec += 1
                 if analisis_completo[ticker]["eps_trend"] == "⬆️": pts_crec += 1
-            
-            puntuacion_final.append({
-                "ticker": ticker,
-                "fundamentales": pts_fund,
-                "crecimiento": pts_crec,
-                "total": pts_fund + pts_crec
-            })
-
+            puntuacion_final.append({"ticker": ticker, "fundamentales": pts_fund, "crecimiento": pts_crec, "total": pts_fund + pts_crec})
+        
         top_3 = sorted(puntuacion_final, key=lambda x: x["total"], reverse=True)[:3]
         c_rec = st.columns(3)
         for i, rec in enumerate(top_3):
             with c_rec[i]:
                 st.subheader(f"#{i+1} {rec['ticker']}")
-                st.write(f"**Puntos Fundamentales:** {rec['fundamentales']} 🟢")
-                st.write(f"**Puntos Crecimiento:** {rec['crecimiento']} 📈")
+                st.write(f"**Fundamentales:** {rec['fundamentales']} 🟢 | **Crecimiento:** {rec['crecimiento']} 📈")
                 st.metric("Score Final", f"{rec['total']}/11")
-                st.info(f"Justificación: {rec['ticker']} destaca por tener {rec['fundamentales']} ratios mejores que el promedio del grupo.")
 else:
-    st.info("Ingresa los tickers para iniciar.")
+    st.info("Ingresa los tickers para iniciar el análisis.")
