@@ -25,13 +25,13 @@ if tickers_raw:
     analisis_completo = {}
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    with st.spinner('Extrayendo métricas avanzadas y configurando visualización...'):
+    with st.spinner('Restaurando ROA y Quick Ratio...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
                 info = accion.info
                 
-                # --- A. DATOS FUNDAMENTALES ---
+                # --- A. DATOS FUNDAMENTALES (ROA Y QUICK RATIO RESTAURADOS) ---
                 fila_fun = {
                     "Ticker": ticker, 
                     "Empresa": info.get('longName', 'N/A'),
@@ -40,10 +40,12 @@ if tickers_raw:
                     "PEG Ratio": info.get('pegRatio'),
                     "Margen Neto (%)": info.get('profitMargins'),
                     "ROE (%)": info.get('returnOnEquity'),
+                    "ROA (%)": info.get('returnOnAssets'), # <--- Restaurado
                     "Free Cash Flow": info.get('freeCashflow'),
                     "Div. Yield (%)": info.get('dividendYield'),
                     "Debt/Equity": info.get('debtToEquity'),
-                    "Current Ratio": info.get('currentRatio')
+                    "Current Ratio": info.get('currentRatio'),
+                    "Quick Ratio": info.get('quickRatio') # <--- Restaurado
                 }
                 datos_fundamentales.append(fila_fun)
 
@@ -88,9 +90,9 @@ if tickers_raw:
         # --- 1. TABLA COMPARATIVA AVANZADA ---
         df_f = pd.DataFrame(datos_fundamentales).set_index("Ticker")
         df_f_final = df_f.T
-        filas_num = df_f_final.index.drop(["Empresa"]) # Incluimos Precio aquí para que no rompa el dataframe
+        filas_num = df_f_final.index.drop(["Empresa"]) 
         
-        # Calculamos promedio solo para las que no son Empresa
+        # Promedio ignorando Empresa
         df_f_final.loc[filas_num, "PROMEDIO"] = df_f_final.loc[filas_num].apply(pd.to_numeric, errors='coerce').mean(axis=1)
         
         st.write("### 1. Comparativa Fundamental Avanzada")
@@ -100,39 +102,36 @@ if tickers_raw:
         html_f += '</tr>'
         
         for idx in df_f_final.index:
-            # Color de fila: Gris para Empresa y Precio, Blanco para el resto
+            # Fondo gris para Empresa y Precio como pediste
             fila_bg = "#f2f2f2" if idx in ["Empresa", "Precio"] else "#ffffff"
             
             html_f += f'<tr style="background-color: {fila_bg};">'
-            # Primera columna (nombre del indicador)
             html_f += f'<td style="font-weight:bold; background-color:#fafafa; border:1px solid #ddd; padding:8px;">{idx}</td>'
             
             for col in df_f_final.columns:
                 val = df_f_final.loc[idx, col]
                 style = 'border: 1px solid #ddd; padding: 8px;'
                 
-                # --- LÓGICA DE VALORES Y COLORES ---
                 if pd.isna(val) or val == "N/A":
                     val_show = "-"
                 elif idx == "Precio" and col == "PROMEDIO":
-                    val_show = "-" # Quitamos promedio de precio
+                    val_show = "-" # El promedio de precio sigue desactivado
                 else:
                     if idx not in ["Empresa", "Precio"] and col != "PROMEDIO":
                         try:
                             v_num, prom = float(val), float(df_f_final.loc[idx, "PROMEDIO"])
-                            # Verdes: Menor es mejor para Deuda y PEG. Mayor es mejor para el resto.
+                            # Verdes: Menor es mejor para Deuda y PEG. Mayor es mejor para el resto (incluyendo ROA y Quick Ratio).
                             es_mejor = (idx in ["Debt/Equity", "PEG Ratio"] and v_num < prom) or (idx not in ["Debt/Equity", "PEG Ratio"] and v_num > prom)
                             if es_mejor:
                                 style += 'background-color: #c8e6c9; font-weight: bold;'
                                 ranking_puntos[col] += 1
                             
-                            # Formateo de números
                             if "%" in idx: val_show = f"{v_num*100:.2f}%"
                             elif idx == "Free Cash Flow": val_show = fmt_cur(v_num)
                             else: val_show = f"{v_num:.2f}"
                         except: val_show = "-"
                     else:
-                        # Para Empresa, Precio o columna PROMEDIO
+                        # Empresa, Precio o columna PROMEDIO
                         if idx == "Empresa":
                             val_show = f"<b>{val}</b>" if col != "PROMEDIO" else "-"
                         elif idx == "Precio":
@@ -148,13 +147,12 @@ if tickers_raw:
         html_f += '</table>'
         st.write(html_f, unsafe_allow_html=True)
 
-        # --- SECCIONES DE REVENUE Y EPS (Se mantienen igual) ---
+        # --- SECCIONES DE REVENUE Y EPS (Mantenidas) ---
         st.divider()
         if datos_revenue:
             st.write("### 2. Evolución de Ingresos (Total Revenue)")
             df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
             cols_r = [c for c in df_r.columns if c not in ["TTM", "Tendencia"]] + ["TTM", "Tendencia"]
-            # Función auxiliar para tabla de revenue/eps
             def generar_tabla(df, tipo):
                 h = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
                 h += '<tr style="background-color: #f0f2f6;"><th style="padding:12px; border:1px solid #ddd;">Ticker</th>'
@@ -169,7 +167,6 @@ if tickers_raw:
                         h += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
                     h += '</tr>'
                 return h + '</table>'
-            
             st.write(generar_tabla(df_r[cols_r], "m"), unsafe_allow_html=True)
             
             df_plot_r = df_r.drop(columns=["TTM", "Tendencia"]).reset_index().melt(id_vars="Ticker")
@@ -204,6 +201,6 @@ if tickers_raw:
             with c_rec[i]:
                 st.subheader(f"#{i+1} {rec['ticker']}")
                 st.metric("Score de Calidad", f"{rec['score']}")
-                st.success("Recomendado por su equilibrio entre valuación y eficiencia.")
+                st.success("Recomendado por su equilibrio integral de ratios.")
 else:
-    st.info("Ingresa los tickers para iniciar el análisis avanzado.")
+    st.info("Ingresa los tickers para iniciar el análisis.")
