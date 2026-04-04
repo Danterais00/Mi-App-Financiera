@@ -40,7 +40,7 @@ if tickers_raw:
                 valor_justo = info.get('targetMeanPrice')
                 upside = ((valor_justo / precio_actual) - 1) if precio_actual and valor_justo else None
 
-                # --- A. DATOS FUNDAMENTALES (Sin PEG, Con Free Cash Flow) ---
+                # --- A. DATOS FUNDAMENTALES ---
                 fila_fun = {
                     "Ticker": ticker, 
                     "Empresa": info.get('longName', 'N/A'),
@@ -134,23 +134,4 @@ if tickers_raw:
                         if idx not in ["Empresa", "Precio", "Fair Value (Target)", "Upside (%)"] and col != "PROMEDIO":
                             prom = float(df_f_final.loc[idx, "PROMEDIO"])
                             posibles_puntos[col] += 1
-                            es_mejor = (idx == "Debt/Equity" and v_num < prom) or (idx != "Debt/Equity" and v_num > prom)
-                            if es_mejor:
-                                style += 'background-color: #c8e6c9; font-weight: bold;'
-                                ranking_puntos[col] += 1
-                        
-                        if idx == "Upside (%)" and col != "PROMEDIO" and v_num > 0:
-                            style += 'background-color: #c8e6c9; color: #2e7d32; font-weight: bold;'
-
-                        if "%" in idx: val_show = f"{v_num*100:.2f}%"
-                        elif idx == "Free Cash Flow": val_show = fmt_cur(v_num)
-                        elif idx in ["Precio", "Fair Value (Target)"]: val_show = f"${v_num:,.2f}"
-                        else: val_show = f"{v_num:.2f}"
-                    except: val_show = f"<b>{val}</b>" if idx == "Empresa" else str(val)
-                html_f += f'<td style="{style}">{val_show}</td>'
-            html_f += '</tr>'
-        st.write(html_f + '</table>', unsafe_allow_html=True)
-
-        # --- 2. REVENUE ---
-        st.divider()
-        if datos_revenue
+                            es_
