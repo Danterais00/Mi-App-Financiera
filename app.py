@@ -7,7 +7,7 @@ import altair as alt
 st.set_page_config(page_title="Terminal de Análisis Pro", layout="wide")
 
 st.title("🚀 Terminal de Análisis Fundamental Pro")
-st.write("Análisis Integral: Fundamentales, Tendencias y Selección Elite (TOP 5).")
+st.write("Análisis Integral: Selección Elite basada en Generación de Caja y Crecimiento.")
 
 # 2. ENTRADA DE TICKERS
 tickers_raw = st.text_input("Tickers (separados por coma):", "SHEL, AAPL, MSFT, NVDA, GOOGL, AMZN, TSLA, JPM").upper()
@@ -26,19 +26,20 @@ if tickers_raw:
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     posibles_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    with st.spinner('Sincronizando datos y regenerando gráficos...'):
+    with st.spinner('Optimizando tablas y calculando Free Cash Flow...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
                 info = accion.info
                 
-                # --- A. DATOS FUNDAMENTALES ---
+                # --- A. DATOS FUNDAMENTALES (Sin PEG, Con Free Cash Flow) ---
                 fila_fun = {
                     "Ticker": ticker, "Empresa": info.get('longName', 'N/A'),
                     "Precio": info.get('currentPrice'), "PER": info.get('trailingPE'),
-                    "PEG": info.get('pegRatio'), "Net Margin": info.get('profitMargins'),
-                    "ROE": info.get('returnOnEquity'), "ROA": info.get('returnOnAssets'),
-                    "FCF": info.get('freeCashflow'), "Div Yield": info.get('dividendYield'),
+                    "Margen Neto (%)": info.get('profitMargins'),
+                    "ROE (%)": info.get('returnOnEquity'), "ROA (%)": info.get('returnOnAssets'),
+                    "Free Cash Flow": info.get('freeCashflow'),
+                    "Div Yield (%)": info.get('dividendYield'),
                     "Debt/Equity": info.get('debtToEquity'), "Current Ratio": info.get('currentRatio'),
                     "Quick Ratio": info.get('quickRatio')
                 }
@@ -93,8 +94,7 @@ if tickers_raw:
         num = abs(n)
         if num >= 1e12: return f"{p}{num/1e12:.2f}T"
         if num >= 1e9: return f"{p}{num/1e9:.2f}B"
-        if num >= 1e6: return f"{p}{num/1e6:.2f}M"
-        return f"{p}{num:,.2f}"
+        return f"{p}{num/1e6:.2f}M" if num >= 1e6 else f"{p}{num:,.2f}"
 
     if datos_fundamentales:
         # --- 1. TABLA COMPARATIVA ---
@@ -121,14 +121,21 @@ if tickers_raw:
                         try:
                             v_num, prom = float(val), float(df_f_final.loc[idx, "PROMEDIO"])
                             posibles_puntos[col] += 1
-                            es_mejor = (idx in ["Debt/Equity", "PEG"] and v_num < prom) or (idx not in ["Debt/Equity", "PEG"] and v_num > prom)
+                            # Menor es mejor solo para Deuda
+                            es_mejor = (idx == "Debt/Equity" and v_num < prom) or (idx != "Debt/Equity" and v_num > prom)
                             if es_mejor:
                                 style += 'background-color: #c8e6c9; font-weight: bold;'
                                 ranking_puntos[col] += 1
-                            val_show = f"{v_num*100:.2f}%" if any(x in idx for x in ["Margin", "ROE", "ROA", "Yield"]) else (fmt_cur(v_num) if idx == "FCF" else f"{v_num:.2f}")
+                            
+                            if "%" in idx: val_show = f"{v_num*100:.2f}%"
+                            elif idx == "Free Cash Flow": val_show = fmt_cur(v_num)
+                            else: val_show = f"{v_num:.2f}"
                         except: val_show = "-"
                     else:
-                        val_show = f"<b>{val}</b>" if idx == "Empresa" else (f"${val:,.2f}" if idx == "Precio" else f"{val:.2f}")
+                        if idx == "Empresa": val_show = f"<b>{val}</b>" if col != "PROMEDIO" else "-"
+                        elif idx == "Precio": val_show = f"${val:,.2f}"
+                        elif idx == "Free Cash Flow": val_show = fmt_cur(val)
+                        else: val_show = f"{val*100:.2f}%" if "%" in idx else f"{val:.2f}"
                 html_f += f'<td style="{style}">{val_show}</td>'
             html_f += '</tr>'
         st.write(html_f + '</table>', unsafe_allow_html=True)
@@ -153,7 +160,6 @@ if tickers_raw:
                 h2 += '</tr>'
             st.write(h2 + '</table>', unsafe_allow_html=True)
 
-            st.write("#### 📈 Tendencia Trimestral de Ingresos")
             log_r = st.checkbox("Escala Logarítmica (Ingresos)")
             df_p_r = df_r.drop(columns=["TTM", "Tendencia"]).reset_index().melt(id_vars="Ticker")
             df_p_r['value_b'] = df_p_r['value'] / 1e9
@@ -184,7 +190,6 @@ if tickers_raw:
                 h3 += '</tr>'
             st.write(h3 + '</table>', unsafe_allow_html=True)
 
-            st.write("#### 📈 Tendencia Trimestral de EPS")
             df_p_e = df_e.drop(columns=["TTM", "Tendencia"]).reset_index().melt(id_vars="Ticker")
             chart_e = alt.Chart(df_p_e).mark_line(point=True).encode(
                 x=alt.X('variable', sort=None, title="Trimestres"), 
