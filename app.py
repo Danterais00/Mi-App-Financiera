@@ -7,7 +7,7 @@ import altair as alt
 st.set_page_config(page_title="Terminal de Análisis Pro", layout="wide")
 
 st.title("🚀 Terminal de Análisis Fundamental Pro")
-st.write("Análisis visual de tendencias con semáforo de rendimiento (Verde/Rojo).")
+st.write("Análisis visual de tendencias con semáforo de rendimiento (Iconos Grandes).")
 
 # 2. ENTRADA DE TICKERS
 tickers_raw = st.text_input("Tickers (separados por coma):", "SHEL, AAPL, MSFT, NVDA, GOOGL, AMZN").upper()
@@ -25,7 +25,7 @@ if tickers_raw:
     analisis_completo = {}
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    with st.spinner('Analizando tendencias y aplicando formatos de color...'):
+    with st.spinner('Agrandando iconos de tendencia y analizando métricas...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -57,13 +57,13 @@ if tickers_raw:
                             if i < len(nombres_trim): fila_rev[nombres_trim[i]] = v
                         rev_growth = ((rev_s.iloc[-1] - rev_s.iloc[0]) / abs(rev_s.iloc[0])) * 100 if len(rev_s) >= 2 else 0
                         
-                        # Definición de iconos con HTML para forzar colores
+                        # Definición de iconos con HTML (font-size aumentado a 1.8em)
                         if rev_growth > 5: 
-                            fila_rev["Tendencia"] = '<span style="color: #28a745; font-size: 1.2em;">▲</span>'
+                            fila_rev["Tendencia"] = '<span style="color: #28a745; font-size: 1.8em;">▲</span>'
                         elif rev_growth < -5: 
-                            fila_rev["Tendencia"] = '<span style="color: #dc3545; font-size: 1.2em;">▼</span>'
+                            fila_rev["Tendencia"] = '<span style="color: #dc3545; font-size: 1.8em;">▼</span>'
                         else: 
-                            fila_rev["Tendencia"] = '<span style="color: #ffc107; font-size: 1.2em;">●</span>'
+                            fila_rev["Tendencia"] = '<span style="color: #ffc107; font-size: 1.8em;">●</span>'
                         
                         fila_rev["TTM"] = info.get('totalRevenue')
                         datos_revenue.append(fila_rev)
@@ -77,12 +77,13 @@ if tickers_raw:
                             if i < len(nombres_trim): fila_eps[nombres_trim[i]] = v
                         eps_growth = ((eps_s.iloc[-1] - eps_s.iloc[0]) / abs(eps_s.iloc[0])) * 100 if len(eps_s) >= 2 else 0
                         
+                        # Iconos grandes para EPS
                         if eps_growth > 5: 
-                            fila_eps["Tendencia"] = '<span style="color: #28a745; font-size: 1.2em;">▲</span>'
+                            fila_eps["Tendencia"] = '<span style="color: #28a745; font-size: 1.8em;">▲</span>'
                         elif eps_growth < -5: 
-                            fila_eps["Tendencia"] = '<span style="color: #dc3545; font-size: 1.2em;">▼</span>'
+                            fila_eps["Tendencia"] = '<span style="color: #dc3545; font-size: 1.8em;">▼</span>'
                         else: 
-                            fila_eps["Tendencia"] = '<span style="color: #ffc107; font-size: 1.2em;">●</span>'
+                            fila_eps["Tendencia"] = '<span style="color: #ffc107; font-size: 1.8em;">●</span>'
                         
                         fila_eps["TTM"] = info.get('trailingEps')
                         datos_eps.append(fila_eps)
@@ -152,6 +153,7 @@ if tickers_raw:
             df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
             cols_r = [c for c in df_r.columns if c not in ["TTM", "Tendencia"]] + ["TTM", "Tendencia"]
             
+            # Generar Tabla HTML (usando write con unsafe_allow_html para renderizar iconos HTML)
             h2 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
             h2 += '<tr style="background-color: #f0f2f6;"><th style="padding:12px; border:1px solid #ddd;">Ticker</th>'
             for c in cols_r: h2 += f'<th style="padding:12px; border:1px solid #ddd;">{c}</th>'
@@ -161,6 +163,7 @@ if tickers_raw:
                 h2 += f'<td style="font-weight:bold; background-color:#fafafa; border:1px solid #ddd; padding:8px;">{i}</td>'
                 for c in cols_r:
                     v = df_r.loc[i, c]
+                    # No formateamos la columna Tendencia (ya es HTML)
                     v_s = str(v) if c == "Tendencia" else fmt_cur(v)
                     h2 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
                 h2 += '</tr>'
@@ -168,6 +171,7 @@ if tickers_raw:
             
             st.write("#### 📈 Tendencia Trimestral de Ingresos")
             log_scale = st.checkbox("Usar Escala Logarítmica (Ingresos)", value=False)
+            # Para el gráfico, eliminamos columnas HTML
             df_plot_r = df_r.drop(columns=["TTM", "Tendencia"]).reset_index().melt(id_vars="Ticker")
             df_plot_r['value_b'] = df_plot_r['value'] / 1e9
             chart_r = alt.Chart(df_plot_r).mark_line(point=True).encode(
@@ -178,8 +182,8 @@ if tickers_raw:
             st.altair_chart(chart_r, use_container_width=True)
 
         # --- 3. EPS Y GRÁFICO ---
+        st.divider()
         if datos_eps:
-            st.divider()
             st.write("### 3. Evolución de Beneficio por Acción (Basic EPS)")
             df_e = pd.DataFrame(datos_eps).set_index("Ticker")
             cols_e = [c for c in df_e.columns if c not in ["TTM", "Tendencia"]] + ["TTM", "Tendencia"]
@@ -193,6 +197,7 @@ if tickers_raw:
                 h3 += f'<td style="font-weight:bold; background-color:#fafafa; border:1px solid #ddd; padding:8px;">{i}</td>'
                 for c in cols_e:
                     v = df_e.loc[i, c]
+                    # No formateamos Tendencia, formateamos el resto a 2 decimales
                     v_s = str(v) if c == "Tendencia" else f"{v:.2f}" if pd.notna(v) else "-"
                     h3 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
                 h3 += '</tr>'
@@ -219,9 +224,9 @@ if tickers_raw:
             puntuacion_final.append({"ticker": ticker, "fundamentales": pts_fund, "crecimiento": pts_crec, "total": pts_fund + pts_crec})
         
         top_3 = sorted(puntuacion_final, key=lambda x: x["total"], reverse=True)[:3]
-        c_rec = st.columns(3)
+        cols_rec = st.columns(3)
         for i, rec in enumerate(top_3):
-            with c_rec[i]:
+            with cols_rec[i]:
                 st.subheader(f"#{i+1} {rec['ticker']}")
                 st.write(f"**Fundamentales:** {rec['fundamentales']} 🟢 | **Crecimiento:** {rec['crecimiento']} 📈")
                 st.metric("Score Final", f"{rec['total']}/11")
