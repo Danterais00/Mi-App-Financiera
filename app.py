@@ -7,10 +7,10 @@ import altair as alt
 st.set_page_config(page_title="Terminal de Análisis Pro", layout="wide")
 
 st.title("🚀 Terminal de Análisis Fundamental Pro")
-st.write("Análisis Integral: Selección Elite basada en Generación de Caja y Crecimiento.")
+st.write("Análisis Integral: Selección Elite con Promedios Corregidos y Formateados.")
 
 # 2. ENTRADA DE TICKERS
-tickers_raw = st.text_input("Tickers (separados por coma):", "SHEL, AAPL, MSFT, NVDA, GOOGL, AMZN, TSLA, JPM").upper()
+tickers_raw = st.text_input("Tickers (separados por coma):", "KO, COST, KMB, PEP, PG, HSY, UL, WMT, ABEV, PM, MDLZ").upper()
 
 def corregir_ticker(t):
     t = t.strip()
@@ -26,13 +26,13 @@ if tickers_raw:
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     posibles_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    with st.spinner('Refinando el diseño del TOP 5...'):
+    with st.spinner('Sincronizando y formateando promedios sectoriales...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
                 info = accion.info
                 
-                # --- A. DATOS FUNDAMENTALES (Sin PEG, Con Free Cash Flow) ---
+                # --- A. DATOS FUNDAMENTALES ---
                 fila_fun = {
                     "Ticker": ticker, "Empresa": info.get('longName', 'N/A'),
                     "Precio": info.get('currentPrice'), "PER": info.get('trailingPE'),
@@ -85,6 +85,7 @@ if tickers_raw:
                 }
             except Exception: pass
 
+    # --- FUNCIONES DE FORMATEO ---
     def fmt_cur(n):
         if pd.isna(n) or n == 0: return "-"
         p = "$" if n >= 0 else "-$"
@@ -94,10 +95,11 @@ if tickers_raw:
         return f"{p}{num/1e6:.2f}M" if num >= 1e6 else f"{p}{num:,.2f}"
 
     if datos_fundamentales:
-        # --- SECCIÓN 1: COMPARATIVA ---
+        # --- 1. TABLA COMPARATIVA ---
         df_f = pd.DataFrame(datos_fundamentales).set_index("Ticker")
         df_f_final = df_f.T
         filas_num = df_f_final.index.drop(["Empresa"])
+        # Promedio ignorando NaNs
         df_f_final.loc[filas_num, "PROMEDIO"] = df_f_final.loc[filas_num].apply(pd.to_numeric, errors='coerce').mean(axis=1)
         
         st.write("### 1. Comparativa Fundamental Avanzada")
@@ -105,34 +107,48 @@ if tickers_raw:
         html_f += '<tr style="background-color: #f0f2f6;"><th style="padding:12px; border:1px solid #ddd;">Indicador</th>'
         for col in df_f_final.columns: html_f += f'<th style="padding:12px; border:1px solid #ddd;">{col}</th>'
         html_f += '</tr>'
+        
         for idx in df_f_final.index:
             bg = "#f2f2f2" if idx in ["Empresa", "Precio"] else "#ffffff"
             html_f += f'<tr style="background-color: {bg};"><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{idx}</td>'
             for col in df_f_final.columns:
                 val = df_f_final.loc[idx, col]
                 style = 'border: 1px solid #ddd; padding: 8px;'
-                if pd.isna(val) or val == "N/A": val_show = "-"
-                elif idx == "Precio" and col == "PROMEDIO": val_show = "-"
+                
+                if pd.isna(val) or val == "N/A":
+                    val_show = "-"
+                elif idx == "Precio" and col == "PROMEDIO":
+                    val_show = "-"
                 else:
-                    if idx not in ["Empresa", "Precio"] and col != "PROMEDIO":
-                        try:
-                            v_num, prom = float(val), float(df_f_final.loc[idx, "PROMEDIO"])
+                    # LÓGICA DE FORMATEO UNIFICADA PARA EMPRESAS Y PROMEDIO
+                    try:
+                        v_num = float(val)
+                        # Pintar celdas verdes (solo para empresas, no promedio)
+                        if idx not in ["Empresa", "Precio"] and col != "PROMEDIO":
+                            prom = float(df_f_final.loc[idx, "PROMEDIO"])
                             posibles_puntos[col] += 1
                             es_mejor = (idx == "Debt/Equity" and v_num < prom) or (idx != "Debt/Equity" and v_num > prom)
                             if es_mejor:
                                 style += 'background-color: #c8e6c9; font-weight: bold;'
                                 ranking_puntos[col] += 1
-                            if "%" in idx: val_show = f"{v_num*100:.2f}%"
-                            elif idx == "Free Cash Flow": val_show = fmt_cur(v_num)
-                            else: val_show = f"{v_num:.2f}"
-                        except: val_show = "-"
-                    else:
-                        val_show = f"<b>{val}</b>" if idx == "Empresa" else (f"${val:,.2f}" if idx == "Precio" else f"{val:.2f}")
+                        
+                        # Formatear la visualización
+                        if "%" in idx:
+                            val_show = f"{v_num*100:.2f}%"
+                        elif idx == "Free Cash Flow":
+                            val_show = fmt_cur(v_num)
+                        elif idx == "Precio":
+                            val_show = f"${v_num:,.2f}"
+                        else:
+                            val_show = f"{v_num:.2f}"
+                    except:
+                        val_show = f"<b>{val}</b>" if idx == "Empresa" else str(val)
+                
                 html_f += f'<td style="{style}">{val_show}</td>'
             html_f += '</tr>'
         st.write(html_f + '</table>', unsafe_allow_html=True)
 
-        # --- SECCIONES 2 Y 3 (TABLAS Y GRÁFICOS) ---
+        # --- SECCIÓN 2 Y 3 (TABLAS Y GRÁFICOS) ---
         st.divider()
         if datos_revenue:
             st.write("### 2. Evolución de Ingresos (Total Revenue)")
@@ -185,7 +201,7 @@ if tickers_raw:
             ).properties(height=400)
             st.altair_chart(chart_e, use_container_width=True)
 
-        # --- SECCIÓN 4: TOP 5 ELITE (FORMATO NUEVO) ---
+        # --- SECCIÓN 4: TOP 5 ELITE ---
         st.divider()
         st.write("### 🏆 4. Selección Elite: TOP 5 Recomendado")
         
@@ -194,7 +210,6 @@ if tickers_raw:
             if t in analisis_completo:
                 p_fun = ranking_puntos[t]
                 p_max = posibles_puntos[t]
-                # Detectamos flechas verdes por el código de color
                 p_crec = (1 if "28a745" in analisis_completo[t]["rev_t"] else 0) + (1 if "28a745" in analisis_completo[t]["eps_t"] else 0)
                 efic = (p_fun / p_max * 100) if p_max > 0 else 0
                 final_scores.append({
@@ -205,18 +220,15 @@ if tickers_raw:
 
         top_5 = sorted(final_scores, key=lambda x: (x['Total'], x['Eficacia'], x['Margin']), reverse=True)[:5]
         cols_5 = st.columns(5)
-        
         for idx, s in enumerate(top_5):
             with cols_5[idx]:
-                # --- NUEVO DISEÑO DE CABECERA ---
                 st.markdown(f"Puesto #{idx+1}")
                 st.markdown(f"<h1 style='text-align: left; color: #1E1E1E; margin-top: -20px; padding-bottom: 0px;'><b>{s['Ticker']}</b></h1>", unsafe_allow_html=True)
                 st.markdown(f"<p style='font-size: 1.2em; color: #555;'>{s['Total']} Puntos</p>", unsafe_allow_html=True)
                 st.caption(f"{s['Eficacia']:.1f}% Eficacia Relativa")
-                
                 with st.expander("Racional"):
                     st.write(f"**Fundamentales:** {s['Fund']} indicadores mejores que la media.")
                     st.write(f"**Crecimiento:** {'Confirmado ▲' if s['Crec']==2 else 'Parcial' if s['Crec']==1 else 'Neutro'}")
-                    st.write(f"**Margen:** {s['Margin']*100:.1f}%")
+                    st.write(f"**Margen:** {s['Margin']*100:.2f}%")
 else:
-    st.info("Ingresa los tickers para iniciar.")
+    st.info("Ingresa los tickers para iniciar el análisis.")
