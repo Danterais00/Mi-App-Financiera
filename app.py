@@ -7,7 +7,7 @@ import altair as alt
 st.set_page_config(page_title="Terminal de Análisis Pro", layout="wide")
 
 st.title("🚀 Terminal de Análisis Fundamental Pro")
-st.write("Análisis de Tendencias con Fechas de Reporte y Selección Elite.")
+st.write("Análisis de Tendencias Trimestrales con Fechas de Reporte y Selección Elite.")
 
 # 2. ENTRADA DE TICKERS
 tickers_raw = st.text_input("Tickers (separados por coma):", "KO, COST, PEP, PG, WMT").upper()
@@ -26,10 +26,10 @@ if tickers_raw:
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     posibles_puntos = {ticker: 0 for ticker in lista_tickers}
     
-    # Diccionarios para guardar las fechas de los encabezados
+    # Diccionario para guardar las fechas de los encabezados (se genera una sola vez)
     fechas_headers = []
 
-    with st.spinner('Extrayendo fechas de reportes y ajustando tablas...'):
+    with st.spinner('Sincronizando periodos contables y limpiando TTM...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -49,19 +49,19 @@ if tickers_raw:
                 }
                 datos_fundamentales.append(fila_fun)
 
-                # --- B. PROCESAMIENTO DE TENDENCIAS Y FECHAS ---
+                # --- B. PROCESAMIENTO DE TENDENCIAS ---
                 nombres_base = ["4 Trim. atrás", "3 Trim. atrás", "2 Trim. atrás", "1 Trim. atrás", "Último Trim."]
                 icon_r, icon_e = '●', '●'
                 rev_growth, eps_growth = 0, 0
 
                 if df_q is not None and not df_q.empty:
-                    # Capturar fechas para los encabezados (solo la primera vez o para el primer ticker válido)
+                    # Capturar fechas para los encabezados basado en el primer ticker válido
                     if not fechas_headers:
-                        fechas_raw = df_q.columns[:5][::-1] # Invertir para cronología vieja -> nueva
+                        fechas_raw = df_q.columns[:5][::-1]
                         for i, d in enumerate(fechas_raw):
                             fechas_headers.append(f"{nombres_base[i]}<br><small>{d.strftime('%d/%m/%Y')}</small>")
 
-                    # Ingresos
+                    # Ingresos (Sin TTM en la tabla)
                     if "Total Revenue" in df_q.index:
                         rev_s = df_q.loc["Total Revenue"].head(5).iloc[::-1]
                         fila_rev = {"Ticker": ticker}
@@ -70,10 +70,9 @@ if tickers_raw:
                         rev_growth = ((rev_s.iloc[-1] - rev_s.iloc[0]) / abs(rev_s.iloc[0])) * 100 if len(rev_s) >= 2 else 0
                         icon_r = '<span style="color:#28a745; font-size:1.8em;">▲</span>' if rev_growth > 5 else '<span style="color:#dc3545; font-size:1.8em;">▼</span>' if rev_growth < -5 else '<span style="color:#ffc107; font-size:1.8em;">●</span>'
                         fila_rev["Tendencia"] = icon_r
-                        fila_rev["TTM"] = info.get('totalRevenue')
                         datos_revenue.append(fila_rev)
                     
-                    # EPS
+                    # EPS (Sin TTM)
                     et_e = "Basic EPS" if "Basic EPS" in df_q.index else "BasicEps" if "BasicEps" in df_q.index else None
                     if et_e:
                         eps_s = df_q.loc[et_e].head(5).iloc[::-1]
@@ -83,12 +82,10 @@ if tickers_raw:
                         eps_growth = ((eps_s.iloc[-1] - eps_s.iloc[0]) / abs(eps_s.iloc[0])) * 100 if len(eps_s) >= 2 else 0
                         icon_e = '<span style="color:#28a745; font-size:1.8em;">▲</span>' if eps_growth > 5 else '<span style="color:#dc3545; font-size:1.8em;">▼</span>' if eps_growth < -5 else '<span style="color:#ffc107; font-size:1.8em;">●</span>'
                         fila_eps["Tendencia"] = icon_e
-                        # NOTA: TTM no se añade a fila_eps por solicitud
                         datos_eps.append(fila_eps)
 
                 analisis_completo[ticker] = {
                     "nombre": info.get('longName', ticker), 
-                    "rev_g": rev_growth, "eps_g": eps_growth,
                     "rev_t": icon_r, "eps_t": icon_e, "net_margin": info.get('profitMargins', -1)
                 }
             except Exception: pass
@@ -141,12 +138,12 @@ if tickers_raw:
             html_f += '</tr>'
         st.write(html_f + '</table>', unsafe_allow_html=True)
 
-        # --- TABLA 2: REVENUE ---
+        # --- TABLA 2: REVENUE (AHORA SIN TTM) ---
         st.divider()
         if datos_revenue:
             st.write("### 2. Evolución de Ingresos (Total Revenue)")
             df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
-            cols_r = [c for c in df_r.columns if c not in ["TTM", "Tendencia"]] + ["TTM", "Tendencia"]
+            cols_r = [c for c in df_r.columns if c != "Tendencia"] + ["Tendencia"]
             
             h2 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
             h2 += '<tr style="background-color: #f0f2f6;"><th style="padding:12px; border:1px solid #ddd;">Ticker</th>'
@@ -161,13 +158,12 @@ if tickers_raw:
                 h2 += '</tr>'
             st.write(h2 + '</table>', unsafe_allow_html=True)
 
-        # --- TABLA 3: EPS (SIN TTM Y CON FECHAS) ---
+        # --- TABLA 3: EPS (SIN TTM) ---
         st.divider()
         if datos_eps:
             st.write("### 3. Evolución de Beneficio por Acción (Basic EPS)")
             df_e = pd.DataFrame(datos_eps).set_index("Ticker")
-            # Excluimos TTM por completo aquí
-            cols_e = [c for c in df_e.columns if c not in ["TTM", "Tendencia"]] + ["Tendencia"]
+            cols_e = [c for c in df_e.columns if c != "Tendencia"] + ["Tendencia"]
             
             h3 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
             h3 += '<tr style="background-color: #f0f2f6;"><th style="padding:12px; border:1px solid #ddd;">Ticker</th>'
