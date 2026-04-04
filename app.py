@@ -28,7 +28,7 @@ if tickers_raw:
     
     fechas_headers = []
 
-    with st.spinner('Procesando datos y limpiando variables...'):
+    with st.spinner('Actualizando tablas y sincronizando nombres de empresa...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -68,26 +68,22 @@ if tickers_raw:
                         for idx_f, d in enumerate(fechas_raw):
                             fechas_headers.append(f"{nombres_base[idx_f]}<br><small>{d.strftime('%d/%m/%Y')}</small>")
 
-                    # Ingresos
                     if "Total Revenue" in df_q.index:
                         rev_s = df_q.loc["Total Revenue"].head(5).iloc[::-1]
                         fila_rev = {"Ticker": ticker}
                         for idx_r, val_r in enumerate(rev_s):
-                            if idx_r < len(fechas_headers): 
-                                fila_rev[fechas_headers[idx_r]] = val_r
+                            if idx_r < len(fechas_headers): fila_rev[fechas_headers[idx_r]] = val_r
                         crec_r = ((rev_s.iloc[-1] - rev_s.iloc[0]) / abs(rev_s.iloc[0])) if len(rev_s) >= 2 else 0
                         icon_r = '<span style="color:#28a745; font-size:1.8em;">▲</span>' if crec_r > 0.05 else '<span style="color:#dc3545; font-size:1.8em;">▼</span>' if crec_r < -0.05 else '<span style="color:#ffc107; font-size:1.8em;">●</span>'
                         fila_rev["Tendencia"] = icon_r
                         datos_revenue.append(fila_rev)
                     
-                    # EPS
                     et_e = "Basic EPS" if "Basic EPS" in df_q.index else "BasicEps" if "BasicEps" in df_q.index else None
                     if et_e:
                         eps_s = df_q.loc[et_e].head(5).iloc[::-1]
                         fila_eps = {"Ticker": ticker}
                         for idx_e, val_e in enumerate(eps_s):
-                            if idx_e < len(fechas_headers): 
-                                fila_eps[fechas_headers[idx_e]] = val_e
+                            if idx_e < len(fechas_headers): fila_eps[fechas_headers[idx_e]] = val_e
                         crec_e = ((eps_s.iloc[-1] - eps_s.iloc[0]) / abs(eps_s.iloc[0])) if len(eps_s) >= 2 else 0
                         icon_e = '<span style="color:#28a745; font-size:1.8em;">▲</span>' if crec_e > 0.05 else '<span style="color:#dc3545; font-size:1.8em;">▼</span>' if crec_e < -0.05 else '<span style="color:#ffc107; font-size:1.8em;">●</span>'
                         fila_eps["Tendencia"] = icon_e
@@ -95,13 +91,11 @@ if tickers_raw:
 
                 analisis_completo[ticker] = {
                     "nombre": info.get('longName', ticker), 
-                    "rev_t": icon_r, 
-                    "eps_t": icon_e, 
+                    "rev_t": icon_r, "eps_t": icon_e, 
                     "net_margin": info.get('profitMargins', -1), 
                     "upside_val": upside if upside else -1
                 }
-            except Exception as e:
-                st.error(f"Error con {ticker}: {e}")
+            except Exception: pass
 
     def fmt_cur(n):
         if pd.isna(n) or n == 0: return "-"
@@ -145,33 +139,41 @@ if tickers_raw:
         # --- 2. COMPARATIVA FUNDAMENTAL AVANZADA ---
         st.divider()
         st.write("### 2. Comparativa Fundamental Avanzada")
-        df_fun = df_total.drop(["Empresa", "Precio", "Fair Value (Target)", "Upside (%)"])
-        df_fun.loc[:, "PROMEDIO"] = df_fun.apply(pd.to_numeric, errors='coerce').mean(axis=1)
+        # Dejamos 'Empresa' pero quitamos el resto de valuación
+        df_fun = df_total.drop(["Precio", "Fair Value (Target)", "Upside (%)"])
+        # Promedio solo para filas numéricas (excluyendo Empresa)
+        filas_ratios = df_fun.index.drop("Empresa")
+        df_fun.loc[filas_ratios, "PROMEDIO"] = df_fun.loc[filas_ratios].apply(pd.to_numeric, errors='coerce').mean(axis=1)
 
         html_f = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
         html_f += '<tr style="background-color: #f0f2f6;"><th style="padding:12px; border:1px solid #ddd;">Indicador</th>'
         for col in df_fun.columns: html_f += f'<th style="padding:12px; border:1px solid #ddd;">{col}</th>'
         html_f += '</tr>'
         for idx in df_fun.index:
-            html_f += f'<tr><td style="font-weight:bold; background-color:#fafafa; border:1px solid #ddd; padding:8px;">{idx}</td>'
+            # Si es la fila Empresa, fondo gris
+            bg_f = "#f2f2f2" if idx == "Empresa" else "#ffffff"
+            html_f += f'<tr style="background-color: {bg_f};"><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{idx}</td>'
             for col in df_fun.columns:
                 val = df_fun.loc[idx, col]
                 style = 'border: 1px solid #ddd; padding: 8px;'
                 if pd.isna(val): val_show = "-"
                 else:
-                    try:
-                        v_num = float(val)
-                        if col != "PROMEDIO":
-                            prom = float(df_fun.loc[idx, "PROMEDIO"])
-                            posibles_puntos[col] += 1
-                            es_mejor = (idx == "Debt/Equity" and v_num < prom) or (idx != "Debt/Equity" and v_num > prom)
-                            if es_mejor:
-                                style += 'background-color: #c8e6c9; font-weight: bold;'
-                                ranking_puntos[col] += 1
-                        if "%" in idx: val_show = f"{v_num*100:.2f}%"
-                        elif idx == "Free Cash Flow": val_show = fmt_cur(v_num)
-                        else: val_show = f"{v_num:.2f}"
-                    except: val_show = str(val)
+                    if idx == "Empresa":
+                        val_show = f"<b>{val}</b>" if col != "PROMEDIO" else "-"
+                    else:
+                        try:
+                            v_num = float(val)
+                            if col != "PROMEDIO":
+                                prom = float(df_fun.loc[idx, "PROMEDIO"])
+                                posibles_puntos[col] += 1
+                                es_mejor = (idx == "Debt/Equity" and v_num < prom) or (idx != "Debt/Equity" and v_num > prom)
+                                if es_mejor:
+                                    style += 'background-color: #c8e6c9; font-weight: bold;'
+                                    ranking_puntos[col] += 1
+                            if "%" in idx: val_show = f"{v_num*100:.2f}%"
+                            elif idx == "Free Cash Flow": val_show = fmt_cur(v_num)
+                            else: val_show = f"{v_num:.2f}"
+                        except: val_show = str(val)
                 html_f += f'<td style="{style}">{val_show}</td>'
             html_f += '</tr>'
         st.write(html_f + '</table>', unsafe_allow_html=True)
@@ -189,16 +191,13 @@ if tickers_raw:
             for i in df_r.index:
                 h2 += f'<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{i}</td>'
                 for c in cols_r:
-                    val_c = df_r.loc[i, c]
-                    v_s = str(val_c) if c == "Tendencia" else fmt_cur(val_c)
+                    val_cell = df_r.loc[i, c]
+                    v_s = str(val_cell) if c == "Tendencia" else fmt_cur(val_cell)
                     h2 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
                 h2 += '</tr>'
             st.write(h2 + '</table>', unsafe_allow_html=True)
-            
-            # Gráfico
             df_p_r = df_r.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
-            df_p_r['value_b'] = df_p_r['value'] / 1e9
-            df_p_r['periodo'] = df_p_r['variable'].str.split('<').str[0]
+            df_p_r['value_b'] = df_p_r['value'] / 1e9; df_p_r['periodo'] = df_p_r['variable'].str.split('<').str[0]
             st.altair_chart(alt.Chart(df_p_r).mark_line(point=True).encode(x=alt.X('periodo', sort=None), y=alt.Y('value_b', title='Billions ($)'), color='Ticker').properties(height=300), use_container_width=True)
 
         # --- 4. EVOLUCIÓN DE EPS ---
@@ -214,15 +213,12 @@ if tickers_raw:
             for i in df_e.index:
                 h3 += f'<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{i}</td>'
                 for c in cols_e:
-                    val_c = df_e.loc[i, c]
-                    v_s = str(val_c) if c == "Tendencia" else f"{val_c:.2f}" if pd.notna(val_c) else "-"
+                    val_cell = df_e.loc[i, c]
+                    v_s = str(val_cell) if c == "Tendencia" else f"{val_cell:.2f}" if pd.notna(val_cell) else "-"
                     h3 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
                 h3 += '</tr>'
             st.write(h3 + '</table>', unsafe_allow_html=True)
-            
-            # Gráfico
-            df_p_e = df_e.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
-            df_p_e['periodo'] = df_p_e['variable'].str.split('<').str[0]
+            df_p_e = df_e.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker"); df_p_e['periodo'] = df_p_e['variable'].str.split('<').str[0]
             st.altair_chart(alt.Chart(df_p_e).mark_line(point=True).encode(x=alt.X('periodo', sort=None), y=alt.Y('value', title='EPS ($)'), color='Ticker').properties(height=300), use_container_width=True)
 
         # --- 5. TOP 5 ELITE ---
@@ -231,8 +227,7 @@ if tickers_raw:
         final_scores = []
         for t in lista_tickers:
             if t in analisis_completo:
-                p_fun = ranking_puntos[t]
-                p_max = posibles_puntos[t]
+                p_fun = ranking_puntos[t]; p_max = posibles_puntos[t]
                 p_crec = (1 if "28a745" in analisis_completo[t]["rev_t"] else 0) + (1 if "28a745" in analisis_completo[t]["eps_t"] else 0)
                 p_up = 1 if analisis_completo[t]["upside_val"] > 0 else 0
                 efic = (p_fun / p_max * 100) if p_max > 0 else 0
@@ -247,8 +242,6 @@ if tickers_raw:
                 st.markdown(f"<p style='font-size: 1.2em; color: #555;'>{s['Total']} Puntos</p>", unsafe_allow_html=True)
                 st.caption(f"{s['Eficacia']:.1f}% Eficacia Relativa")
                 with st.expander("Racional"):
-                    st.write(f"**Fundamentales:** {s['Fund']} indicadores mejores que la media.")
-                    st.write(f"**Crecimiento:** {'Confirmado ▲' if s['Crec']==2 else 'Parcial'}")
-                    if s['Up'] > 0: st.success("Potencial de Revalorización +")
+                    st.write(f"**Fundamentales:** {s['Fund']} indicadores mejores que la media."); st.write(f"**Crecimiento:** {'Confirmado ▲' if s['Crec']==2 else 'Parcial' if s['Crec']==1 else 'Neutro'}"); if s['Up'] > 0: st.success("Potencial de Revalorización +")
 else:
-    st.info("Ingresa los tickers para iniciar el análisis.")
+    st.info("Ingresa los tickers para iniciar.")
