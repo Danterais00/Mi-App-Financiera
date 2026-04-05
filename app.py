@@ -35,7 +35,7 @@ if tickers_raw:
     posibles_puntos = {ticker: 0 for ticker in lista_tickers}
     fechas_headers = []
 
-    with st.spinner('Cargando datos y aplicando filtros de estrategia...'):
+    with st.spinner('Sincronizando datos y aplicando filtros de estrategia...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -68,6 +68,7 @@ if tickers_raw:
                         for idx_f, d in enumerate(fechas_raw):
                             fechas_headers.append(f"{nombres_base[idx_f]}<br><small>{d.strftime('%d/%m/%Y')}</small>")
 
+                    # Ingresos
                     if "Total Revenue" in df_q.index:
                         rev_s = df_q.loc["Total Revenue"].head(5).iloc[::-1]
                         fila_rev = {"Ticker": ticker}
@@ -75,8 +76,10 @@ if tickers_raw:
                             if i < len(fechas_headers): fila_rev[fechas_headers[i]] = v
                         r_growth = ((rev_s.iloc[-1] - rev_s.iloc[0]) / abs(rev_s.iloc[0])) if len(rev_s) >= 2 else 0
                         icon_r = '<span style="color:#28a745; font-size:1.8em;">▲</span>' if r_growth > 0.05 else '<span style="color:#dc3545; font-size:1.8em;">▼</span>' if r_growth < -0.05 else '<span style="color:#ffc107; font-size:1.8em;">●</span>'
+                        fila_rev["Tendencia"] = icon_r # FIX: Agregado a la fila
                         datos_revenue.append(fila_rev)
                     
+                    # EPS
                     et_e = "Basic EPS" if "Basic EPS" in df_q.index else "BasicEps" if "BasicEps" in df_q.index else None
                     if et_e:
                         eps_s = df_q.loc[et_e].head(5).iloc[::-1]
@@ -85,6 +88,7 @@ if tickers_raw:
                             if i < len(fechas_headers): fila_eps[fechas_headers[i]] = v
                         e_growth = ((eps_s.iloc[-1] - eps_s.iloc[0]) / abs(eps_s.iloc[0])) if len(eps_s) >= 2 else 0
                         icon_e = '<span style="color:#28a745; font-size:1.8em;">▲</span>' if e_growth > 0.05 else '<span style="color:#dc3545; font-size:1.8em;">▼</span>' if e_growth < -0.05 else '<span style="color:#ffc107; font-size:1.8em;">●</span>'
+                        fila_eps["Tendencia"] = icon_e # FIX: Agregado a la fila
                         datos_eps.append(fila_eps)
 
                 analisis_completo[ticker] = {
@@ -104,7 +108,7 @@ if tickers_raw:
     if datos_fundamentales:
         df_total = pd.DataFrame(datos_fundamentales).set_index("Ticker").T
 
-        # --- TABLA 1: VALUACIÓN (SIN PROMEDIO) ---
+        # --- 1. VALUACIÓN (SIN PROMEDIO) ---
         st.write("### 1. Valuación y Datos de Empresa")
         df_val = df_total.loc[["Empresa", "Precio", "Fair Value (Target)", "Upside (%)"]]
         html_val = '<table style="width:100%; border-collapse: collapse; text-align: center;">'
@@ -128,7 +132,7 @@ if tickers_raw:
             html_val += '</tr>'
         st.write(html_val + '</table>', unsafe_allow_html=True)
 
-        # --- TABLA 2: FUNDAMENTAL (CON PROMEDIO) ---
+        # --- 2. FUNDAMENTAL (CON PROMEDIO) ---
         st.divider()
         st.write("### 2. Comparativa Fundamental Avanzada")
         df_fun = df_total.drop(["Precio", "Fair Value (Target)", "Upside (%)"])
@@ -162,26 +166,59 @@ if tickers_raw:
             html_f += '</tr>'
         st.write(html_f + '</table>', unsafe_allow_html=True)
 
-        # --- 3 Y 4. EVOLUCIÓN (REVENUE / EPS) ---
+        # --- 3. EVOLUCIÓN DE INGRESOS ---
         st.divider()
-        c_r, c_e = st.columns(2)
-        with c_r:
-            if datos_revenue:
-                st.write("### 3. Ingresos")
-                df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
-                st.write(df_r, unsafe_allow_html=True)
-                df_p_r = df_r.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
-                df_p_r['v_b'] = df_p_r['value'] / 1e9; df_p_r['per'] = df_p_r['variable'].str.split('<').str[0]
-                st.altair_chart(alt.Chart(df_p_r).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('v_b', title='Billions'), color='Ticker').properties(height=250), use_container_width=True)
-        with c_e:
-            if datos_eps:
-                st.write("### 4. EPS")
-                df_e = pd.DataFrame(datos_eps).set_index("Ticker")
-                st.write(df_e, unsafe_allow_html=True)
-                df_p_e = df_e.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker"); df_p_e['per'] = df_p_e['variable'].str.split('<').str[0]
-                st.altair_chart(alt.Chart(df_p_e).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('value', title='EPS'), color='Ticker').properties(height=250), use_container_width=True)
+        if datos_revenue:
+            st.write("### 3. Evolución de Ingresos (Total Revenue)")
+            df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
+            # Ordenamos para asegurar que Tendencia esté al final
+            cols_r = [c for c in df_r.columns if c != "Tendencia"] + ["Tendencia"]
+            
+            h2 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
+            h2 += '<tr style="background-color: #f0f2f6;"><th>Ticker</th>'
+            for c in cols_r: h2 += f'<th>{c}</th>'
+            h2 += '</tr>'
+            for ticker_idx in df_r.index:
+                h2 += f'<tr><td style="font-weight:bold; border:1px solid #ddd;">{ticker_idx}</td>'
+                for c in cols_r:
+                    val_c = df_r.loc[ticker_idx, c]
+                    v_s = str(val_c) if c == "Tendencia" else fmt_cur(val_c)
+                    h2 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
+                h2 += '</tr>'
+            st.write(h2 + '</table>', unsafe_allow_html=True)
+            
+            # Gráfico
+            df_p_r = df_r.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
+            df_p_r['value_b'] = df_p_r['value'] / 1e9
+            df_p_r['per'] = df_p_r['variable'].str.split('<').str[0]
+            st.altair_chart(alt.Chart(df_p_r).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('value_b', title='Billions'), color='Ticker').properties(height=300), use_container_width=True)
 
-        # --- 5. TOP 5 ELITE (MULTI-ESTRATEGIA) ---
+        # --- 4. EVOLUCIÓN DE EPS ---
+        st.divider()
+        if datos_eps:
+            st.write("### 4. Evolución de Beneficio por Acción (Basic EPS)")
+            df_e = pd.DataFrame(datos_eps).set_index("Ticker")
+            cols_e = [c for c in df_e.columns if c != "Tendencia"] + ["Tendencia"]
+            
+            h3 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
+            h3 += '<tr style="background-color: #f0f2f6;"><th>Ticker</th>'
+            for c in cols_e: h3 += f'<th>{c}</th>'
+            h3 += '</tr>'
+            for ticker_idx in df_e.index:
+                h3 += f'<tr><td style="font-weight:bold; border:1px solid #ddd;">{ticker_idx}</td>'
+                for c in cols_e:
+                    val_c = df_e.loc[ticker_idx, c]
+                    v_s = str(val_c) if c == "Tendencia" else f"{val_c:.2f}" if pd.notna(val_c) else "-"
+                    h3 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
+                h3 += '</tr>'
+            st.write(h3 + '</table>', unsafe_allow_html=True)
+            
+            # Gráfico
+            df_p_e = df_e.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
+            df_p_e['per'] = df_p_e['variable'].str.split('<').str[0]
+            st.altair_chart(alt.Chart(df_p_e).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('value', title='EPS'), color='Ticker').properties(height=300), use_container_width=True)
+
+        # --- 5. TOP 5 ELITE ---
         st.divider()
         st.write(f"### 🏆 5. Selección Elite: TOP 5 ({modo_estrategia})")
         
@@ -192,15 +229,14 @@ if tickers_raw:
                 p_crec = (1 if "28a745" in analisis_completo[t]["rev_t"] else 0) + (1 if "28a745" in analisis_completo[t]["eps_t"] else 0)
                 p_up = 1 if analisis_completo[t]["upside_val"] > 0 else 0
                 
-                # LÓGICA DE PESOS SEGÚN ESTRATEGIA
                 if modo_estrategia == "Crecimiento (Agresivo)":
                     score_total = p_fun + p_crec + p_up
                 else: # Fortaleza (Defensivo)
-                    score_total = p_fun + p_up  # El crecimiento no suma al total, es desempate
+                    score_total = p_fun + p_up
 
                 final_scores.append({
                     "Ticker": t, "Nombre": analisis_completo[t]["nombre"],
-                    "Total": score_total, "Bonus": p_crec,
+                    "Total": score_total, "Bonus": p_crec, "Fund": p_fun, "Up": p_up,
                     "Eficacia": (p_fun/posibles_puntos[t]*100) if posibles_puntos[t]>0 else 0,
                     "Margin": analisis_completo[t]["net_margin"]
                 })
@@ -212,15 +248,22 @@ if tickers_raw:
                 st.markdown(f"Puesto #{idx+1}")
                 st.markdown(f"<h1 style='text-align: left; margin-top: -20px;'><b>{s['Ticker']}</b></h1>", unsafe_allow_html=True)
                 st.markdown(f"<p style='font-size: 1.2em;'>{s['Total']} Puntos</p>", unsafe_allow_html=True)
+                
                 with st.expander("Ver Racional"):
-                    if modo_estrategia == "Crecimiento (Agresivo)":
-                        st.write(f"**⚡ Perfil Agresivo:**")
-                        st.write(f"Seleccionada por su fuerte impulso en ingresos/beneficios (+{s['Bonus']} pts) y calidad de balance.")
-                    else:
-                        st.write(f"**🛡️ Perfil Defensivo:**")
-                        st.write(f"Seleccionada por su robustez financiera (Eficacia del {s['Eficacia']:.1f}%).")
+                    st.write(f"**Fundamentales:**")
+                    st.write(f"Posee **{s['Fund']}** indicadores superiores al promedio del grupo.")
                     
-                    st.write(f"**📊 Eficiencia:** Margen Neto {s['Margin']*100:.2f}%")
-                    if s['Bonus'] == 2: st.success("Aceleración operativa confirmada (▲▲)")
+                    st.write(f"**Crecimiento:**")
+                    if s['Bonus'] == 2:
+                        st.write("Crecimiento dual confirmado: Ingresos y EPS al alza (▲).")
+                    elif s['Bonus'] == 1:
+                        st.write("Crecimiento parcial detectado.")
+                    else:
+                        st.write("Tendencia de crecimiento estable.")
+                    
+                    if s['Up'] > 0:
+                        st.success("Potencial de Revalorización +")
+                    
+                    st.write(f"**Eficiencia:** Margen Neto {s['Margin']*100:.2f}%")
 else:
     st.info("Ingresa tickers para analizar.")
