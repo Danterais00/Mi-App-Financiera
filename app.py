@@ -18,7 +18,7 @@ st.title("🚀 Terminal de Análisis Fundamental Pro")
 st.write(f"Modo Activo: **{modo_estrategia}**")
 
 # 2. ENTRADA DE TICKERS
-tickers_raw = st.text_input("Tickers (separados por coma):", "KO, COST, PEP, PG, WMT, AAPL, MSFT, NVDA, JNJ, LLY, TSLA").upper()
+tickers_raw = st.text_input("Tickers (separados por coma):", "KO, COST, PEP, PG, WMT, AAPL, MSFT, NVDA, JNJ, LLY, TSLA, ABT, AMGN, AZN ,BMY ,CAH , GSK, MDT, NVS, PFE, PHG, BIIB, GILD, TMO, ABBV, UNH, MRNA, DHR ,ISRG, VRTX").upper()
 
 def corregir_ticker(t):
     t = t.strip()
@@ -27,7 +27,7 @@ def corregir_ticker(t):
     return t
 
 if tickers_raw:
-    lista_tickers = [corregir_ticker(t) for t in tickers_raw.split(",") if t.strip()][:20]
+    lista_tickers = [corregir_ticker(t) for t in tickers_raw.split(",") if t.strip()][:30]
     
     datos_fundamentales, datos_revenue, datos_eps = [], [], []
     analisis_completo = {}
@@ -108,11 +108,11 @@ if tickers_raw:
     if datos_fundamentales:
         df_total = pd.DataFrame(datos_fundamentales).set_index("Ticker").T
 
-        # --- 1. VALUACIÓN (CON FILA DE BETA) ---
-        st.write("### 1. Valuación y Datos de Empresa")
+        # --- 1. VALUACIÓN (CON FILA DE BETA MEJORADA) ---
+        st.write("### 1. Valuación y Datos de Empresa (SIN PROMEDIO)")
         df_val = df_total.loc[["Empresa", "Precio", "Fair Value (Target)", "Upside (%)", "Beta (Volatilidad)"]]
         
-        html_val = '<table style="width:100%; border-collapse: collapse; text-align: center;">'
+        html_val = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
         html_val += '<tr style="background-color: #f0f2f6;"><th>Indicador</th>'
         for col in df_val.columns: html_val += f'<th>{col}</th>'
         html_val += '</tr>'
@@ -125,9 +125,10 @@ if tickers_raw:
                 if pd.isna(val): val_show = "-"
                 elif idx == "Beta (Volatilidad)":
                     v_b = float(val)
-                    if v_b <= 1: val_show = f"<span style='color:#28a745; font-size:1.2em;'>⏲️ ⇠</span> <br> <small>{v_b:.2f}</small>"
-                    elif v_b <= 1.5: val_show = f"<span style='color:#ffc107; font-size:1.2em;'>⏲️ ⇡</span> <br> <small>{v_b:.2f}</small>"
-                    else: val_show = f"<span style='color:#dc3545; font-size:1.2em;'>⏲️ ⇢</span> <br> <small>{v_b:.2f}</small>"
+                    # --- DISEÑO MEJORADO DE BETA (SIN RELOJ, FLECHA NEGRITA Y GRANDE) ---
+                    if v_b <= 1: val_show = f"<span style='color:#28a745; font-size:1.5em;'><strong>⇠</strong></span> <br> <small>{v_b:.2f}</small>"
+                    elif v_b <= 1.5: val_show = f"<span style='color:#ffc107; font-size:1.5em;'><strong>⇡</strong></span> <br> <small>{v_b:.2f}</small>"
+                    else: val_show = f"<span style='color:#dc3545; font-size:1.5em;'><strong>⇢</strong></span> <br> <small>{v_b:.2f}</small>"
                 elif idx == "Upside (%)":
                     v_n = float(val); val_show = f"{v_n*100:.2f}%"
                     if v_n > 0: style += 'background-color: #c8e6c9; color: #2e7d32; font-weight: bold;'
@@ -140,12 +141,12 @@ if tickers_raw:
 
         # --- 2. FUNDAMENTAL (CON PROMEDIO) ---
         st.divider()
-        st.write("### 2. Comparativa Fundamental Avanzada")
+        st.write("### 2. Comparativa Fundamental Avanzada (CON PROMEDIO)")
         df_fun = df_total.drop(["Precio", "Fair Value (Target)", "Upside (%)", "Beta (Volatilidad)"])
         f_ratios = df_fun.index.drop("Empresa")
         df_fun.loc[f_ratios, "PROMEDIO"] = df_fun.loc[f_ratios].apply(pd.to_numeric, errors='coerce').mean(axis=1)
         
-        html_f = '<table style="width:100%; border-collapse: collapse; text-align: center;">'
+        html_f = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
         html_f += '<tr style="background-color: #f0f2f6;"><th>Indicador</th>'
         for col in df_fun.columns: html_f += f'<th>{col}</th>'
         html_f += '</tr>'
@@ -183,10 +184,11 @@ if tickers_raw:
             h2 += '<tr style="background-color: #f0f2f6;"><th>Ticker</th>'
             for c in cols_r: h2 += f'<th>{c}</th>'
             h2 += '</tr>'
-            for i in df_r.index:
-                h2 += f'<tr><td style="font-weight:bold; border:1px solid #ddd;">{i}</td>'
+            for ticker_idx in df_r.index:
+                h2 += f'<tr><td style="font-weight:bold; border:1px solid #ddd;">{ticker_idx}</td>'
                 for c in cols_r:
-                    val_c = df_r.loc[i, c]; v_s = str(val_c) if c == "Tendencia" else fmt_cur(val_c)
+                    val_c = df_r.loc[ticker_idx, c]
+                    v_s = str(val_c) if c == "Tendencia" else fmt_cur(val_c)
                     h2 += f'<td style="border: 1px solid #ddd;">{v_s}</td>'
                 h2 += '</tr>'
             st.write(h2 + '</table>', unsafe_allow_html=True)
@@ -195,8 +197,8 @@ if tickers_raw:
             st.altair_chart(alt.Chart(df_p_r).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('v_b', title='Billions'), color='Ticker').properties(height=300), use_container_width=True)
 
         # --- 4. EVOLUCIÓN EPS ---
+        st.divider()
         if datos_eps:
-            st.divider()
             st.write("### 4. Evolución de Beneficio por Acción (Basic EPS)")
             df_e = pd.DataFrame(datos_eps).set_index("Ticker")
             cols_e = [c for c in df_e.columns if c != "Tendencia"] + ["Tendencia"]
@@ -204,10 +206,10 @@ if tickers_raw:
             h3 += '<tr style="background-color: #f0f2f6;"><th>Ticker</th>'
             for c in cols_e: h3 += f'<th>{c}</th>'
             h3 += '</tr>'
-            for i in df_e.index:
-                h3 += f'<tr><td style="font-weight:bold; border:1px solid #ddd;">{i}</td>'
+            for ticker_idx in df_e.index:
+                h3 += f'<tr><td style="font-weight:bold; border:1px solid #ddd;">{ticker_idx}</td>'
                 for c in cols_e:
-                    val_c = df_e.loc[i, c]; v_s = str(val_c) if c == "Tendencia" else f"{val_c:.2f}"
+                    val_c = df_e.loc[ticker_idx, c]; v_s = str(val_c) if c == "Tendencia" else f"{val_c:.2f}"
                     h3 += f'<td style="border: 1px solid #ddd;">{v_s}</td>'
                 h3 += '</tr>'
             st.write(h3 + '</table>', unsafe_allow_html=True)
@@ -230,14 +232,21 @@ if tickers_raw:
         for idx, s in enumerate(top_5):
             with cols_5[idx]:
                 st.markdown(f"Puesto #{idx+1}")
+                # TICKER GRANDE Y NEGRITA
                 st.markdown(f"<h1 style='text-align: left; margin-top: -20px;'><b>{s['Ticker']}</b></h1>", unsafe_allow_html=True)
+                # PUNTOS PEQUEÑOS Y NO NEGRITA
                 st.markdown(f"<p style='font-size: 1.2em;'>{s['Total']} Puntos</p>", unsafe_allow_html=True)
+                
                 with st.expander("Ver Racional"):
-                    st.write(f"**Fundamentales:** {s['Fund']} pts.")
-                    if s['Bonus'] == 2: st.write("Crecimiento dual ▲▲")
-                    elif s['Bonus'] == 1: st.write("Crecimiento parcial ▲")
-                    else: st.write("Crecimiento estable")
-                    if s['Up'] > 0: st.success("Potencial Revalorización +")
-                    st.write(f"**Margen:** {s['Margin']*100:.2f}%")
+                    st.write(f"**Fundamentales:**")
+                    st.write(f"Posee **{s['Fund']}** indicadores superiores al promedio del grupo.")
+                    
+                    st.write(f"**Crecimiento:**")
+                    if s['Bonus'] == 2: st.write("Crecimiento dual confirmado: Ingresos y EPS al alza (▲).")
+                    elif s['Bonus'] == 1: st.write("Crecimiento parcial detectado.")
+                    else: st.write("Tendencia de crecimiento estable.")
+                    
+                    if s['Up'] > 0: st.success("Potencial de Revalorización +")
+                    st.write(f"**Eficiencia:** Margen Neto {s['Margin']*100:.2f}%")
 else:
     st.info("Ingresa los tickers para iniciar el análisis.")
