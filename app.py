@@ -16,10 +16,10 @@ modo_estrategia = st.sidebar.radio(
 
 st.title("🚀 Terminal de Análisis Fundamental Pro")
 st.write(f"Modo Activo: **{modo_estrategia}**")
-st.info("⚠️ Filtro Elite Activo: Solo entran al TOP 5 los que tengan **Beta < 1.5** y **Upside > 0%**.")
+st.info("⚠️ Filtro Elite Activo: Beta < 1.5 y Upside > 0% obligatorio para el TOP 5.")
 
 # 2. ENTRADA DE TICKERS
-tickers_raw = st.text_input("Tickers (separados por coma):", "KO, COST, PEP, PG, WMT, AAPL, MSFT, NVDA, JNJ, LLY, TSLA, ABBV, UNH, VRTX").upper()
+tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, IREN, PBR, TEN, VIST, XOM, SHEL, AAPL, MSFT, JNJ, LLY").upper()
 
 def corregir_ticker(t):
     t = t.strip()
@@ -36,7 +36,7 @@ if tickers_raw:
     posibles_puntos = {ticker: 0 for ticker in lista_tickers}
     fechas_headers = []
 
-    with st.spinner('Corrigiendo etiquetas y procesando métricas...'):
+    with st.spinner('Procesando balances y ajustando ratios de deuda...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -50,6 +50,10 @@ if tickers_raw:
                 upside = ((v_justo / p_actual) - 1) if p_actual and v_justo else None
 
                 # --- CAPTURA TOTAL ---
+                # Ajuste Debt/Equity: valor / 100
+                de_raw = info.get('debtToEquity')
+                de_final = de_raw / 100 if de_raw is not None else None
+
                 fila_fun = {
                     "Ticker": ticker, "Empresa": info.get('longName', 'N/A'),
                     "Precio": p_actual, "Fair Value (Target)": v_justo, "Upside (%)": upside,
@@ -57,8 +61,8 @@ if tickers_raw:
                     "PER": info.get('trailingPE'), "Margen Neto (%)": info.get('profitMargins'),
                     "ROE (%)": info.get('returnOnEquity'), "ROA (%)": info.get('returnOnAssets'),
                     "Free Cash Flow": info.get('freeCashflow'), "Div Yield (%)": info.get('dividendYield'),
-                    "Debt/Equity": info.get('debtToEquity'), "Current Ratio": info.get('currentRatio'),
-                    "Quick Ratio": info.get('quickRatio')
+                    "Debt/Equity": de_final, 
+                    "Current Ratio": info.get('currentRatio'), "Quick Ratio": info.get('quickRatio')
                 }
                 datos_fundamentales.append(fila_fun)
 
@@ -71,7 +75,6 @@ if tickers_raw:
                         for idx_f, d in enumerate(fechas_raw):
                             fechas_headers.append(f"{nombres_base[idx_f]}<br><small>{d.strftime('%d/%m/%Y')}</small>")
 
-                    # Ingresos
                     if "Total Revenue" in df_q.index:
                         rev_s = df_q.loc["Total Revenue"].head(5).iloc[::-1]
                         fila_rev = {"Ticker": ticker}
@@ -82,7 +85,6 @@ if tickers_raw:
                         fila_rev["Tendencia"] = icon_r
                         datos_revenue.append(fila_rev)
                     
-                    # EPS
                     et_e = "Basic EPS" if "Basic EPS" in df_q.index else "BasicEps" if "BasicEps" in df_q.index else None
                     if et_e:
                         eps_s = df_q.loc[et_e].head(5).iloc[::-1]
@@ -102,7 +104,6 @@ if tickers_raw:
                 }
             except Exception: pass
 
-    # --- FUNCIÓN DE FORMATEO ---
     def fmt_cur(n):
         if pd.isna(n) or n == 0: return "-"
         p = "$" if n >= 0 else "-$"
@@ -114,7 +115,7 @@ if tickers_raw:
     if datos_fundamentales:
         df_total = pd.DataFrame(datos_fundamentales).set_index("Ticker").T
 
-        # --- 1. VALUACIÓN (CORREGIDO {idx}) ---
+        # --- 1. VALUACIÓN ---
         st.write("### 1. Valuación y Datos de Empresa")
         df_val = df_total.loc[["Empresa", "Precio", "Fair Value (Target)", "Upside (%)", "Beta (Volatilidad)"]]
         h1 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
@@ -122,7 +123,6 @@ if tickers_raw:
         for col in df_val.columns: h1 += f'<th>{col}</th>'
         h1 += '</tr>'
         for idx in df_val.index:
-            # FIX: Se agregó la 'f' antes del string para que {idx} funcione
             h1 += f'<tr style="background-color: #f2f2f2;"><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{idx}</td>'
             for col in df_val.columns:
                 val = df_val.loc[idx, col]
@@ -149,6 +149,7 @@ if tickers_raw:
         df_fun = df_total.drop(["Precio", "Fair Value (Target)", "Upside (%)", "Beta (Volatilidad)"])
         f_ratios = df_fun.index.drop("Empresa")
         df_fun.loc[f_ratios, "PROMEDIO"] = df_fun.loc[f_ratios].apply(pd.to_numeric, errors='coerce').mean(axis=1)
+        
         h2 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
         h2 += '<tr style="background-color: #f0f2f6;"><th>Indicador</th>'
         for col in df_fun.columns: h2 += f'<th>{col}</th>'
@@ -169,6 +170,7 @@ if tickers_raw:
                             posibles_puntos[col] += 1
                             es_mejor = (idx == "Debt/Equity" and v_n < prom) or (idx != "Debt/Equity" and v_n > prom)
                             if es_mejor: style += 'background-color: #c8e6c9; font-weight: bold;'; ranking_puntos[col] += 1
+                        
                         if "%" in idx: val_show = f"{v_n*100:.2f}%"
                         elif idx == "Free Cash Flow": val_show = fmt_cur(v_n)
                         else: val_show = f"{v_n:.2f}"
@@ -195,7 +197,6 @@ if tickers_raw:
                     h3 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
                 h3 += '</tr>'
             st.write(h3 + '</table>', unsafe_allow_html=True)
-            
             df_p_r = df_r.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
             df_p_r['v_b'] = df_p_r['value'] / 1e9; df_p_r['per'] = df_p_r['variable'].str.split('<').str[0]
             st.altair_chart(alt.Chart(df_p_r).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('v_b', title='Billions'), color='Ticker').properties(height=300), use_container_width=True)
@@ -218,7 +219,6 @@ if tickers_raw:
                     h4 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
                 h4 += '</tr>'
             st.write(h4 + '</table>', unsafe_allow_html=True)
-            
             df_p_e = df_e.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker"); df_p_e['per'] = df_p_e['variable'].str.split('<').str[0]
             st.altair_chart(alt.Chart(df_p_e).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('value', title='EPS ($)'), color='Ticker').properties(height=300), use_container_width=True)
 
