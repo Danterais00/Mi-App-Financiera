@@ -4,7 +4,7 @@ import pandas as pd
 import altair as alt
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
-st.set_page_config(page_title="Terminal Pro: Multi-Estrategia", layout="wide")
+st.set_page_config(page_title="Terminal Pro: Análisis Multi-Estrategia", layout="wide")
 
 # --- BARRA LATERAL (ESTRATEGIA) ---
 st.sidebar.title("⚙️ Configuración")
@@ -36,7 +36,7 @@ if tickers_raw:
     posibles_puntos = {ticker: 0 for ticker in lista_tickers}
     fechas_headers = []
 
-    with st.spinner('Procesando balances y ajustando ratios de deuda...'):
+    with st.spinner('Procesando balances, ingresos y costos operativos...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -49,15 +49,22 @@ if tickers_raw:
                 beta = info.get('beta')
                 upside = ((v_justo / p_actual) - 1) if p_actual and v_justo else None
 
-                # --- CAPTURA TOTAL ---
-                # Ajuste Debt/Equity: valor / 100
+                # --- CAPTURA DE DATOS PARA TABLA 2 ---
                 de_raw = info.get('debtToEquity')
                 de_final = de_raw / 100 if de_raw is not None else None
+                
+                # Net Income y Cost of Revenue
+                net_income = info.get('netIncomeToCommon') or info.get('netIncome')
+                total_rev = info.get('totalRevenue')
+                gross_prof = info.get('grossProfits')
+                cost_of_rev = (total_rev - gross_prof) if (total_rev and gross_prof) else None
 
                 fila_fun = {
                     "Ticker": ticker, "Empresa": info.get('longName', 'N/A'),
                     "Precio": p_actual, "Fair Value (Target)": v_justo, "Upside (%)": upside,
                     "Beta (Volatilidad)": beta,
+                    "Net Income": net_income,
+                    "Cost of Revenue": cost_of_rev,
                     "PER": info.get('trailingPE'), "Margen Neto (%)": info.get('profitMargins'),
                     "ROE (%)": info.get('returnOnEquity'), "ROA (%)": info.get('returnOnAssets'),
                     "Free Cash Flow": info.get('freeCashflow'), "Div Yield (%)": info.get('dividendYield'),
@@ -143,7 +150,7 @@ if tickers_raw:
             h1 += '</tr>'
         st.write(h1 + '</table>', unsafe_allow_html=True)
 
-        # --- 2. FUNDAMENTAL ---
+        # --- 2. COMPARATIVA FUNDAMENTAL AVANZADA ---
         st.divider()
         st.write("### 2. Comparativa Fundamental Avanzada")
         df_fun = df_total.drop(["Precio", "Fair Value (Target)", "Upside (%)", "Beta (Volatilidad)"])
@@ -168,11 +175,19 @@ if tickers_raw:
                         if col != "PROMEDIO":
                             prom = float(df_fun.loc[idx, "PROMEDIO"])
                             posibles_puntos[col] += 1
-                            es_mejor = (idx == "Debt/Equity" and v_n < prom) or (idx != "Debt/Equity" and v_n > prom)
-                            if es_mejor: style += 'background-color: #c8e6c9; font-weight: bold;'; ranking_puntos[col] += 1
+                            
+                            # Lógica de colores (Puntos Verdes)
+                            if idx == "Debt/Equity" or idx == "Cost of Revenue":
+                                es_mejor = v_n < prom  # Menos es mejor
+                            else:
+                                es_mejor = v_n > prom  # Más es mejor
+                            
+                            if es_mejor:
+                                style += 'background-color: #c8e6c9; font-weight: bold;'
+                                ranking_puntos[col] += 1
                         
                         if "%" in idx: val_show = f"{v_n*100:.2f}%"
-                        elif idx == "Free Cash Flow": val_show = fmt_cur(v_n)
+                        elif idx in ["Free Cash Flow", "Net Income", "Cost of Revenue"]: val_show = fmt_cur(v_n)
                         else: val_show = f"{v_n:.2f}"
                     except: val_show = str(val)
                 h2 += f'<td style="{style}">{val_show}</td>'
