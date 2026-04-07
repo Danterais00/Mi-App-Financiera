@@ -4,7 +4,22 @@ import pandas as pd
 import altair as alt
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
-st.set_page_config(page_title="Terminal Pro: Análisis Multi-Estrategia", layout="wide")
+st.set_page_config(page_title="Terminal Pro: Inteligencia Financiera", layout="wide")
+
+# --- DICCIONARIO DE DEFINICIONES (TOOLTIPS) ---
+TOOLTIPS = {
+    "Net Income": "indica el beneficio real neto tras restar absolutamente todos los gastos e impuestos.",
+    "Cost of Revenue": "Gastos directos para fabricar o entregar el producto.",
+    "PER": "Indica cuántas veces el beneficio neto anual está contenido en el precio; mide el tiempo de recuperación de la inversión.",
+    "Margen Neto (%)": "Es la eficiencia operativa. Indica qué porcentaje de las ventas totales se convierte en ganancia limpia.",
+    "ROE (%)": "Rentabilidad sobre el capital: mide qué tan bien la directiva multiplica el dinero de los accionistas.",
+    "ROA (%)": "Rentabilidad sobre activos: indica la ganancia generada por cada dólar de recurso (propio o deuda) que posee la empresa.",
+    "Free Cash Flow": "Caja libre tras gastos operativos y de capital; es el dinero 'real' para dividendos o recompras.",
+    "Div Yield (%)": "Rendimiento por dividendo: el interés en efectivo que recibes anualmente por poseer la acción.",
+    "Debt/Equity": "Indica el nivel de deuda",
+    "Current Ratio": "Mide la capacidad de la empresa para pagar sus deudas de corto plazo.",
+    "Quick Ratio": "igual al Current Ratio pero excluye inventarios por ser más difíciles de vender rápido."
+}
 
 # --- BARRA LATERAL (ESTRATEGIA) ---
 st.sidebar.title("⚙️ Configuración")
@@ -36,7 +51,7 @@ if tickers_raw:
     posibles_puntos = {ticker: 0 for ticker in lista_tickers}
     fechas_headers = []
 
-    with st.spinner('Procesando balances, ingresos y costos operativos...'):
+    with st.spinner('Cargando diccionarios y analizando métricas...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -53,7 +68,6 @@ if tickers_raw:
                 de_raw = info.get('debtToEquity')
                 de_final = de_raw / 100 if de_raw is not None else None
                 
-                # Net Income y Cost of Revenue
                 net_income = info.get('netIncomeToCommon') or info.get('netIncome')
                 total_rev = info.get('totalRevenue')
                 gross_prof = info.get('grossProfits')
@@ -73,7 +87,7 @@ if tickers_raw:
                 }
                 datos_fundamentales.append(fila_fun)
 
-                # --- TENDENCIAS (REVENUE / EPS) ---
+                # --- TENDENCIAS ---
                 nombres_base = ["4 Trim. atrás", "3 Trim. atrás", "2 Trim. atrás", "1 Trim. atrás", "Último Trim."]
                 icon_r, icon_e = '●', '●'
                 if df_q is not None and not df_q.empty:
@@ -150,7 +164,7 @@ if tickers_raw:
             h1 += '</tr>'
         st.write(h1 + '</table>', unsafe_allow_html=True)
 
-        # --- 2. COMPARATIVA FUNDAMENTAL AVANZADA ---
+        # --- 2. COMPARATIVA CON TOOLTIPS ---
         st.divider()
         st.write("### 2. Comparativa Fundamental Avanzada")
         df_fun = df_total.drop(["Precio", "Fair Value (Target)", "Upside (%)", "Beta (Volatilidad)"])
@@ -163,7 +177,14 @@ if tickers_raw:
         h2 += '</tr>'
         for idx in df_fun.index:
             bg = "#f2f2f2" if idx == "Empresa" else "#ffffff"
-            h2 += f'<tr style="background-color: {bg};"><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{idx}</td>'
+            # TOOLTIP LOGIC: Buscamos en el diccionario TOOLTIPS
+            tooltip_text = TOOLTIPS.get(idx, "")
+            tooltip_attr = f'title="{tooltip_text}"' if tooltip_text else ""
+            cursor_style = "cursor: help;" if tooltip_text else ""
+            
+            h2 += f'<tr style="background-color: {bg};">'
+            h2 += f'<td {tooltip_attr} style="font-weight:bold; border:1px solid #ddd; padding:8px; {cursor_style}">{idx}</td>'
+            
             for col in df_fun.columns:
                 val = df_fun.loc[idx, col]
                 style = 'border: 1px solid #ddd; padding: 8px;'
@@ -175,13 +196,10 @@ if tickers_raw:
                         if col != "PROMEDIO":
                             prom = float(df_fun.loc[idx, "PROMEDIO"])
                             posibles_puntos[col] += 1
-                            
-                            # Lógica de colores (Puntos Verdes)
                             if idx == "Debt/Equity" or idx == "Cost of Revenue":
-                                es_mejor = v_n < prom  # Menos es mejor
+                                es_mejor = v_n < prom
                             else:
-                                es_mejor = v_n > prom  # Más es mejor
-                            
+                                es_mejor = v_n > prom
                             if es_mejor:
                                 style += 'background-color: #c8e6c9; font-weight: bold;'
                                 ranking_puntos[col] += 1
@@ -194,7 +212,7 @@ if tickers_raw:
             h2 += '</tr>'
         st.write(h2 + '</table>', unsafe_allow_html=True)
 
-        # --- 3. REVENUE ---
+        # --- 3 Y 4. EVOLUCIÓN (TABLAS Y GRÁFICOS) ---
         st.divider()
         if datos_revenue:
             st.write("### 3. Evolución de Ingresos (Total Revenue)")
@@ -216,9 +234,8 @@ if tickers_raw:
             df_p_r['v_b'] = df_p_r['value'] / 1e9; df_p_r['per'] = df_p_r['variable'].str.split('<').str[0]
             st.altair_chart(alt.Chart(df_p_r).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('v_b', title='Billions'), color='Ticker').properties(height=300), use_container_width=True)
 
-        # --- 4. EPS ---
-        st.divider()
         if datos_eps:
+            st.divider()
             st.write("### 4. Evolución de Beneficio por Acción (Basic EPS)")
             df_e = pd.DataFrame(datos_eps).set_index("Ticker")
             cols_e = [c for c in df_e.columns if c != "Tendencia"] + ["Tendencia"]
