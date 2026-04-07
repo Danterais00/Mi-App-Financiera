@@ -10,7 +10,10 @@ st.set_page_config(page_title="Terminal Pro: Inteligencia Financiera", layout="w
 TOOLTIPS = {
     "Net Income": "indica el beneficio real neto tras restar absolutamente todos los gastos e impuestos.",
     "Cost of Revenue": "Gastos directos para fabricar o entregar el producto.",
-    "PER": "Indica cuántas veces el beneficio neto anual está contenido en el precio; mide el tiempo de recuperación de la inversión.",
+    "PER": ("0 - 10 (Bajo): indica que la acción está infravalorada o que el mercado tiene serias dudas sobre su futuro crecimiento. "
+            "10 - 17 (Moderado): rango saludable y razonable para empresas establecidas. "
+            "17 - 25 (Alto): acción sobrevalorada o que la empresa tiene buenas expectativas de crecimiento futuro que justifican pagar un precio mayor. "
+            "Más de 25 (Muy alto): Típico de empresas de crecimiento agresivo. Los inversores pagan mucho hoy esperando beneficios gigantescos mañana."),
     "Margen Neto (%)": "Es la eficiencia operativa. Indica qué porcentaje de las ventas totales se convierte en ganancia limpia.",
     "ROE (%)": "Rentabilidad sobre el capital: mide qué tan bien la directiva multiplica el dinero de los accionistas.",
     "ROA (%)": "Rentabilidad sobre activos: indica la ganancia generada por cada dólar de recurso (propio o deuda) que posee la empresa.",
@@ -31,10 +34,10 @@ modo_estrategia = st.sidebar.radio(
 
 st.title("🚀 Terminal de Análisis Fundamental Pro")
 st.write(f"Modo Activo: **{modo_estrategia}**")
-st.info("⚠️ Filtro Elite Activo: Beta < 1.5 y Upside > 0% obligatorio para el TOP 5.")
+st.info("⚠️ Filtro Elite Activo: Beta < 1.5 y Upside > 0% obligatorio para el TOP 5. PER > 10 para punto de calidad.")
 
 # 2. ENTRADA DE TICKERS
-tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, IREN, PBR, TEN, VIST, XOM, SHEL, AAPL, MSFT, JNJ, LLY").upper()
+tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, SHEL, AAPL, MSFT, JNJ, LLY").upper()
 
 def corregir_ticker(t):
     t = t.strip()
@@ -51,7 +54,7 @@ if tickers_raw:
     posibles_puntos = {ticker: 0 for ticker in lista_tickers}
     fechas_headers = []
 
-    with st.spinner('Cargando diccionarios y analizando métricas...'):
+    with st.spinner('Actualizando definiciones de PER y procesando métricas...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -64,7 +67,7 @@ if tickers_raw:
                 beta = info.get('beta')
                 upside = ((v_justo / p_actual) - 1) if p_actual and v_justo else None
 
-                # --- CAPTURA DE DATOS PARA TABLA 2 ---
+                # --- CAPTURA DE DATOS ---
                 de_raw = info.get('debtToEquity')
                 de_final = de_raw / 100 if de_raw is not None else None
                 
@@ -164,7 +167,7 @@ if tickers_raw:
             h1 += '</tr>'
         st.write(h1 + '</table>', unsafe_allow_html=True)
 
-        # --- 2. COMPARATIVA CON TOOLTIPS ---
+        # --- 2. COMPARATIVA FUNDAMENTAL (NUEVO TOOLTIP PER) ---
         st.divider()
         st.write("### 2. Comparativa Fundamental Avanzada")
         df_fun = df_total.drop(["Precio", "Fair Value (Target)", "Upside (%)", "Beta (Volatilidad)"])
@@ -177,13 +180,12 @@ if tickers_raw:
         h2 += '</tr>'
         for idx in df_fun.index:
             bg = "#f2f2f2" if idx == "Empresa" else "#ffffff"
-            # TOOLTIP LOGIC: Buscamos en el diccionario TOOLTIPS
-            tooltip_text = TOOLTIPS.get(idx, "")
-            tooltip_attr = f'title="{tooltip_text}"' if tooltip_text else ""
-            cursor_style = "cursor: help;" if tooltip_text else ""
+            t_text = TOOLTIPS.get(idx, "")
+            t_attr = f'title="{t_text}"' if t_text else ""
+            c_style = "cursor: help;" if t_text else ""
             
             h2 += f'<tr style="background-color: {bg};">'
-            h2 += f'<td {tooltip_attr} style="font-weight:bold; border:1px solid #ddd; padding:8px; {cursor_style}">{idx}</td>'
+            h2 += f'<td {t_attr} style="font-weight:bold; border:1px solid #ddd; padding:8px; {c_style}">{idx}</td>'
             
             for col in df_fun.columns:
                 val = df_fun.loc[idx, col]
@@ -196,10 +198,14 @@ if tickers_raw:
                         if col != "PROMEDIO":
                             prom = float(df_fun.loc[idx, "PROMEDIO"])
                             posibles_puntos[col] += 1
-                            if idx == "Debt/Equity" or idx == "Cost of Revenue":
+                            
+                            if idx == "PER":
+                                es_mejor = v_n > 10
+                            elif idx in ["Debt/Equity", "Cost of Revenue"]:
                                 es_mejor = v_n < prom
                             else:
                                 es_mejor = v_n > prom
+                                
                             if es_mejor:
                                 style += 'background-color: #c8e6c9; font-weight: bold;'
                                 ranking_puntos[col] += 1
@@ -212,7 +218,7 @@ if tickers_raw:
             h2 += '</tr>'
         st.write(h2 + '</table>', unsafe_allow_html=True)
 
-        # --- 3 Y 4. EVOLUCIÓN (TABLAS Y GRÁFICOS) ---
+        # --- 3. REVENUE ---
         st.divider()
         if datos_revenue:
             st.write("### 3. Evolución de Ingresos (Total Revenue)")
@@ -234,8 +240,9 @@ if tickers_raw:
             df_p_r['v_b'] = df_p_r['value'] / 1e9; df_p_r['per'] = df_p_r['variable'].str.split('<').str[0]
             st.altair_chart(alt.Chart(df_p_r).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('v_b', title='Billions'), color='Ticker').properties(height=300), use_container_width=True)
 
+        # --- 4. EPS ---
+        st.divider()
         if datos_eps:
-            st.divider()
             st.write("### 4. Evolución de Beneficio por Acción (Basic EPS)")
             df_e = pd.DataFrame(datos_eps).set_index("Ticker")
             cols_e = [c for c in df_e.columns if c != "Tendencia"] + ["Tendencia"]
@@ -287,7 +294,7 @@ if tickers_raw:
                         st.success("✅ **Filtros Sin-Equanon:**")
                         st.write(f"- Beta: **{s['Beta']:.2f}** (< 1.5)")
                         st.write(f"- Upside: **{s['Upside']*100:.1f}%** (> 0)")
-                        st.write(f"**🛡️ Fortaleza:** {s['Fund']} pts sobre la media.")
+                        st.write(f"**🛡️ Fortaleza:** {s['Fund']} pts sobre la media (PER > 10 incluido).")
                         st.write("**📈 Momentum:** ▲▲" if s['Bonus']==2 else "▲" if s['Bonus']==1 else "Estable")
                         st.write(f"**💰 Eficiencia:** Margen {s['Margin']*100:.2f}%")
 else:
