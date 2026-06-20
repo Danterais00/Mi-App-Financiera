@@ -48,13 +48,13 @@ def corregir_ticker(t):
 if tickers_raw:
     lista_tickers = [corregir_ticker(t) for t in tickers_raw.split(",") if t.strip()][:30]
     
-    datos_fundamentales, datos_revenue, datos_eps = [], [], []
+    datos_fundamentales, datos_tecnicos, datos_revenue, datos_eps = [], [], [], []
     analisis_completo = {}
     ranking_puntos = {ticker: 0 for ticker in lista_tickers}
     posibles_puntos = {ticker: 0 for ticker in lista_tickers}
     fechas_headers = []
 
-    with st.spinner('Formateando volúmenes en millones (M) y procesando métricas...'):
+    with st.spinner('Analizando tendencias históricas, soportes móviles y osciladores técnicos...'):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -90,6 +90,44 @@ if tickers_raw:
                     "Current Ratio": info.get('currentRatio'), "Quick Ratio": info.get('quickRatio')
                 }
                 datos_fundamentales.append(fila_fun)
+
+                # --- NUEVA CAPTURA: MÓDULO TÉCNICO (PREDICTIVO Y TENDENCIA) ---
+                hist = accion.history(period="max")
+                dist_ath, rsi_val, dist_sma = None, None, None
+                if not hist.empty and len(hist) >= 200:
+                    close_s = hist['Close']
+                    p_ref = p_actual if p_actual is not None else close_s.iloc[-1]
+                    
+                    # Distancia al Máximo Histórico
+                    ath = close_s.max()
+                    dist_ath = ((p_ref / ath) - 1) * 100 if ath else None
+                    
+                    # Distancia a la Media Móvil de 200 días (SMA 200)
+                    sma200 = close_s.rolling(window=200).mean().iloc[-1]
+                    dist_sma = ((p_ref / sma200) - 1) * 100 if sma200 else None
+                    
+                    # Cálculo del RSI (14 días estándar)
+                    delta = close_s.diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                    if loss.iloc[-1] == 0:
+                        rsi_val = 100 if gain.iloc[-1] > 0 else 50
+                    else:
+                        rsi_val = 100 - (100 / (1 + (gain.iloc[-1] / loss.iloc[-1])))
+
+                estado_rsi = "Neutral"
+                if rsi_val:
+                    if rsi_val < 30: estado_rsi = "Oportunidad (Sobreventa)"
+                    elif rsi_val > 70: estado_rsi = "Eufórico (Sobrecompra)"
+
+                fila_tec = {
+                    "Ticker": ticker,
+                    "Distancia a Máx Histórico": dist_ath,
+                    "RSI (14 días)": rsi_val,
+                    "Estado RSI": estado_rsi,
+                    "Distancia a Media 200d": dist_sma
+                }
+                datos_tecnicos.append(fila_tec)
 
                 # --- TENDENCIAS ---
                 nombres_base = ["4 Trim. atrás", "3 Trim. atrás", "2 Trim. atrás", "1 Trim. atrás", "Último Trim."]
@@ -129,7 +167,6 @@ if tickers_raw:
                 }
             except Exception: pass
 
-    # --- FUNCIÓN DE FORMATEO (PARA TABLAS 2 Y 3) ---
     def fmt_num(n, es_moneda=True):
         if pd.isna(n) or n == 0: return "-"
         p = "$" if (n >= 0 and es_moneda) else ""
@@ -142,10 +179,9 @@ if tickers_raw:
     if datos_fundamentales:
         df_total = pd.DataFrame(datos_fundamentales).set_index("Ticker").T
 
-        # --- 1. VALUACIÓN (CON FILTRO DE VOLUMEN PROMEDIO EN M) ---
+        # --- 1. VALUACIÓN ---
         st.write("### 1. Valuación y Datos de Empresa")
         df_val = df_total.loc[["Empresa", "Precio", "Fair Value (Target)", "Upside (%)", "Beta (Volatilidad)", "Volumen Promedio"]]
-        
         h1 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
         h1 += '<tr style="background-color: #f0f2f6;"><th>Indicador</th>'
         for col in df_val.columns: h1 += f'<th>{col}</th>'
@@ -167,7 +203,6 @@ if tickers_raw:
                 elif idx == "Empresa": val_show = f"<b>{val}</b>"
                 elif idx in ["Precio", "Fair Value (Target)"]: val_show = f"${float(val):,.2f}"
                 elif idx == "Volumen Promedio": 
-                    # MODIFICACIÓN SOLICITADA: Expresar estrictamente en Millones (M)
                     try: val_show = f"{float(val)/1e6:.2f}M"
                     except: val_show = "-"
                 else: val_show = str(val)
@@ -226,52 +261,84 @@ if tickers_raw:
             h2 += '</tr>'
         st.write(h2 + '</table>', unsafe_allow_html=True)
 
-        # --- 3. REVENUE ---
+        # --- NUEVA SECCIÓN 3: ANÁLISIS DE MOMENTO TÉCNICO Y TENDENCIA ---
+        st.divider()
+        st.write("### 3. Análisis de Momento Técnico y Tendencia")
+        if datos_tecnicos:
+            df_tec = pd.DataFrame(datos_tecnicos).set_index("Ticker").T
+            h3 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
+            h3 += '<tr style="background-color: #f0f2f6;"><th>Indicador Técnico</th>'
+            for col in df_tec.columns: h3 += f'<th>{col}</th>'
+            h3 += '</tr>'
+            for idx in df_tec.index:
+                h3 += f'<tr style="background-color: #ffffff;"><td style="font-weight:bold; border:1px solid #ddd; padding:8px; background-color: #f2f2f2;">{idx}</td>'
+                for col in df_tec.columns:
+                    val = df_tec.loc[idx, col]
+                    style = 'border: 1px solid #ddd; padding: 8px;'
+                    if pd.isna(val) or val is None: val_show = "-"
+                    elif idx in ["Distancia a Máx Histórico", "Distancia a Media 200d"]:
+                        v_f = float(val)
+                        val_show = f"{v_f:+.2f}%"
+                        # Alerta de Soporte: si está entre 0% y 5% por encima de la media de 200 días
+                        if idx == "Distancia a Media 200d" and 0 <= v_f <= 5:
+                            style += 'background-color: #c8e6c9; color: #2e7d32; font-weight: bold;'
+                    elif idx == "RSI (14 días)":
+                        val_show = f"{float(val):.2f}"
+                    elif idx == "Estado RSI":
+                        val_show = str(val)
+                        if val == "Oportunidad (Sobreventa)": style += 'background-color: #c8e6c9; color: #2e7d32; font-weight: bold;'
+                        elif val == "Eufórico (Sobrecompra)": style += 'background-color: #ffcdd2; color: #c62828; font-weight: bold;'
+                    else: val_show = str(val)
+                    h3 += f'<td style="{style}">{val_show}</td>'
+                h3 += '</tr>'
+            st.write(h3 + '</table>', unsafe_allow_html=True)
+
+        # --- 4. REVENUE ---
         st.divider()
         if datos_revenue:
-            st.write("### 3. Evolución de Ingresos (Total Revenue)")
+            st.write("### 4. Evolución de Ingresos (Total Revenue)")
             df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
             cols_r = [c for c in df_r.columns if c != "Tendencia"] + ["Tendencia"]
-            h3 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
-            h3 += '<tr style="background-color: #f0f2f6;"><th>Ticker</th>'
-            for c in cols_r: h3 += f'<th>{c}</th>'
-            h3 += '</tr>'
+            h4 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
+            h4 += '<tr style="background-color: #f0f2f6;"><th>Ticker</th>'
+            for c in cols_r: h4 += f'<th>{c}</th>'
+            h4 += '</tr>'
             for t_idx in df_r.index:
-                h3 += f'<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{t_idx}</td>'
+                h4 += f'<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{t_idx}</td>'
                 for c in cols_r:
                     val_c = df_r.loc[t_idx, c]
                     v_s = str(val_c) if c == "Tendencia" else fmt_num(val_c, es_moneda=True)
-                    h3 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
-                h3 += '</tr>'
-            st.write(h3 + '</table>', unsafe_allow_html=True)
+                    h4 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
+                h4 += '</tr>'
+            st.write(h4 + '</table>', unsafe_allow_html=True)
             df_p_r = df_r.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
             df_p_r['v_b'] = df_p_r['value'] / 1e9; df_p_r['per'] = df_p_r['variable'].str.split('<').str[0]
             st.altair_chart(alt.Chart(df_p_r).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('v_b', title='Billions'), color='Ticker').properties(height=300), use_container_width=True)
 
-        # --- 4. EPS ---
+        # --- 5. EPS ---
         st.divider()
         if datos_eps:
-            st.write("### 4. Evolución de Beneficio por Acción (Basic EPS)")
+            st.write("### 5. Evolución de Beneficio por Acción (Basic EPS)")
             df_e = pd.DataFrame(datos_eps).set_index("Ticker")
             cols_e = [c for c in df_e.columns if c != "Tendencia"] + ["Tendencia"]
-            h4 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
-            h4 += '<tr style="background-color: #f0f2f6;"><th>Ticker</th>'
-            for c in cols_e: h4 += f'<th>{c}</th>'
-            h4 += '</tr>'
+            h5 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
+            h5 += '<tr style="background-color: #f0f2f6;"><th>Ticker</th>'
+            for c in cols_e: h5 += f'<th>{c}</th>'
+            h5 += '</tr>'
             for t_idx in df_e.index:
-                h4 += f'<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{t_idx}</td>'
+                h5 += f'<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{t_idx}</td>'
                 for c in cols_e:
                     val_c = df_e.loc[t_idx, c]
                     v_s = str(val_c) if c == "Tendencia" else f"{val_c:.2f}"
-                    h4 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
-                h4 += '</tr>'
-            st.write(h4 + '</table>', unsafe_allow_html=True)
+                    h5 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
+                h5 += '</tr>'
+            st.write(h5 + '</table>', unsafe_allow_html=True)
             df_p_e = df_e.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker"); df_p_e['per'] = df_p_e['variable'].str.split('<').str[0]
             st.altair_chart(alt.Chart(df_p_e).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('value', title='EPS ($)'), color='Ticker').properties(height=300), use_container_width=True)
 
-        # --- 5. TOP 5 ELITE ---
+        # --- 6. TOP 5 ELITE ---
         st.divider()
-        st.write(f"### 🏆 5. Selección Elite: TOP 5 ({modo_estrategia})")
+        st.write(f"### 🏆 6. Selección Elite: TOP 5 ({modo_estrategia})")
         final_scores = []
         for t in lista_tickers:
             if t in analisis_completo:
