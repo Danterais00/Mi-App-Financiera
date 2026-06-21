@@ -372,8 +372,14 @@ if tickers_raw:
                         st.success("✅ **Filtros Sin-Equanon:**")
                         st.write(f"- Beta: **{s['Beta']:.2f}** (< 1.5)")
                         st.write(f"- Potencial: **{s['Upside']*100:.1f}%** (> 0)")
+                        st.divider()
                         
-                        # --- LEYENDA: SEMÁFORO TÉCNICO CONSULTIVO ---
+                        st.write(f"**🛡️ Fortaleza:** {s['Fund']} pts sobre la media (PER > 10 incluido).")
+                        st.write("**📈 Momentum:** ▲▲" if s['Bonus']==2 else "▲" if s['Bonus']==1 else "Estable")
+                        st.write(f"**💰 Eficiencia:** Margen {s['Margin']*100:.2f}%")
+                        st.divider()
+                        
+                        # --- MODIFICACIÓN SOLICITADA: LEYENDA DEL SEMÁFORO AL FINAL DEL EXPANDER ---
                         rsi_v = s["Rsi"]
                         dsma_v = s["DistSma"]
                         
@@ -391,11 +397,6 @@ if tickers_raw:
                             rec_tec = "🟡 COMPRA MODERADA / ESCALONADA (Zona Neutral)"
                         
                         st.write(f"**🚦 Semáforo Técnico:** {rec_tec}")
-                        st.divider()
-                        
-                        st.write(f"**🛡️ Fortaleza:** {s['Fund']} pts sobre la media (PER > 10 incluido).")
-                        st.write("**📈 Momentum:** ▲▲" if s['Bonus']==2 else "▲" if s['Bonus']==1 else "Estable")
-                        st.write(f"**💰 Eficiencia:** Margen {s['Margin']*100:.2f}%")
 
         # --- 6. ANÁLISIS DE MOMENTO TÉCNICO Y TENDENCIA ---
         st.divider()
