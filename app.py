@@ -10,10 +10,10 @@ st.set_page_config(page_title="Terminal Pro: Inteligencia Financiera", layout="w
 TOOLTIPS = {
     "Net Income": "indica el beneficio real neto tras restar absolutamente todos los gastos e impuestos.",
     "Cost of Revenue": "Gastos directos para fabricar o entregar el producto.",
-    "PER": ("0 - 10 (Bajo): indica que la acción está infravalorada o que el mercado tiene serias dudas sobre su futuro crecimiento. "
-            "10 - 17 (Moderado): rango saludable y razonable para empresas establecidas. "
-            "17 - 25 (Alto): acción sobrevalorada o que la empresa tiene buenas expectativas de crecimiento futuro que justifican pagar un precio mayor. "
-            "Más de 25 (Muy alto): Típico de empresas de crecimiento agresivo. Los inversores pagan mucho hoy esperando beneficios gigantescos mañana."),
+    "PER": """0 - 10 (Bajo): indica que la acción está infravalorada o que el mercado tiene serias dudas sobre su futuro crecimiento. 
+10 - 17 (Moderado): rango saludable y razonable para empresas establecidas. 
+17 - 25 (Alto): acción sobrevalorada o que la empresa tiene buenas expectativas de crecimiento futuro que justifican pagar un precio mayor. 
+Más de 25 (Muy alto): Típico de empresas de crecimiento agresivo. Los inversores pagan mucho hoy esperando beneficios gigantescos mañana.""",
     "Margen Neto (%)": "Es la eficiencia operativa. Indica qué porcentaje de las ventas totales se convierte en ganancia limpia.",
     "ROE (%)": "Rentabilidad sobre el capital: mide qué tan bien la directiva multiplica el dinero de los accionistas.",
     "ROA (%)": "Rentabilidad sobre activos: indica la ganancia generada por cada dólar de recurso (propio o deuda) que posee la empresa.",
@@ -126,7 +126,6 @@ if tickers_raw:
                 }
                 datos_tecnicos.append(fila_tec)
 
-                # Pasamos los datos técnicos clave al diccionario de análisis completo para usarlos en el Racional de la sección 5
                 analisis_completo[ticker] = {
                     "nombre": info.get('longName', ticker), "rev_t": icon_r, "eps_t": icon_e, 
                     "net_margin": info.get('profitMargins', -1), 
@@ -153,7 +152,7 @@ if tickers_raw:
         st.write("### 1. Valuación y Datos de Empresa")
         df_val = df_total.loc[["Empresa", "Precio", "Fair Value (Target)", "Upside (%)", "Beta (Volatilidad)", "Volumen Promedio"]]
         
-        h1 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
+        h1 = """<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">"""
         h1 += '<tr style="background-color: #f0f2f6;"><th>Indicador</th>'
         for col in df_val.columns: h1 += f'<th>{col}</th>'
         h1 += '</tr>'
@@ -188,7 +187,7 @@ if tickers_raw:
         f_ratios = df_fun.index.drop("Empresa")
         df_fun.loc[f_ratios, "PROMEDIO"] = df_fun.loc[f_ratios].apply(pd.to_numeric, errors='coerce').mean(axis=1)
         
-        h2 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">'
+        h2 = """<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">"""
         h2 += '<tr style="background-color: #f0f2f6;"><th>Indicador</th>'
         for col in df_fun.columns: h2 += f'<th>{col}</th>'
         h2 += '</tr>'
@@ -238,4 +237,12 @@ if tickers_raw:
             st.write("### 3. Evolución de Ingresos (Total Revenue)")
             df_r = pd.DataFrame(datos_revenue).set_index("Ticker")
             cols_r = [c for c in df_r.columns if c != "Tendencia"] + ["Tendencia"]
-            h3 = '<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px
+            h3 = """<table style="width:100%; border-collapse: collapse; text-align: center; border: 1px solid #ddd;">"""
+            h3 += '<tr style="background-color: #f0f2f6;"><th>Ticker</th>'
+            for c in cols_r: h3 += f'<th>{c}</th>'
+            h3 += '</tr>'
+            for t_idx in df_r.index:
+                h3 += f'<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{t_idx}</td>'
+                for c in cols_r:
+                    val_c = df_r.loc[t_idx, c]
+                    v_s = str(val_c) if c == "Tendencia" else fmt_num(val_c, es_moneda=True)
