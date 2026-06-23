@@ -34,10 +34,10 @@ modo_estrategia = st.sidebar.radio(
 
 st.title("🚀 Terminal de Análisis Fundamental Pro")
 st.write(f"Modo Activo: **{modo_estrategia}**")
-st.info("⚠️ Filtro Elite Activo: Beta < 1.5 y Upside > 0% obligatorio para el TOP 5. PER > 10 para punto de calidad.")
+st.info("⚠️ Filtro Elite Activo: Beta < 1.5 y Upside > 0% obligatorio para el TOP 10. PER > 10 para punto de calidad.")
 
 # 2. ENTRADA DE TICKERS
-tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, SHEL, AAPL.BA, MSFT.BA").upper()
+tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, SHEL, AAPL.BA, MSFT.BA, GOOGL.BA, AMZN.BA, MELI.BA, NVDA.BA").upper()
 
 def corregir_ticker(t):
     t = t.strip()
@@ -55,7 +55,7 @@ if tickers_raw:
     fechas_headers = []
     nombres_base = ["4 Trim. atrás", "3 Trim. atrás", "2 Trim. atrás", "1 Trim. atrás", "Último Trim."]
 
-    with st.spinner('Sincronizando canales de datos paralelos (Precios e Historiales)...'):
+    with st.spinner('Sincronizando canales de datos paralelos e incrementando capacidad a TOP 10...'):
         for ticker in lista_tickers:
             # --- CAPTURA SEGURO DE INFO BASE ---
             try:
@@ -335,9 +335,9 @@ if tickers_raw:
             df_p_e = df_e.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker"); df_p_e['per'] = df_p_e['variable'].str.split('<').str[0]
             st.altair_chart(alt.Chart(df_p_e).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('value', title='EPS ($)'), color='Ticker').properties(height=300), use_container_width=True)
 
-        # --- 5. SELECCIÓN ELITE: TOP 5 ---
+        # --- 5. SELECCIÓN ELITE: MODIFICADO A TOP 10 ---
         st.divider()
-        st.write(f"### 🏆 5. Selección Elite: TOP 5 ({modo_estrategia})")
+        st.write(f"### 🏆 5. Selección Elite: TOP 10 ({modo_estrategia})")
         final_scores = []
         for t in lista_tickers:
             if t in analisis_completo:
@@ -357,46 +357,51 @@ if tickers_raw:
                         "DistSma": analisis_completo[t]["dist_sma"]
                     })
 
-        top_5 = sorted(final_scores, key=lambda x: (x['Total'], x['Eficacia'], x['Bonus'], x['Margin']), reverse=True)[:5]
-        if not top_5:
+        # Slicing modificado a [:10] para abarcar el Top 10 completo
+        top_10 = sorted(final_scores, key=lambda x: (x['Total'], x['Eficacia'], x['Bonus'], x['Margin']), reverse=True)[:10]
+        if not top_10:
             st.warning("Ningún ticker cumple actualmente las condiciones exigidas: Beta < 1.5 y Upside > 0%.")
         else:
-            cols_5 = st.columns(5)
-            for idx, s in enumerate(top_5):
-                with cols_5[idx]:
-                    st.markdown(f"Puesto #{idx+1}")
-                    st.markdown(f"<h1 style='text-align: left; margin-top: -20px;'><b>{s['Ticker']}</b></h1>", unsafe_allow_html=True)
-                    st.markdown(f"<p style='font-size: 1.2em;'>{s['Total']} Puntos</p>", unsafe_allow_html=True)
-                    
-                    with st.expander("Ver Racional"):
-                        st.success("✅ **Filtros Sin-Equanon:**")
-                        st.write(f"- Beta: **{s['Beta']:.2f}** (< 1.5)")
-                        st.write(f"- Potencial: **{s['Upside']*100:.1f}%** (> 0)")
-                        st.divider()
+            # Renderizado inteligente en bloques de 5 columnas para mantener el balance visual
+            for row_idx in range(0, len(top_10), 5):
+                chunk = top_10[row_idx:row_idx+5]
+                cols = st.columns(5)  # Crea siempre una grilla de 5 para perfecta alineación
+                for col_idx, s in enumerate(chunk):
+                    puesto = row_idx + col_idx + 1
+                    with cols[col_idx]:
+                        st.markdown(f"Puesto #{puesto}")
+                        st.markdown(f"<h1 style='text-align: left; margin-top: -20px;'><b>{s['Ticker']}</b></h1>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='font-size: 1.2em;'>{s['Total']} Puntos</p>", unsafe_allow_html=True)
                         
-                        st.write(f"**🛡️ Fortaleza:** {s['Fund']} pts sobre la media (PER > 10 incluido).")
-                        st.write("**📈 Momentum:** ▲▲" if s['Bonus']==2 else "▲" if s['Bonus']==1 else "Estable")
-                        st.write(f"**💰 Eficiencia:** Margen {s['Margin']*100:.2f}%")
-                        st.divider()
-                        
-                        # --- MODIFICACIÓN SOLICITADA: LEYENDA DEL SEMÁFORO AL FINAL DEL EXPANDER ---
-                        rsi_v = s["Rsi"]
-                        dsma_v = s["DistSma"]
-                        
-                        if rsi_v is None or dsma_v is None:
-                            rec_tec = "⚪ Datos históricos insuficientes"
-                        elif rsi_v < 30:
-                            rec_tec = "🟢 COMPRA FUERTE (Oportunidad por Sobreventa)"
-                        elif 0 <= dsma_v <= 5:
-                            rec_tec = "🟢 COMPRA IDEAL (Soporte sobre Media 200d)"
-                        elif rsi_v > 70:
-                            rec_tec = "🔴 NO ENTRAR / RIESGO (Euforia por Sobrecompra)"
-                        elif dsma_v < 0:
-                            rec_tec = "🟡 PRECAUCIÓN / ESPERAR (Tendencia Bajista)"
-                        else:
-                            rec_tec = "🟡 COMPRA MODERADA / ESCALONADA (Zona Neutral)"
-                        
-                        st.write(f"**🚦 Semáforo Técnico:** {rec_tec}")
+                        with st.expander("Ver Racional"):
+                            st.success("✅ **Filtros Sin-Equanon:**")
+                            st.write(f"- Beta: **{s['Beta']:.2f}** (< 1.5)")
+                            st.write(f"- Potencial: **{s['Upside']*100:.1f}%** (> 0)")
+                            st.divider()
+                            
+                            st.write(f"**🛡️ Fortaleza:** {s['Fund']} pts sobre la media (PER > 10 incluido).")
+                            st.write("**📈 Momentum:** ▲▲" if s['Bonus']==2 else "▲" if s['Bonus']==1 else "Estable")
+                            st.write(f"**💰 Eficiencia:** Margen {s['Margin']*100:.2f}%")
+                            st.divider()
+                            
+                            # --- LEYENDA DEL SEMÁFORO AL FINAL DEL EXPANDER ---
+                            rsi_v = s["Rsi"]
+                            dsma_v = s["DistSma"]
+                            
+                            if rsi_v is None or dsma_v is None:
+                                rec_tec = "⚪ Datos históricos insuficientes"
+                            elif rsi_v < 30:
+                                rec_tec = "🟢 COMPRA FUERTE (Oportunidad por Sobreventa)"
+                            elif 0 <= dsma_v <= 5:
+                                rec_tec = "🟢 COMPRA IDEAL (Soporte sobre Media 200d)"
+                            elif rsi_v > 70:
+                                rec_tec = "🔴 NO ENTRAR / RIESGO (Euforia por Sobrecompra)"
+                            elif dsma_v < 0:
+                                rec_tec = "🟡 PRECAUCIÓN / ESPERAR (Tendencia Bajista)"
+                            else:
+                                rec_tec = "🟡 COMPRA MODERADA / ESCALONADA (Zona Neutral)"
+                            
+                            st.write(f"**🚦 Semáforo Técnico:** {rec_tec}")
 
         # --- 6. ANÁLISIS DE MOMENTO TÉCNICO Y TENDENCIA ---
         st.divider()
