@@ -9,7 +9,7 @@ from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes, BENCHMARKS
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v3.1"  # <-- Versión parcheada (Fix Error Comparativa)
+APP_VERSION = "v3.2"  # <-- Versión con diseño Top 10 Minimalista Horizontal
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -120,13 +120,9 @@ if st.session_state.datos_cargados:
             h2 += f'<tr><td class="col-header" title="{t_text}"><span style="{sty}">{idx}</span></td>'
             for col in df_comp.columns:
                 val = df_comp.loc[idx, col]; cls = ""
-                
-                # --- SOLUCIÓN DEL ERROR APLICADA AQUÍ ---
                 if col == "REFERENCIA":
                     h2 += f'<td class="col-ref">{val}</td>'
-                    continue  # Obliga al bucle a saltar a la siguiente columna
-                # ----------------------------------------
-                
+                    continue
                 elif pd.isna(val) or val is None: v_sh = "-"
                 elif idx == "Empresa": v_sh = f"<b>{val}</b>"
                 else:
@@ -240,30 +236,54 @@ if st.session_state.datos_cargados:
         if not top10:
             st.warning("Ninguna acción cumple el filtro exigido: Beta < 1.5.")
         else:
-            for i in range(0, len(top10), 5):
-                cols = st.columns(5)
-                for j, s in enumerate(top10[i:i+5]):
-                    with cols[j]:
-                        st.markdown(f"""
-                        <div style="background-color: #12161f; padding: 15px; border-radius: 12px; border: 1px solid #2a2e39; text-align: center; margin-bottom: 10px;">
-                            <p style='color:#a3a8b8; margin:0; font-size: 0.85rem;'>Puesto #{i+j+1}</p>
-                            <h2 style='margin: 5px 0; color:#ffffff;'>{s['t']}</h2>
-                            <p style='color:#2ecca6; margin:0; font-size: 1.1rem;'><b>{s['total']} Puntos</b></p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        with st.expander("Detalle Fundamental"):
-                            st.write(f"**Beta:** {s['b']:.2f}")
-                            st.write(f"**Upside:** {s['u']*100:.1f}%" if s['u'] else "**Upside:** N/A")
-                            st.divider()
-                            st.write(f"🛡️ **Fortaleza:** {s['pf']} pts")
-                            st.write(f"📈 **Momentum:** {'▲▲' if s['pc']==2 else '▲' if s['pc']==1 else 'Estable'}")
-                            st.divider()
-                            r, d = s['rsi'], s['dsma']
-                            if not r or not d: st.write("⚪ Datos Incompletos")
-                            elif r < 30: st.write("🟢 COMPRA FUERTE (RSI)")
-                            elif 0 <= d <= 5: st.write("🟢 COMPRA IDEAL (Soporte M200)")
-                            elif r > 70: st.write("🔴 NO ENTRAR (Euforia)")
-                            elif d < 0: st.write("🟡 PRECAUCIÓN (Bajista)")
-                            else: st.write("🟡 ZONA NEUTRAL")
+            st.write("---")
+            for i, s in enumerate(top10):
+                col_box, col_text = st.columns([1, 4])
+                
+                with col_box:
+                    st.markdown(f"""
+                    <div style="background-color: #12161f; padding: 20px 10px; border-radius: 12px; border: 1px solid #2a2e39; text-align: center; height: 100%;">
+                        <p style='color:#a3a8b8; margin:0; font-size: 0.9rem;'>Puesto #{i+1}</p>
+                        <h2 style='margin: 10px 0; color:#ffffff; font-size: 2.2rem;'>{s['t']}</h2>
+                        <p style='color:#2ecca6; margin:0; font-size: 1.1rem;'><b>{s['total']} Puntos</b></p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                with col_text:
+                    st.markdown(f"**💡 Racional de Inversión:**")
+                    
+                    # 1. Fundamentales
+                    st.markdown(f"**• Solidez Fundamental:** Cumple con **{s['pf']}** de los 10 estándares institucionales absolutos de salud financiera (rentabilidad y solvencia).")
+                    
+                    # 2. Momentum
+                    if s['pc'] == 2:
+                        st.markdown("**• Crecimiento Operativo:** Presenta una tendencia alcista tanto en ingresos (Revenue) como en beneficios (EPS) en sus últimos trimestres.")
+                    elif s['pc'] == 1:
+                        st.markdown("**• Crecimiento Operativo:** Muestra signos positivos recientes de crecimiento en ingresos o beneficios.")
+                        
+                    # 3. Riesgo y Valoración
+                    riesgo_str = f"**• Riesgo y Potencial:** Acción de perfil defensivo (Beta de **{s['b']:.2f}**)."
+                    if s['u'] and s['u'] > 0:
+                        riesgo_str += f" Los analistas proyectan un recorrido alcista (descuento) del **{s['u']*100:.1f}%**."
+                    st.markdown(riesgo_str)
+                    
+                    # 4. Técnico
+                    r, d = s['rsi'], s['dsma']
+                    tec_str = "**• Timing Técnico:** "
+                    if not r or not d:
+                        tec_str += "Datos históricos insuficientes para generar una señal."
+                    elif r < 30:
+                        tec_str += "🟢 **COMPRA FUERTE**. El RSI indica sobreventa extrema, sugiriendo una oportunidad de rebote."
+                    elif 0 <= d <= 5:
+                        tec_str += "🟢 **ENTRADA IDEAL**. La acción se está apoyando en el soporte dinámico de su media móvil de 200 días."
+                    elif r > 70:
+                        tec_str += "🔴 **PRECAUCIÓN**. El RSI indica niveles de euforia o sobrecompra; riesgo de corrección."
+                    elif d < 0:
+                        tec_str += "🟡 **ALERTA BAJISTA**. La tendencia principal es negativa (cotizando debajo de la media de 200 días)."
+                    else:
+                        tec_str += "Zona neutral. No se observan señales extremas en el precio a corto plazo."
+                    st.markdown(tec_str)
+                
+                st.write("---")
 else:
     st.info("👈 Ingresa los tickers y presiona 'Sincronizar Datos' para comenzar el análisis.")
