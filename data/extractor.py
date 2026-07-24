@@ -1,8 +1,10 @@
 import yfinance as yf
 import pandas as pd
+import streamlit as st
 
+@st.cache_data(ttl=43200) # Memoria activa por 12 horas (43200 segundos)
 def descargar_datos_mercado(lista_tickers):
-    """Descarga y procesa datos de YFinance para una lista de tickers."""
+    """Descarga y procesa datos de YFinance usando Caché Inteligente."""
     datos_fundamentales = []
     datos_tecnicos = []
     datos_revenue = []
