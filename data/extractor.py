@@ -37,7 +37,14 @@ def descargar_datos_mercado(lista_tickers):
         gross_margin = (gross / rev) if (gross and rev and rev > 0) else None
         fcf_yield = (fcf / mcap) if (fcf and mcap and mcap > 0) else None
         
-        # Se agregan las nuevas métricas institucionales
+        # --- EXTRACCIÓN DE LOGO (NUEVO) ---
+        website = info.get('website')
+        domain = None
+        if website and isinstance(website, str):
+            domain = website.split('//')[-1].split('/')[0].replace('www.', '')
+        logo_url = f"https://logo.clearbit.com/{domain}?size=60" if domain else None
+        # ----------------------------------
+        
         datos_fundamentales.append({
             "Ticker": ticker, "Empresa": info.get('longName', ticker),
             "Precio": p_actual, "Fair Value (Target)": v_justo, "Upside (%)": upside,
@@ -110,7 +117,8 @@ def descargar_datos_mercado(lista_tickers):
         analisis_completo[ticker] = {
             "nombre": info.get('longName', ticker), "rev_t": icon_r, "eps_t": icon_e,
             "net_margin": info.get('profitMargins', -1), "upside_val": upside,
-            "beta_val": info.get('beta', 99), "rsi_val": rsi_val, "dist_sma": dist_sma
+            "beta_val": info.get('beta', 99), "rsi_val": rsi_val, "dist_sma": dist_sma,
+            "logo_url": logo_url # <- Guardamos el logo en el análisis
         }
 
     return datos_fundamentales, datos_tecnicos, datos_revenue, datos_eps, analisis_completo
