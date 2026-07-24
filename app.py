@@ -9,7 +9,7 @@ from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v4.1"  # <-- Grado Institucional (Incluye Gráfico de EPS restaurado)
+APP_VERSION = "v4.2"  # <-- Fix: Reconstrucción de datos al cambiar estrategia
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -78,11 +78,16 @@ if btn_analizar and tickers_raw:
             })
             st.rerun()
 
-# Si cambian la estrategia sin recargar, obligar a recalcular
+# --- RE-CÁLCULO SIN DESCARGA (Corrección del KeyError) ---
 if st.session_state.datos_cargados and st.session_state.estrategia_cargada != modo_estrategia:
-    df_total, df_comp, puntos, posibles = calcular_puntajes(
-        [dict(zip(st.session_state.df_total.index, st.session_state.df_total[t])) for t in st.session_state.tickers], 
-        st.session_state.tickers, modo_estrategia)
+    datos_reconstruidos = []
+    for t in st.session_state.tickers:
+        if t in st.session_state.df_total.columns:
+            fila = dict(zip(st.session_state.df_total.index, st.session_state.df_total[t]))
+            fila["Ticker"] = t  # <- Aquí inyectamos la clave Ticker que faltaba
+            datos_reconstruidos.append(fila)
+            
+    df_total, df_comp, puntos, posibles = calcular_puntajes(datos_reconstruidos, st.session_state.tickers, modo_estrategia)
     st.session_state.update({"df_total": df_total, "df_comp": df_comp, "puntos": puntos, "posibles": posibles, "estrategia_cargada": modo_estrategia})
 
 # --- RENDERIZADO DE VISTAS ---
@@ -202,7 +207,6 @@ if st.session_state.datos_cargados:
                 h4 += '</tr>'
             st.write(h4 + '</table></div>', unsafe_allow_html=True)
             
-            # --- RESTAURACIÓN DEL GRÁFICO DE EPS ---
             df_p_eps = df_eps_pd.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
             df_p_eps['value'] = pd.to_numeric(df_p_eps['value'], errors='coerce')
             df_p_eps['Trimestre'] = df_p_eps['variable'].str.split('<').str[0]
