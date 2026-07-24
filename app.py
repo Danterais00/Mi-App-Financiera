@@ -9,7 +9,7 @@ from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v2.0"  # <-- Aquí puedes actualizar la versión en el futuro
+APP_VERSION = "v2.1"  # <-- Versión actualizada sin numeración en títulos internos
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -99,7 +99,7 @@ if st.session_state.datos_cargados:
     dft = st.session_state.df_total
     
     if menu_seccion == "Datos y Valuación":
-        st.header("1. Valuación y Perfil de Mercado")
+        st.header("Valuación y Perfil de Mercado")
         df_val = dft.loc[["Empresa", "Precio", "Fair Value (Target)", "Upside (%)", "Beta", "Volumen Promedio"]]
         h1 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador</th>'
         for col in df_val.columns: h1 += f'<th>{col}</th>'
@@ -126,7 +126,7 @@ if st.session_state.datos_cargados:
         st.write(h1 + '</table></div>', unsafe_allow_html=True)
 
     elif menu_seccion == "Comparativa":
-        st.header("2. Ratios Fundamentales")
+        st.header("Ratios Fundamentales")
         df_comp = st.session_state.df_comp
         h2 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador</th>'
         for col in df_comp.columns: h2 += f'<th>{col}</th>'
@@ -156,7 +156,7 @@ if st.session_state.datos_cargados:
         st.write(h2 + '</table></div>', unsafe_allow_html=True)
 
     elif menu_seccion == "Evolución Financiera":
-        st.header("3. Evolución Financiera Histórica")
+        st.header("Evolución Financiera Histórica")
         df_r, df_e = st.session_state.df_rev, st.session_state.df_eps
         
         if df_r:
@@ -198,7 +198,7 @@ if st.session_state.datos_cargados:
             st.write(h4 + '</table></div>', unsafe_allow_html=True)
 
     elif menu_seccion == "Análisis Técnico":
-        st.header("4. Osciladores y Tendencias")
+        st.header("Osciladores y Tendencias")
         df_tec = pd.DataFrame(st.session_state.df_tec).set_index("Ticker").T
         if not df_tec.empty:
             h6 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador Técnico</th>'
