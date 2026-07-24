@@ -2,16 +2,15 @@ import yfinance as yf
 import pandas as pd
 import streamlit as st
 
-@st.cache_data(ttl=43200) # Memoria activa por 12 horas (43200 segundos)
+@st.cache_data(ttl=43200)
 def descargar_datos_mercado(lista_tickers):
-    """Descarga y procesa datos de YFinance usando Caché Inteligente."""
+    """Descarga y procesa datos de YFinance usando Caché Inteligente y Márgenes Relativos."""
     datos_fundamentales = []
     datos_tecnicos = []
     datos_revenue = []
     datos_eps = []
     analisis_completo = {}
     fechas_headers = []
-    nombres_base = ["4 Trim. atrás", "3 Trim. atrás", "2 Trim. atrás", "1 Trim. atrás", "Último Trim."]
 
     for ticker in lista_tickers:
         try:
@@ -21,7 +20,6 @@ def descargar_datos_mercado(lista_tickers):
         except:
             continue
 
-        # --- SISTEMA DE RESPALDO PARA PRECIO ---
         p_actual = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')
         if not p_actual:
             try: p_actual = accion.history(period="2d")['Close'].iloc[-1]
@@ -29,26 +27,30 @@ def descargar_datos_mercado(lista_tickers):
             
         if not p_actual or pd.isna(p_actual): continue
 
-        # --- FUNDAMENTALES ---
         v_justo = info.get('targetMeanPrice')
         upside = ((v_justo / p_actual) - 1) if p_actual and v_justo else None
+        
+        # Extracción para ratios relativos
         gross = info.get('grossProfits')
         rev = info.get('totalRevenue')
+        fcf = info.get('freeCashflow')
+        mcap = info.get('marketCap')
+        
+        gross_margin = (gross / rev) if (gross and rev and rev > 0) else None
+        fcf_yield = (fcf / mcap) if (fcf and mcap and mcap > 0) else None
         
         datos_fundamentales.append({
             "Ticker": ticker, "Empresa": info.get('longName', ticker),
             "Precio": p_actual, "Fair Value (Target)": v_justo, "Upside (%)": upside,
             "Beta": info.get('beta'), "Volumen Promedio": info.get('averageVolume'),
-            "Net Income": info.get('netIncomeToCommon') or info.get('netIncome'),
-            "Cost of Revenue": (rev - gross) if (rev and gross) else None,
             "PER": info.get('trailingPE'), "Margen Neto (%)": info.get('profitMargins'),
+            "Gross Margin (%)": gross_margin,
             "ROE (%)": info.get('returnOnEquity'), "ROA (%)": info.get('returnOnAssets'),
-            "Free Cash Flow": info.get('freeCashflow'), "Div Yield (%)": info.get('dividendYield'),
+            "FCF Yield (%)": fcf_yield, "Div Yield (%)": info.get('dividendYield'),
             "Debt/Equity": (info.get('debtToEquity') / 100) if info.get('debtToEquity') else None, 
             "Current Ratio": info.get('currentRatio'), "Quick Ratio": info.get('quickRatio')
         })
 
-        # --- TÉCNICOS ---
         rsi_val, dist_sma, dist_ath, estado_rsi = None, None, None, "Neutral"
         try:
             hist = accion.history(period="max")
@@ -62,8 +64,7 @@ def descargar_datos_mercado(lista_tickers):
                 delta = close_s.diff()
                 gain = delta.where(delta > 0, 0).ewm(alpha=1/14, adjust=False).mean()
                 loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/14, adjust=False).mean()
-                if loss.iloc[-1] != 0:
-                    rsi_val = 100 - (100 / (1 + (gain.iloc[-1] / loss.iloc[-1])))
+                if loss.iloc[-1] != 0: rsi_val = 100 - (100 / (1 + (gain.iloc[-1] / loss.iloc[-1])))
                 else: rsi_val = 100 if gain.iloc[-1] > 0 else 50
                 
                 if rsi_val < 30: estado_rsi = "Oportunidad (Sobreventa)"
@@ -72,7 +73,6 @@ def descargar_datos_mercado(lista_tickers):
         
         datos_tecnicos.append({"Ticker": ticker, "Dist. Máx Histórico": dist_ath, "RSI (14d)": rsi_val, "Estado RSI": estado_rsi, "Dist. Media 200d": dist_sma})
 
-        # --- OPERATIVOS ---
         icon_r, icon_e = '●', '●'
         try:
             df_q = accion.quarterly_financials
@@ -88,7 +88,7 @@ def descargar_datos_mercado(lista_tickers):
                         if i < len(fechas_headers): fila_r[fechas_headers[i]] = v
                     if len(rev_s) == 5:
                         r_growth = (rev_s.iloc[-1] - rev_s.iloc[0]) / abs(rev_s.iloc[0])
-                        icon_r = '<span style="color:#81c784;">▲</span>' if r_growth > 0.05 else '<span style="color:#e57373;">▼</span>' if r_growth < -0.05 else '<span style="color:#ffd54f;">●</span>'
+                        icon_r = '<span style="color:#2ecca6;">▲</span>' if r_growth > 0.05 else '<span style="color:#ff6b6b;">▼</span>' if r_growth < -0.05 else '<span style="color:#ffd54f;">●</span>'
                     fila_r["Tendencia"] = icon_r
                     datos_revenue.append(fila_r)
 
@@ -100,7 +100,7 @@ def descargar_datos_mercado(lista_tickers):
                         if i < len(fechas_headers): fila_e[fechas_headers[i]] = v
                     if len(eps_s) == 5:
                         e_growth = (eps_s.iloc[-1] - eps_s.iloc[0]) / abs(eps_s.iloc[0])
-                        icon_e = '<span style="color:#81c784;">▲</span>' if e_growth > 0.05 else '<span style="color:#e57373;">▼</span>' if e_growth < -0.05 else '<span style="color:#ffd54f;">●</span>'
+                        icon_e = '<span style="color:#2ecca6;">▲</span>' if e_growth > 0.05 else '<span style="color:#ff6b6b;">▼</span>' if e_growth < -0.05 else '<span style="color:#ffd54f;">●</span>'
                     fila_e["Tendencia"] = icon_e
                     datos_eps.append(fila_e)
         except: pass
