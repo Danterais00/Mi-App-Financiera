@@ -8,8 +8,11 @@ from ui.components import inyectar_css, TOOLTIPS, formatear_moneda
 from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
 
+# --- CONSTANTES DE LA APP ---
+APP_VERSION = "v2.0"  # <-- Aquí puedes actualizar la versión en el futuro
+
 # 1. CONFIGURACIÓN DE LA PÁGINA
-st.set_page_config(page_title="Terminal Pro: Inteligencia Financiera", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
 inyectar_css()
 
 # --- INICIALIZACIÓN DE VARIABLES DE SESIÓN ---
@@ -18,9 +21,7 @@ if 'datos_cargados' not in st.session_state:
 
 # --- BARRA LATERAL (SMARTFINANCE STYLE) ---
 with st.sidebar:
-    st.markdown("<h2 style='text-align: center; color: #4d8bf0;'>🚀 Terminal Pro</h2>", unsafe_allow_html=True)
-    st.write("")
-    
+    st.write("") # Espaciado superior
     modo_estrategia = st.selectbox("Estrategia activa:", ["Crecimiento (Agresivo)", "Fortaleza (Defensivo)"])
     
     st.write("")
@@ -45,7 +46,7 @@ with st.sidebar:
                 "margin": "0px", 
                 "--hover-color": "#1f2430",
                 "color": "#a3a8b8",
-                "white-space": "nowrap"  # <-- Evita que el texto salte al segundo renglón
+                "white-space": "nowrap"
             },
             "nav-link-selected": {
                 "background-color": "#4d8bf0",
@@ -55,11 +56,15 @@ with st.sidebar:
         }
     )
 
-st.title("Inteligencia Financiera Avanzada")
-st.markdown(f"<p style='color: #a3a8b8;'>Estrategia seleccionada: <strong style='color: #4d8bf0;'>{modo_estrategia}</strong></p>", unsafe_allow_html=True)
+# --- HEADER PRINCIPAL (BRANDING) ---
+st.markdown(f"""
+    <div style="margin-top: -30px; margin-bottom: 25px;">
+        <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">SmartInvest</h1>
+        <p style="margin: 0; padding: 0; color: #8ba1b6; font-size: 0.9rem; font-weight: 500;">{APP_VERSION}</p>
+    </div>
+""", unsafe_allow_html=True)
 
 # --- INPUT Y EXTRACCIÓN ---
-st.write("")
 col1, col2 = st.columns([4, 1])
 with col1:
     tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, AAPL.BA, MSFT.BA, NVDA.BA")
