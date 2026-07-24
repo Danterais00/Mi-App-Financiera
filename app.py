@@ -34,7 +34,7 @@ modo_estrategia = st.sidebar.radio(
 
 st.title("🚀 Terminal de Análisis Fundamental Pro")
 st.write(f"Modo Activo: **{modo_estrategia}**")
-st.info("⚠️ Filtro Elite Activo: Beta < 1.5 y Upside > 0% obligatorio para el TOP 10. PER > 10 para punto de calidad.")
+st.info("⚠️ Filtro Elite Activo: Beta < 1.5. Upside > 0% (si está disponible) para el TOP 10. PER > 0 y < Promedio para punto de calidad.")
 
 # 2. ENTRADA DE TICKERS
 tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, SHEL, AAPL.BA, MSFT.BA, GOOGL.BA, AMZN.BA, MELI.BA, NVDA.BA").upper()
@@ -62,7 +62,8 @@ if tickers_raw:
                 accion = yf.Ticker(ticker)
                 info = accion.info
                 if info is None: info = {}
-            except Exception:
+            except Exception as e:
+                print(f"Error obteniendo info de {ticker}: {e}")
                 info = {}
 
             # --- SISTEMA DE RESPALDO PARA PRECIO ACTUAL (ALTA DISPONIBILIDAD) ---
@@ -72,10 +73,9 @@ if tickers_raw:
                     hist_backup = accion.history(period="2d")
                     if not hist_backup.empty:
                         p_actual = hist_backup['Close'].iloc[-1]
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Error en precio de respaldo {ticker}: {e}")
 
-            # Si el ticker no arroja precio de ninguna forma, es inválido. Saltamos.
             if not p_actual or pd.isna(p_actual):
                 continue
 
@@ -86,8 +86,8 @@ if tickers_raw:
                     hist_vol = accion.history(period="20d")
                     if not hist_vol.empty:
                         vol_prom = hist_vol['Volume'].mean()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Error en volumen de respaldo {ticker}: {e}")
 
             # --- EXTRACCIÓN FUNDAMENTAL RESILIENTE ---
             v_justo = info.get('targetMeanPrice')
@@ -133,9 +133,10 @@ if tickers_raw:
                         sma200 = close_s.rolling(window=200).mean().iloc[-1]
                         dist_sma = ((p_ref / sma200) - 1) * 100 if sma200 else None
                     
+                    # CORRECCIÓN: Cálculo de RSI con suavizado exponencial (EWM)
                     delta = close_s.diff()
-                    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                    gain = delta.where(delta > 0, 0).ewm(alpha=1/14, adjust=False).mean()
+                    loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/14, adjust=False).mean()
                     if loss.iloc[-1] != 0:
                         rsi_val = 100 - (100 / (1 + (gain.iloc[-1] / loss.iloc[-1])))
                     else:
@@ -143,8 +144,8 @@ if tickers_raw:
 
                     if rsi_val < 30: estado_rsi = "Oportunidad (Sobreventa)"
                     elif rsi_val > 70: estado_rsi = "Eufórico (Sobrecompra)"
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Error en capa técnica {ticker}: {e}")
 
             fila_tec = {
                 "Ticker": ticker,
@@ -170,8 +171,14 @@ if tickers_raw:
                         fila_rev = {"Ticker": ticker}
                         for i, v in enumerate(rev_s):
                             if i < len(fechas_headers): fila_rev[fechas_headers[i]] = v
-                        r_growth = ((rev_s.iloc[-1] - rev_s.iloc[0]) / abs(rev_s.iloc[0])) if len(rev_s) >= 2 else 0
-                        icon_r = '<span style="color:#28a745; font-size:1.8em;">▲</span>' if r_growth > 0.05 else '<span style="color:#dc3545; font-size:1.8em;">▼</span>' if r_growth < -0.05 else '<span style="color:#ffc107; font-size:1.8em;">●</span>'
+                        
+                        # CORRECCIÓN: Calcular crecimiento solo si hay 5 trimestres
+                        if len(rev_s) == 5:
+                            r_growth = ((rev_s.iloc[-1] - rev_s.iloc[0]) / abs(rev_s.iloc[0]))
+                            icon_r = '<span style="color:#28a745; font-size:1.8em;">▲</span>' if r_growth > 0.05 else '<span style="color:#dc3545; font-size:1.8em;">▼</span>' if r_growth < -0.05 else '<span style="color:#ffc107; font-size:1.8em;">●</span>'
+                        else:
+                            icon_r = '<span style="color:#ffc107; font-size:1.8em;">●</span>'
+                            
                         fila_rev["Tendencia"] = icon_r
                         datos_revenue.append(fila_rev)
                     
@@ -181,17 +188,23 @@ if tickers_raw:
                         fila_eps = {"Ticker": ticker}
                         for i, v in enumerate(eps_s):
                             if i < len(fechas_headers): fila_eps[fechas_headers[i]] = v
-                        e_growth = ((eps_s.iloc[-1] - eps_s.iloc[0]) / abs(eps_s.iloc[0])) if len(eps_s) >= 2 else 0
-                        icon_e = '<span style="color:#28a745; font-size:1.8em;">▲</span>' if e_growth > 0.05 else '<span style="color:#dc3545; font-size:1.8em;">▼</span>' if e_growth < -0.05 else '<span style="color:#ffc107; font-size:1.8em;">●</span>'
+                        
+                        # CORRECCIÓN: Calcular crecimiento solo si hay 5 trimestres
+                        if len(eps_s) == 5:
+                            e_growth = ((eps_s.iloc[-1] - eps_s.iloc[0]) / abs(eps_s.iloc[0]))
+                            icon_e = '<span style="color:#28a745; font-size:1.8em;">▲</span>' if e_growth > 0.05 else '<span style="color:#dc3545; font-size:1.8em;">▼</span>' if e_growth < -0.05 else '<span style="color:#ffc107; font-size:1.8em;">●</span>'
+                        else:
+                            icon_e = '<span style="color:#ffc107; font-size:1.8em;">●</span>'
+                            
                         fila_eps["Tendencia"] = icon_e
                         datos_eps.append(fila_eps)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Error en capa operativa {ticker}: {e}")
 
             analisis_completo[ticker] = {
                 "nombre": info.get('longName', ticker) if info else ticker, "rev_t": icon_r, "eps_t": icon_e, 
                 "net_margin": info.get('profitMargins', -1) if (info and info.get('profitMargins') is not None) else -1, 
-                "upside_val": upside if upside is not None else -1,
+                "upside_val": upside if upside is not None else None,
                 "beta_val": beta if beta is not None else 99,
                 "rsi_val": rsi_val,
                 "dist_sma": dist_sma
@@ -222,7 +235,7 @@ if tickers_raw:
             for col in df_val.columns:
                 val = df_val.loc[idx, col]
                 style = 'border: 1px solid #ddd; padding: 8px;'
-                if pd.isna(val): val_show = "-"
+                if pd.isna(val) or val is None: val_show = "-"
                 elif idx == "Beta (Volatilidad)":
                     v_b = float(val)
                     if v_b <= 1: val_show = f"<span style='color:#28a745; font-size:1.5em;'><strong>⇠</strong></span><br><small>{v_b:.2f}</small>"
@@ -264,7 +277,7 @@ if tickers_raw:
             for col in df_fun.columns:
                 val = df_fun.loc[idx, col]
                 style = 'border: 1px solid #ddd; padding: 8px;'
-                if pd.isna(val): val_show = "-"
+                if pd.isna(val) or val is None: val_show = "-"
                 elif idx == "Empresa": val_show = f"<b>{val}</b>" if col != "PROMEDIO" else "-"
                 else:
                     try:
@@ -273,8 +286,9 @@ if tickers_raw:
                             posibles_puntos[col] += 1
                             prom = float(df_fun.loc[idx, "PROMEDIO"])
                             
+                            # CORRECCIÓN: Lógica del PER mejorada
                             if idx == "PER":
-                                es_mejor = v_n > 10
+                                es_mejor = 0 < v_n < prom
                             elif idx in ["Debt/Equity", "Cost of Revenue"]:
                                 es_mejor = v_n < prom
                             else:
@@ -310,9 +324,12 @@ if tickers_raw:
                     h3 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
                 h3 += '</tr>'
             st.write(h3 + '</table>', unsafe_allow_html=True)
+            
+            # CORRECCIÓN: Separación visual de datos limpia
             df_p_r = df_r.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
-            df_p_r['v_b'] = df_p_r['value'] / 1e9; df_p_r['per'] = df_p_r['variable'].str.split('<').str[0]
-            st.altair_chart(alt.Chart(df_p_r).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('v_b', title='Billions'), color='Ticker').properties(height=300), use_container_width=True)
+            df_p_r['v_b'] = df_p_r['value'] / 1e9
+            df_p_r['per_display'] = df_p_r['variable'].str.split('<').str[0] # Solo para visual
+            st.altair_chart(alt.Chart(df_p_r).mark_line(point=True).encode(x=alt.X('per_display', sort=None, title='Trimestre'), y=alt.Y('v_b', title='Billions'), color='Ticker').properties(height=300), use_container_width=True)
 
         # --- 4. EVOLUCIÓN DE EPS ---
         st.divider()
@@ -328,12 +345,14 @@ if tickers_raw:
                 h4 += f'<tr><td style="font-weight:bold; border:1px solid #ddd; padding:8px;">{t_idx}</td>'
                 for c in cols_e:
                     val_c = df_e.loc[t_idx, c]
-                    v_s = str(val_c) if c == "Tendencia" else f"{val_c:.2f}"
+                    v_s = str(val_c) if c == "Tendencia" else f"{val_c:.2f}" if val_c is not None else "-"
                     h4 += f'<td style="border: 1px solid #ddd; padding: 8px;">{v_s}</td>'
                 h4 += '</tr>'
             st.write(h4 + '</table>', unsafe_allow_html=True)
-            df_p_e = df_e.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker"); df_p_e['per'] = df_p_e['variable'].str.split('<').str[0]
-            st.altair_chart(alt.Chart(df_p_e).mark_line(point=True).encode(x=alt.X('per', sort=None), y=alt.Y('value', title='EPS ($)'), color='Ticker').properties(height=300), use_container_width=True)
+            
+            df_p_e = df_e.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
+            df_p_e['per_display'] = df_p_e['variable'].str.split('<').str[0]
+            st.altair_chart(alt.Chart(df_p_e).mark_line(point=True).encode(x=alt.X('per_display', sort=None, title='Trimestre'), y=alt.Y('value', title='EPS ($)'), color='Ticker').properties(height=300), use_container_width=True)
 
         # --- 5. SELECCIÓN ELITE: MODIFICADO A TOP 10 ---
         st.divider()
@@ -341,8 +360,13 @@ if tickers_raw:
         final_scores = []
         for t in lista_tickers:
             if t in analisis_completo:
-                meets_beta = analisis_completo[t]["beta_val"] < 1.5
-                meets_upside = analisis_completo[t]["upside_val"] > 0
+                # CORRECCIÓN: Filtro Elite no penaliza falta de Target Mean Price
+                beta_val = analisis_completo[t]["beta_val"]
+                upside_val = analisis_completo[t]["upside_val"]
+                
+                meets_beta = beta_val < 1.5
+                meets_upside = (upside_val > 0) if upside_val is not None else True
+                
                 if meets_beta and meets_upside:
                     p_fun = ranking_puntos[t]
                     p_crec = (1 if "28a745" in analisis_completo[t]["rev_t"] else 0) + (1 if "28a745" in analisis_completo[t]["eps_t"] else 0)
@@ -350,22 +374,20 @@ if tickers_raw:
                     
                     final_scores.append({
                         "Ticker": t, "Nombre": analisis_completo[t]["nombre"], "Total": score_total,
-                        "Bonus": p_crec, "Fund": p_fun, "Beta": analisis_completo[t]["beta_val"],
-                        "Upside": analisis_completo[t]["upside_val"], "Margin": analisis_completo[t]["net_margin"],
+                        "Bonus": p_crec, "Fund": p_fun, "Beta": beta_val,
+                        "Upside": upside_val, "Margin": analisis_completo[t]["net_margin"],
                         "Eficacia": (p_fun/posibles_puntos[t]*100) if posibles_puntos[t]>0 else 0,
                         "Rsi": analisis_completo[t]["rsi_val"],
                         "DistSma": analisis_completo[t]["dist_sma"]
                     })
 
-        # Slicing modificado a [:10] para abarcar el Top 10 completo
         top_10 = sorted(final_scores, key=lambda x: (x['Total'], x['Eficacia'], x['Bonus'], x['Margin']), reverse=True)[:10]
         if not top_10:
             st.warning("Ningún ticker cumple actualmente las condiciones exigidas: Beta < 1.5 y Upside > 0%.")
         else:
-            # Renderizado inteligente en bloques de 5 columnas para mantener el balance visual
             for row_idx in range(0, len(top_10), 5):
                 chunk = top_10[row_idx:row_idx+5]
-                cols = st.columns(5)  # Crea siempre una grilla de 5 para perfecta alineación
+                cols = st.columns(5)
                 for col_idx, s in enumerate(chunk):
                     puesto = row_idx + col_idx + 1
                     with cols[col_idx]:
@@ -376,15 +398,15 @@ if tickers_raw:
                         with st.expander("Ver Racional"):
                             st.success("✅ **Filtros Sin-Equanon:**")
                             st.write(f"- Beta: **{s['Beta']:.2f}** (< 1.5)")
-                            st.write(f"- Potencial: **{s['Upside']*100:.1f}%** (> 0)")
+                            up_txt = f"{s['Upside']*100:.1f}% (> 0)" if s['Upside'] is not None else "N/A (Sin Target)"
+                            st.write(f"- Potencial: **{up_txt}**")
                             st.divider()
                             
-                            st.write(f"**🛡️ Fortaleza:** {s['Fund']} pts sobre la media (PER > 10 incluido).")
+                            st.write(f"**🛡️ Fortaleza:** {s['Fund']} pts sobre la media (PER ajustado incluido).")
                             st.write("**📈 Momentum:** ▲▲" if s['Bonus']==2 else "▲" if s['Bonus']==1 else "Estable")
                             st.write(f"**💰 Eficiencia:** Margen {s['Margin']*100:.2f}%")
                             st.divider()
                             
-                            # --- LEYENDA DEL SEMÁFORO AL FINAL DEL EXPANDER ---
                             rsi_v = s["Rsi"]
                             dsma_v = s["DistSma"]
                             
