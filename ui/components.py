@@ -22,6 +22,28 @@ def inyectar_css():
         .col-ref { font-weight: 600; background-color: #161b26 !important; border-right: 1px solid #1f2430; color: #4d8bf0; font-size: 0.85rem; }
         .highlight-green { color: #2ecca6 !important; font-weight: bold; background-color: rgba(46, 204, 166, 0.05) !important;}
         .highlight-red { color: #ff6b6b !important; font-weight: bold; background-color: rgba(255, 107, 107, 0.05) !important;}
+        
+        /* --- ESTILOS DE LOGOS NUEVOS --- */
+        .company-logo {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            vertical-align: middle;
+            margin-right: 8px;
+            object-fit: cover;
+            background-color: white;
+            padding: 1px;
+        }
+        .top10-logo {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            margin-bottom: 6px;
+            object-fit: cover;
+            background-color: white;
+            padding: 2px;
+            border: 2px solid #2a2e39;
+        }
     </style>
     """, unsafe_allow_html=True)
 
