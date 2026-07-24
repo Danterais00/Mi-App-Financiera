@@ -9,7 +9,7 @@ from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes, BENCHMARKS
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v3.2"  # <-- Versión con diseño Top 10 Minimalista Horizontal
+APP_VERSION = "v3.3"  # <-- Versión con Top 10 Compacto y Minimalista
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -242,47 +242,39 @@ if st.session_state.datos_cargados:
                 
                 with col_box:
                     st.markdown(f"""
-                    <div style="background-color: #12161f; padding: 20px 10px; border-radius: 12px; border: 1px solid #2a2e39; text-align: center; height: 100%;">
-                        <p style='color:#a3a8b8; margin:0; font-size: 0.9rem;'>Puesto #{i+1}</p>
-                        <h2 style='margin: 10px 0; color:#ffffff; font-size: 2.2rem;'>{s['t']}</h2>
-                        <p style='color:#2ecca6; margin:0; font-size: 1.1rem;'><b>{s['total']} Puntos</b></p>
+                    <div style="background-color: #12161f; padding: 12px 5px; border-radius: 12px; border: 1px solid #2a2e39; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center;">
+                        <p style='color:#a3a8b8; margin:0; font-size: 0.75rem;'>Puesto #{i+1}</p>
+                        <h2 style='margin: 4px 0; color:#ffffff; font-size: 1.6rem;'>{s['t']}</h2>
+                        <p style='color:#2ecca6; margin:0; font-size: 0.95rem;'><b>{s['total']} Puntos</b></p>
                     </div>
                     """, unsafe_allow_html=True)
                     
                 with col_text:
-                    st.markdown(f"**💡 Racional de Inversión:**")
-                    
-                    # 1. Fundamentales
-                    st.markdown(f"**• Solidez Fundamental:** Cumple con **{s['pf']}** de los 10 estándares institucionales absolutos de salud financiera (rentabilidad y solvencia).")
-                    
-                    # 2. Momentum
-                    if s['pc'] == 2:
-                        st.markdown("**• Crecimiento Operativo:** Presenta una tendencia alcista tanto en ingresos (Revenue) como en beneficios (EPS) en sus últimos trimestres.")
-                    elif s['pc'] == 1:
-                        st.markdown("**• Crecimiento Operativo:** Muestra signos positivos recientes de crecimiento en ingresos o beneficios.")
-                        
-                    # 3. Riesgo y Valoración
-                    riesgo_str = f"**• Riesgo y Potencial:** Acción de perfil defensivo (Beta de **{s['b']:.2f}**)."
+                    # Lógica de Textos
+                    mom_text = "Tendencia alcista tanto en ingresos como en beneficios." if s['pc'] == 2 else "Signos positivos recientes de crecimiento operativo." if s['pc'] == 1 else "Estabilidad operativa sin crecimiento reciente destacado."
+                    riesgo_str = f"Perfil defensivo (Beta: <strong>{s['b']:.2f}</strong>)."
                     if s['u'] and s['u'] > 0:
-                        riesgo_str += f" Los analistas proyectan un recorrido alcista (descuento) del **{s['u']*100:.1f}%**."
-                    st.markdown(riesgo_str)
-                    
-                    # 4. Técnico
+                        riesgo_str += f" Potencial alcista proyectado: <strong>{s['u']*100:.1f}%</strong>."
+                        
                     r, d = s['rsi'], s['dsma']
-                    tec_str = "**• Timing Técnico:** "
-                    if not r or not d:
-                        tec_str += "Datos históricos insuficientes para generar una señal."
-                    elif r < 30:
-                        tec_str += "🟢 **COMPRA FUERTE**. El RSI indica sobreventa extrema, sugiriendo una oportunidad de rebote."
-                    elif 0 <= d <= 5:
-                        tec_str += "🟢 **ENTRADA IDEAL**. La acción se está apoyando en el soporte dinámico de su media móvil de 200 días."
-                    elif r > 70:
-                        tec_str += "🔴 **PRECAUCIÓN**. El RSI indica niveles de euforia o sobrecompra; riesgo de corrección."
-                    elif d < 0:
-                        tec_str += "🟡 **ALERTA BAJISTA**. La tendencia principal es negativa (cotizando debajo de la media de 200 días)."
-                    else:
-                        tec_str += "Zona neutral. No se observan señales extremas en el precio a corto plazo."
-                    st.markdown(tec_str)
+                    tec_str = "Datos históricos insuficientes para evaluación."
+                    if r and d:
+                        if r < 30: tec_str = "🟢 <strong>COMPRA FUERTE:</strong> RSI en sobreventa extrema (oportunidad de rebote)."
+                        elif 0 <= d <= 5: tec_str = "🟢 <strong>ENTRADA IDEAL:</strong> Apoyándose en el soporte de la media de 200 días."
+                        elif r > 70: tec_str = "🔴 <strong>PRECAUCIÓN:</strong> RSI en euforia (sobrecompra); riesgo de corrección."
+                        elif d < 0: tec_str = "🟡 <strong>ALERTA BAJISTA:</strong> Cotizando por debajo de la media de 200 días."
+                        else: tec_str = "⚪ <strong>ZONA NEUTRAL:</strong> Sin señales técnicas extremas a corto plazo."
+                    
+                    html_text = f"""
+                    <div style="font-size: 0.88rem; line-height: 1.4; color: #cbd5e1; padding: 4px 0;">
+                        <p style="margin: 0 0 6px 0; color:#ffffff; font-weight: 600; font-size: 0.95rem;">💡 Racional de Inversión:</p>
+                        <p style="margin: 0 0 4px 0;"><strong>• Fundamental:</strong> Cumple con {s['pf']}/10 estándares institucionales de solvencia y rentabilidad.</p>
+                        <p style="margin: 0 0 4px 0;"><strong>• Momentum:</strong> {mom_text}</p>
+                        <p style="margin: 0 0 4px 0;"><strong>• Riesgo / Valoración:</strong> {riesgo_str}</p>
+                        <p style="margin: 0 0 0 0;"><strong>• Timing Técnico:</strong> {tec_str}</p>
+                    </div>
+                    """
+                    st.markdown(html_text, unsafe_allow_html=True)
                 
                 st.write("---")
 else:
