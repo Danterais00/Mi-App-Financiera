@@ -4,7 +4,6 @@ import streamlit as st
 
 @st.cache_data(ttl=43200)
 def descargar_datos_mercado(lista_tickers):
-    """Descarga y procesa datos de YFinance usando Caché Inteligente y Márgenes Relativos."""
     datos_fundamentales = []
     datos_tecnicos = []
     datos_revenue = []
@@ -30,7 +29,6 @@ def descargar_datos_mercado(lista_tickers):
         v_justo = info.get('targetMeanPrice')
         upside = ((v_justo / p_actual) - 1) if p_actual and v_justo else None
         
-        # Extracción para ratios relativos
         gross = info.get('grossProfits')
         rev = info.get('totalRevenue')
         fcf = info.get('freeCashflow')
@@ -39,14 +37,18 @@ def descargar_datos_mercado(lista_tickers):
         gross_margin = (gross / rev) if (gross and rev and rev > 0) else None
         fcf_yield = (fcf / mcap) if (fcf and mcap and mcap > 0) else None
         
+        # Se agregan las nuevas métricas institucionales
         datos_fundamentales.append({
             "Ticker": ticker, "Empresa": info.get('longName', ticker),
             "Precio": p_actual, "Fair Value (Target)": v_justo, "Upside (%)": upside,
             "Beta": info.get('beta'), "Volumen Promedio": info.get('averageVolume'),
-            "PER": info.get('trailingPE'), "Margen Neto (%)": info.get('profitMargins'),
-            "Gross Margin (%)": gross_margin,
+            "PER": info.get('trailingPE'), "Forward P/E": info.get('forwardPE'),
+            "PEG Ratio": info.get('pegRatio'), "EV/EBITDA": info.get('enterpriseToEbitda'),
+            "Consenso (1-5)": info.get('recommendationMean'),
+            "Margen Neto (%)": info.get('profitMargins'), "Gross Margin (%)": gross_margin,
             "ROE (%)": info.get('returnOnEquity'), "ROA (%)": info.get('returnOnAssets'),
             "FCF Yield (%)": fcf_yield, "Div Yield (%)": info.get('dividendYield'),
+            "Payout Ratio (%)": info.get('payoutRatio'), "Short Interest (%)": info.get('shortPercentOfFloat'),
             "Debt/Equity": (info.get('debtToEquity') / 100) if info.get('debtToEquity') else None, 
             "Current Ratio": info.get('currentRatio'), "Quick Ratio": info.get('quickRatio')
         })
