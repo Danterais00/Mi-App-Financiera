@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+from streamlit_option_menu import option_menu # <-- Nueva librería de UI
 
 # Importar nuestros módulos
 from ui.components import inyectar_css, TOOLTIPS, formatear_moneda
@@ -15,47 +16,66 @@ inyectar_css()
 if 'datos_cargados' not in st.session_state:
     st.session_state.datos_cargados = False
 
-# --- BARRA LATERAL ---
-st.sidebar.title("🚀 Terminal Pro")
-modo_estrategia = st.sidebar.selectbox("Estrategia:", ["Crecimiento (Agresivo)", "Fortaleza (Defensivo)"])
-
-st.sidebar.divider()
-st.sidebar.subheader("📌 Navegación")
-menu_seccion = st.sidebar.radio(
-    "Ir a:",
-    [
-        "1. Datos Generales y Valuación", 
-        "2. Comparativa Fundamental", 
-        "3. Evolución Financiera (Rev & EPS)", 
-        "4. Análisis Técnico",
-        "🏆 5. Top 10 (Filtro Elite)"
-    ]
-)
+# --- BARRA LATERAL (SMARTFINANCE STYLE) ---
+with st.sidebar:
+    st.markdown("<h2 style='text-align: center; color: #4d8bf0;'>🚀 Terminal Pro</h2>", unsafe_allow_html=True)
+    st.write("")
+    
+    modo_estrategia = st.selectbox("Estrategia activa:", ["Crecimiento (Agresivo)", "Fortaleza (Defensivo)"])
+    
+    st.write("")
+    menu_seccion = option_menu(
+        menu_title=None,
+        options=[
+            "1. Datos Generales y Valuación", 
+            "2. Comparativa Fundamental", 
+            "3. Evolución Financiera (Rev & EPS)", 
+            "4. Análisis Técnico",
+            "🏆 5. Top 10 (Filtro Elite)"
+        ],
+        icons=['buildings', 'bar-chart-line', 'graph-up-arrow', 'activity', 'trophy'],
+        menu_icon="cast",
+        default_index=0,
+        styles={
+            "container": {"padding": "0!important", "background-color": "transparent"},
+            "icon": {"color": "#a3a8b8", "font-size": "16px"},
+            "nav-link": {
+                "font-size": "14px", 
+                "text-align": "left", 
+                "margin": "0px", 
+                "--hover-color": "#1f2430",
+                "color": "#a3a8b8"
+            },
+            "nav-link-selected": {
+                "background-color": "#4d8bf0",
+                "color": "#ffffff",
+                "font-weight": "600"
+            },
+        }
+    )
 
 st.title("Inteligencia Financiera Avanzada")
-st.markdown(f"<p style='color: #888;'>Estrategia activa: <strong style='color: #fff;'>{modo_estrategia}</strong></p>", unsafe_allow_html=True)
+st.markdown(f"<p style='color: #a3a8b8;'>Estrategia seleccionada: <strong style='color: #4d8bf0;'>{modo_estrategia}</strong></p>", unsafe_allow_html=True)
 
 # --- INPUT Y EXTRACCIÓN ---
+st.write("")
 col1, col2 = st.columns([4, 1])
 with col1:
     tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, AAPL.BA, MSFT.BA, NVDA.BA")
 with col2:
     st.write("")
     st.write("")
-    btn_analizar = st.button("Sincronizar Datos 🔄", use_container_width=True)
+    btn_analizar = st.button("Sincronizar Datos 🔄", use_container_width=True, type="primary")
 
 def corregir_ticker(t):
     return "BRK-B" if t == "BRKB" else "BRK-A" if t == "BRKA" else t
 
-# --- LÓGICA PRINCIPAL (CON CACHÉ) ---
+# --- LÓGICA PRINCIPAL ---
 if btn_analizar and tickers_raw:
     lista_tickers = [corregir_ticker(t.strip().upper()) for t in tickers_raw.split(",") if t.strip()][:30]
     
-    with st.spinner('Extrayendo datos de la bolsa (Buscando en caché primero)...'):
-        # Convertimos la lista a tupla. Esto es OBLIGATORIO para que el caché de Streamlit funcione de manera segura.
+    with st.spinner('Extrayendo datos y calculando métricas...'):
         tupla_tickers = tuple(lista_tickers)
-        
-        # Llama a la función. Si la tupla ya se buscó hoy, esto tomará 0 segundos.
         df_fun, df_tec, df_rev, df_eps, analisis = descargar_datos_mercado(tupla_tickers)
         
         if df_fun:
@@ -85,9 +105,9 @@ if st.session_state.datos_cargados:
                 if pd.isna(val) or val is None: v_sh = "-"
                 elif idx == "Beta":
                     v_b = float(val)
-                    if v_b <= 1: v_sh = f"<span style='color:#81c784;'>⇠</span> {v_b:.2f}"
+                    if v_b <= 1: v_sh = f"<span style='color:#2ecca6;'>⇠</span> {v_b:.2f}"
                     elif v_b <= 1.5: v_sh = f"<span style='color:#ffd54f;'>⇡</span> {v_b:.2f}"
-                    else: v_sh = f"<span style='color:#e57373;'>⇢</span> {v_b:.2f}"
+                    else: v_sh = f"<span style='color:#ff6b6b;'>⇢</span> {v_b:.2f}"
                 elif idx == "Upside (%)":
                     v_sh = f"{float(val)*100:.2f}%"
                     if float(val) > 0: cls = "highlight-green"
@@ -209,7 +229,7 @@ if st.session_state.datos_cargados:
                 b_val, u_val = ana[t]["beta_val"], ana[t]["upside_val"]
                 if b_val is not None and b_val < 1.5 and ((u_val is None) or (u_val > 0)):
                     p_f = puntos.get(t, 0)
-                    p_c = (1 if "81c784" in ana[t]["rev_t"] else 0) + (1 if "81c784" in ana[t]["eps_t"] else 0)
+                    p_c = (1 if "2ecca6" in ana[t]["rev_t"] else 0) + (1 if "2ecca6" in ana[t]["eps_t"] else 0)
                     total = (p_f + p_c + 1) if "Agresivo" in modo_estrategia else (p_f + 1)
                     
                     scores.append({
@@ -227,8 +247,14 @@ if st.session_state.datos_cargados:
                 cols = st.columns(5)
                 for j, s in enumerate(top10[i:i+5]):
                     with cols[j]:
-                        st.markdown(f"<p style='color:#888; margin:0;'>Puesto #{i+j+1}</p><h2 style='margin:0; color:#fff;'>{s['t']}</h2><p style='color:#81c784;'><b>{s['total']} Puntos</b></p>", unsafe_allow_html=True)
-                        with st.expander("Detalle"):
+                        st.markdown(f"""
+                        <div style="background-color: #12161f; padding: 15px; border-radius: 12px; border: 1px solid #2a2e39; text-align: center; margin-bottom: 10px;">
+                            <p style='color:#a3a8b8; margin:0; font-size: 0.85rem;'>Puesto #{i+j+1}</p>
+                            <h2 style='margin: 5px 0; color:#ffffff;'>{s['t']}</h2>
+                            <p style='color:#2ecca6; margin:0; font-size: 1.1rem;'><b>{s['total']} Puntos</b></p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        with st.expander("Detalle Fundamental"):
                             st.write(f"**Beta:** {s['b']:.2f}")
                             st.write(f"**Upside:** {s['u']*100:.1f}%" if s['u'] else "**Upside:** N/A")
                             st.divider()
