@@ -1,5 +1,5 @@
-streamlit==1.32.0
-yfinance==0.2.37
-pandas==2.2.1
-altair==5.2.0
-streamlit-option-menu==0.3.12
+streamlit
+yfinance
+pandas
+altair
+streamlit-option-menu
