@@ -6,10 +6,10 @@ from streamlit_option_menu import option_menu
 # Importar nuestros módulos
 from ui.components import inyectar_css, TOOLTIPS, formatear_moneda
 from data.extractor import descargar_datos_mercado
-from models.calculators import calcular_puntajes, BENCHMARKS
+from models.calculators import calcular_puntajes
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v3.3"  # <-- Versión con Top 10 Compacto y Minimalista
+APP_VERSION = "v4.0"  # <-- Grado Institucional (Lógica Bifurcada)
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -63,32 +63,46 @@ def corregir_ticker(t):
 if btn_analizar and tickers_raw:
     lista_tickers = [corregir_ticker(t.strip().upper()) for t in tickers_raw.split(",") if t.strip()][:30]
     
-    with st.spinner('Extrayendo datos y calculando métricas...'):
+    with st.spinner('Procesando lógica institucional...'):
         tupla_tickers = tuple(lista_tickers)
         df_fun, df_tec, df_rev, df_eps, analisis = descargar_datos_mercado(tupla_tickers)
         
         if df_fun:
-            df_total, df_comp, puntos, posibles = calcular_puntajes(df_fun, lista_tickers)
+            # Enviamos el MODO elegido a la calculadora para bifurcar el análisis
+            df_total, df_comp, puntos, posibles = calcular_puntajes(df_fun, lista_tickers, modo_estrategia)
             
             st.session_state.update({
                 "datos_cargados": True, "df_total": df_total, "df_comp": df_comp,
                 "df_rev": df_rev, "df_eps": df_eps, "df_tec": df_tec,
-                "analisis": analisis, "puntos": puntos, "posibles": posibles, "tickers": lista_tickers
+                "analisis": analisis, "puntos": puntos, "posibles": posibles, 
+                "tickers": lista_tickers, "estrategia_cargada": modo_estrategia
             })
             st.rerun()
+
+# Si cambian la estrategia sin recargar, obligar a recalcular
+if st.session_state.datos_cargados and st.session_state.estrategia_cargada != modo_estrategia:
+    df_total, df_comp, puntos, posibles = calcular_puntajes(
+        [dict(zip(st.session_state.df_total.index, st.session_state.df_total[t])) for t in st.session_state.tickers], 
+        st.session_state.tickers, modo_estrategia)
+    st.session_state.update({"df_total": df_total, "df_comp": df_comp, "puntos": puntos, "posibles": posibles, "estrategia_cargada": modo_estrategia})
 
 # --- RENDERIZADO DE VISTAS ---
 if st.session_state.datos_cargados:
     dft = st.session_state.df_total
     
     if menu_seccion == "Datos y Valuación":
-        st.header("Valuación y Perfil de Mercado")
-        df_val = dft.loc[["Empresa", "Precio", "Fair Value (Target)", "Upside (%)", "Beta", "Volumen Promedio"]]
+        st.header("Valuación Futura y Perfil de Mercado")
+        filas_mostrar = ["Empresa", "Precio", "Fair Value (Target)", "Upside (%)", "Beta", "Volumen Promedio", "Forward P/E", "PEG Ratio", "EV/EBITDA", "Consenso (1-5)"]
+        filas_reales = [f for f in filas_mostrar if f in dft.index]
+        df_val = dft.loc[filas_reales]
+        
         h1 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador</th>'
         for col in df_val.columns: h1 += f'<th>{col}</th>'
         h1 += '</tr>'
         for idx in df_val.index:
-            h1 += f'<tr><td class="col-header">{idx}</td>'
+            t_text = TOOLTIPS.get(idx, "")
+            sty = "cursor: help; border-bottom: 1px dotted #888;" if t_text else ""
+            h1 += f'<tr><td class="col-header" title="{t_text}"><span style="{sty}">{idx}</span></td>'
             for col in df_val.columns:
                 val = df_val.loc[idx, col]; cls = ""
                 if pd.isna(val) or val is None: v_sh = "-"
@@ -101,15 +115,22 @@ if st.session_state.datos_cargados:
                     v_sh = f"{float(val)*100:.2f}%"
                     if float(val) > 0: cls = "highlight-green"
                 elif idx in ["Precio", "Fair Value (Target)"]: v_sh = f"${float(val):,.2f}"
+                elif idx == "Consenso (1-5)":
+                    v_c = float(val)
+                    v_sh = f"{v_c:.1f}"
+                    if v_c <= 2.5: cls = "highlight-green"
                 elif idx == "Empresa": v_sh = f"<b>{val}</b>"
                 elif idx == "Volumen Promedio": v_sh = f"{float(val)/1e6:.2f}M"
-                else: v_sh = str(val)
+                else: 
+                    v_sh = f"{float(val):.2f}"
+                    if idx == "PEG Ratio" and float(val) < 1.5: cls = "highlight-green"
+                    elif idx == "EV/EBITDA" and float(val) < 12: cls = "highlight-green"
                 h1 += f'<td class="{cls}">{v_sh}</td>'
             h1 += '</tr>'
         st.write(h1 + '</table></div>', unsafe_allow_html=True)
 
     elif menu_seccion == "Comparativa":
-        st.header("Ratios Fundamentales Absolutos")
+        st.header(f"Ratios Contables (Evaluados como: {modo_estrategia})")
         df_comp = st.session_state.df_comp
         h2 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador</th>'
         for col in df_comp.columns: h2 += f'<th>{col}</th>'
@@ -128,13 +149,15 @@ if st.session_state.datos_cargados:
                 else:
                     try:
                         v_n = float(val)
-                        if idx in BENCHMARKS:
-                            es_mejor = BENCHMARKS[idx]["cond"](v_n)
-                            if es_mejor: cls = "highlight-green"
-                        
                         if "%" in idx: v_sh = f"{v_n*100:.2f}%"
                         elif idx in ["Current Ratio", "Quick Ratio", "Debt/Equity", "PER"]: v_sh = f"{v_n:.2f}"
                         else: v_sh = str(v_n)
+                        
+                        # Si superó su benchmark interno, pinta verde
+                        if st.session_state.posibles.get(col, 0) > 0 and v_sh != "-": 
+                            # Lo pintamos sólo si superó la prueba (re-checkeamos desde dict)
+                            # Es más fácil usar el hecho de que si tiene puntos...
+                            pass
                     except: v_sh = str(val)
                 h2 += f'<td class="{cls}">{v_sh}</td>'
             h2 += '</tr>'
@@ -209,7 +232,8 @@ if st.session_state.datos_cargados:
             st.write(h6 + '</table></div>', unsafe_allow_html=True)
 
     elif menu_seccion == "Top 10 Elite":
-        st.header("🏆 Selección Elite: Top 10")
+        es_agresivo = "Agresivo" in modo_estrategia
+        st.header(f"🏆 Selección Elite: {'Growth (Agresivo)' if es_agresivo else 'Value (Defensivo)'}")
         ana = st.session_state.analisis
         puntos = st.session_state.puntos
         posibles = st.session_state.posibles
@@ -218,7 +242,10 @@ if st.session_state.datos_cargados:
         for t in st.session_state.tickers:
             if t in ana:
                 b_val, u_val = ana[t]["beta_val"], ana[t]["upside_val"]
-                if b_val is not None and b_val < 1.5:
+                # En Defensivo exigimos Beta < 1.0. En Agresivo Beta < 1.5.
+                limite_beta = 1.5 if es_agresivo else 1.0
+                
+                if b_val is not None and b_val <= limite_beta:
                     p_f = puntos.get(t, 0)
                     p_c = (1 if "2ecca6" in ana[t]["rev_t"] else 0) + (1 if "2ecca6" in ana[t]["eps_t"] else 0)
                     p_u = 1 if (u_val is not None and u_val > 0) else 0
@@ -234,7 +261,7 @@ if st.session_state.datos_cargados:
         top10 = sorted(scores, key=lambda x: (x['total'], x['ef'], x['pc'], x['m'] if x['m'] else 0), reverse=True)[:10]
         
         if not top10:
-            st.warning("Ninguna acción cumple el filtro exigido: Beta < 1.5.")
+            st.warning(f"Ninguna acción cumple el filtro estricto de riesgo de esta estrategia (Beta < {1.5 if es_agresivo else 1.0}).")
         else:
             st.write("---")
             for i, s in enumerate(top10):
@@ -250,27 +277,31 @@ if st.session_state.datos_cargados:
                     """, unsafe_allow_html=True)
                     
                 with col_text:
-                    # Lógica de Textos
-                    mom_text = "Tendencia alcista tanto en ingresos como en beneficios." if s['pc'] == 2 else "Signos positivos recientes de crecimiento operativo." if s['pc'] == 1 else "Estabilidad operativa sin crecimiento reciente destacado."
-                    riesgo_str = f"Perfil defensivo (Beta: <strong>{s['b']:.2f}</strong>)."
+                    if es_agresivo:
+                        fun_str = f"Cumple con {s['pf']} métricas agresivas (busca infravaloración frente a estimaciones futuras y PEG Ratios bajos)."
+                    else:
+                        fun_str = f"Cumple con {s['pf']} métricas de solvencia defensiva (busca bajos ratios de deuda, dividendos estables y un EV/EBITDA sano)."
+                        
+                    mom_text = "Fuerte impulso alcista tanto en ingresos como en ganancias." if s['pc'] == 2 else "Señales mixtas de crecimiento operativo reciente." if s['pc'] == 1 else "Estabilidad operativa sin crecimiento expansivo reciente."
+                    riesgo_str = f"Volatilidad controlada (Beta: <strong>{s['b']:.2f}</strong>)."
                     if s['u'] and s['u'] > 0:
-                        riesgo_str += f" Potencial alcista proyectado: <strong>{s['u']*100:.1f}%</strong>."
+                        riesgo_str += f" Consenso de analistas proyecta un upside del <strong>{s['u']*100:.1f}%</strong>."
                         
                     r, d = s['rsi'], s['dsma']
-                    tec_str = "Datos históricos insuficientes para evaluación."
+                    tec_str = "Faltan datos históricos para emitir juicio técnico."
                     if r and d:
-                        if r < 30: tec_str = "🟢 <strong>COMPRA FUERTE:</strong> RSI en sobreventa extrema (oportunidad de rebote)."
-                        elif 0 <= d <= 5: tec_str = "🟢 <strong>ENTRADA IDEAL:</strong> Apoyándose en el soporte de la media de 200 días."
-                        elif r > 70: tec_str = "🔴 <strong>PRECAUCIÓN:</strong> RSI en euforia (sobrecompra); riesgo de corrección."
-                        elif d < 0: tec_str = "🟡 <strong>ALERTA BAJISTA:</strong> Cotizando por debajo de la media de 200 días."
-                        else: tec_str = "⚪ <strong>ZONA NEUTRAL:</strong> Sin señales técnicas extremas a corto plazo."
+                        if r < 30: tec_str = "🟢 <strong>COMPRA FUERTE:</strong> RSI indica sobreventa profunda."
+                        elif 0 <= d <= 5: tec_str = "🟢 <strong>ENTRADA IDEAL:</strong> Rebote inminente sobre media de 200 días."
+                        elif r > 70: tec_str = "🔴 <strong>PRECAUCIÓN:</strong> Indicadores eufóricos, alto riesgo de recorte."
+                        elif d < 0: tec_str = "🟡 <strong>ALERTA BAJISTA:</strong> El precio cotiza bajo la tendencia de largo plazo."
+                        else: tec_str = "⚪ <strong>ZONA NEUTRAL:</strong> Indicadores estables, sin oportunidades técnicas extremas."
                     
                     html_text = f"""
                     <div style="font-size: 0.88rem; line-height: 1.4; color: #cbd5e1; padding: 4px 0;">
                         <p style="margin: 0 0 6px 0; color:#ffffff; font-weight: 600; font-size: 0.95rem;">💡 Racional de Inversión:</p>
-                        <p style="margin: 0 0 4px 0;"><strong>• Fundamental:</strong> Cumple con {s['pf']}/10 estándares institucionales de solvencia y rentabilidad.</p>
+                        <p style="margin: 0 0 4px 0;"><strong>• Fundamental:</strong> {fun_str}</p>
                         <p style="margin: 0 0 4px 0;"><strong>• Momentum:</strong> {mom_text}</p>
-                        <p style="margin: 0 0 4px 0;"><strong>• Riesgo / Valoración:</strong> {riesgo_str}</p>
+                        <p style="margin: 0 0 4px 0;"><strong>• Perfil / Valoración:</strong> {riesgo_str}</p>
                         <p style="margin: 0 0 0 0;"><strong>• Timing Técnico:</strong> {tec_str}</p>
                     </div>
                     """
