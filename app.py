@@ -2,22 +2,20 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 
-# Importar nuestros nuevos módulos
+# Importar nuestros módulos
 from ui.components import inyectar_css, TOOLTIPS, formatear_moneda
 from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="Terminal Pro: Inteligencia Financiera", layout="wide", initial_sidebar_state="expanded")
-
-# Inyectar estilos visuales (Modo oscuro y tablas)
 inyectar_css()
 
-# --- INICIALIZACIÓN DE VARIABLES DE SESIÓN (ESTADO) ---
+# --- INICIALIZACIÓN DE VARIABLES DE SESIÓN ---
 if 'datos_cargados' not in st.session_state:
     st.session_state.datos_cargados = False
 
-# --- BARRA LATERAL (NAVEGACIÓN Y CONFIGURACIÓN) ---
+# --- BARRA LATERAL ---
 st.sidebar.title("🚀 Terminal Pro")
 modo_estrategia = st.sidebar.selectbox("Estrategia:", ["Crecimiento (Agresivo)", "Fortaleza (Defensivo)"])
 
@@ -34,11 +32,10 @@ menu_seccion = st.sidebar.radio(
     ]
 )
 
-# --- HEADER PRINCIPAL ---
 st.title("Inteligencia Financiera Avanzada")
 st.markdown(f"<p style='color: #888;'>Estrategia activa: <strong style='color: #fff;'>{modo_estrategia}</strong></p>", unsafe_allow_html=True)
 
-# --- INPUT Y EXTRACCIÓN DE DATOS ---
+# --- INPUT Y EXTRACCIÓN ---
 col1, col2 = st.columns([4, 1])
 with col1:
     tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, AAPL.BA, MSFT.BA, NVDA.BA")
@@ -48,22 +45,22 @@ with col2:
     btn_analizar = st.button("Sincronizar Datos 🔄", use_container_width=True)
 
 def corregir_ticker(t):
-    t = t.strip().upper()
     return "BRK-B" if t == "BRKB" else "BRK-A" if t == "BRKA" else t
 
-# --- LÓGICA PRINCIPAL (LLAMANDO A LOS MÓDULOS) ---
+# --- LÓGICA PRINCIPAL (CON CACHÉ) ---
 if btn_analizar and tickers_raw:
-    lista_tickers = [corregir_ticker(t) for t in tickers_raw.split(",") if t.strip()][:30]
+    lista_tickers = [corregir_ticker(t.strip().upper()) for t in tickers_raw.split(",") if t.strip()][:30]
     
-    with st.spinner('Procesando extracción de datos y calculando métricas...'):
-        # 1. Extraer datos (del módulo data)
-        df_fun, df_tec, df_rev, df_eps, analisis = descargar_datos_mercado(lista_tickers)
+    with st.spinner('Extrayendo datos de la bolsa (Buscando en caché primero)...'):
+        # Convertimos la lista a tupla. Esto es OBLIGATORIO para que el caché de Streamlit funcione de manera segura.
+        tupla_tickers = tuple(lista_tickers)
         
-        # 2. Calcular puntajes matemáticos (del módulo models)
+        # Llama a la función. Si la tupla ya se buscó hoy, esto tomará 0 segundos.
+        df_fun, df_tec, df_rev, df_eps, analisis = descargar_datos_mercado(tupla_tickers)
+        
         if df_fun:
             df_total, df_comp, puntos, posibles = calcular_puntajes(df_fun, lista_tickers)
             
-            # 3. Guardar en memoria de sesión
             st.session_state.update({
                 "datos_cargados": True, "df_total": df_total, "df_comp": df_comp,
                 "df_rev": df_rev, "df_eps": df_eps, "df_tec": df_tec,
@@ -75,7 +72,6 @@ if btn_analizar and tickers_raw:
 if st.session_state.datos_cargados:
     dft = st.session_state.df_total
     
-    # SECCIÓN 1
     if menu_seccion == "1. Datos Generales y Valuación":
         st.header("1. Valuación y Perfil de Mercado")
         df_val = dft.loc[["Empresa", "Precio", "Fair Value (Target)", "Upside (%)", "Beta", "Volumen Promedio"]]
@@ -103,7 +99,6 @@ if st.session_state.datos_cargados:
             h1 += '</tr>'
         st.write(h1 + '</table></div>', unsafe_allow_html=True)
 
-    # SECCIÓN 2
     elif menu_seccion == "2. Comparativa Fundamental":
         st.header("2. Ratios Fundamentales")
         df_comp = st.session_state.df_comp
@@ -134,7 +129,6 @@ if st.session_state.datos_cargados:
             h2 += '</tr>'
         st.write(h2 + '</table></div>', unsafe_allow_html=True)
 
-    # SECCIÓN 3
     elif menu_seccion == "3. Evolución Financiera (Rev & EPS)":
         st.header("3. Evolución Financiera Histórica")
         df_r, df_e = st.session_state.df_rev, st.session_state.df_eps
@@ -177,7 +171,6 @@ if st.session_state.datos_cargados:
                 h4 += '</tr>'
             st.write(h4 + '</table></div>', unsafe_allow_html=True)
 
-    # SECCIÓN 4
     elif menu_seccion == "4. Análisis Técnico":
         st.header("4. Osciladores y Tendencias")
         df_tec = pd.DataFrame(st.session_state.df_tec).set_index("Ticker").T
@@ -204,7 +197,6 @@ if st.session_state.datos_cargados:
                 h6 += '</tr>'
             st.write(h6 + '</table></div>', unsafe_allow_html=True)
 
-    # SECCIÓN 5
     elif menu_seccion == "🏆 5. Top 10 (Filtro Elite)":
         st.header("🏆 Selección Elite: Top 10")
         ana = st.session_state.analisis
