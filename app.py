@@ -9,7 +9,7 @@ from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v4.0"  # <-- Grado Institucional (Lógica Bifurcada)
+APP_VERSION = "v4.1"  # <-- Grado Institucional (Incluye Gráfico de EPS restaurado)
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -68,7 +68,6 @@ if btn_analizar and tickers_raw:
         df_fun, df_tec, df_rev, df_eps, analisis = descargar_datos_mercado(tupla_tickers)
         
         if df_fun:
-            # Enviamos el MODO elegido a la calculadora para bifurcar el análisis
             df_total, df_comp, puntos, posibles = calcular_puntajes(df_fun, lista_tickers, modo_estrategia)
             
             st.session_state.update({
@@ -153,10 +152,7 @@ if st.session_state.datos_cargados:
                         elif idx in ["Current Ratio", "Quick Ratio", "Debt/Equity", "PER"]: v_sh = f"{v_n:.2f}"
                         else: v_sh = str(v_n)
                         
-                        # Si superó su benchmark interno, pinta verde
                         if st.session_state.posibles.get(col, 0) > 0 and v_sh != "-": 
-                            # Lo pintamos sólo si superó la prueba (re-checkeamos desde dict)
-                            # Es más fácil usar el hecho de que si tiene puntos...
                             pass
                     except: v_sh = str(val)
                 h2 += f'<td class="{cls}">{v_sh}</td>'
@@ -183,10 +179,11 @@ if st.session_state.datos_cargados:
             st.write(h3 + '</table></div>', unsafe_allow_html=True)
             
             df_p = df_rev_pd.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
-            df_p['v_b'] = df_p['value'] / 1e9
+            df_p['v_b'] = pd.to_numeric(df_p['value'], errors='coerce') / 1e9
             df_p['Trimestre'] = df_p['variable'].str.split('<').str[0]
             st.altair_chart(alt.Chart(df_p).mark_line(point=True).encode(
-                x=alt.X('Trimestre', sort=None), y=alt.Y('v_b', title='Billions'), color='Ticker'
+                x=alt.X('Trimestre', sort=None), y=alt.Y('v_b', title='Billions (USD)'), color='Ticker',
+                tooltip=['Ticker', 'Trimestre', 'v_b']
             ).properties(height=250).configure_view(strokeOpacity=0), use_container_width=True)
 
         if df_e:
@@ -204,6 +201,18 @@ if st.session_state.datos_cargados:
                     h4 += f'<td>{v_sh}</td>'
                 h4 += '</tr>'
             st.write(h4 + '</table></div>', unsafe_allow_html=True)
+            
+            # --- RESTAURACIÓN DEL GRÁFICO DE EPS ---
+            df_p_eps = df_eps_pd.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
+            df_p_eps['value'] = pd.to_numeric(df_p_eps['value'], errors='coerce')
+            df_p_eps['Trimestre'] = df_p_eps['variable'].str.split('<').str[0]
+            
+            st.altair_chart(alt.Chart(df_p_eps).mark_line(point=True).encode(
+                x=alt.X('Trimestre', sort=None), 
+                y=alt.Y('value', title='EPS (USD)'), 
+                color='Ticker',
+                tooltip=['Ticker', 'Trimestre', 'value']
+            ).properties(height=250).configure_view(strokeOpacity=0), use_container_width=True)
 
     elif menu_seccion == "Análisis Técnico":
         st.header("Osciladores y Tendencias")
@@ -242,7 +251,6 @@ if st.session_state.datos_cargados:
         for t in st.session_state.tickers:
             if t in ana:
                 b_val, u_val = ana[t]["beta_val"], ana[t]["upside_val"]
-                # En Defensivo exigimos Beta < 1.0. En Agresivo Beta < 1.5.
                 limite_beta = 1.5 if es_agresivo else 1.0
                 
                 if b_val is not None and b_val <= limite_beta:
