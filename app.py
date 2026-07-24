@@ -9,7 +9,7 @@ from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v4.2"  # <-- Fix: Reconstrucción de datos al cambiar estrategia
+APP_VERSION = "v4.3"  # <-- Versión con Identidad Visual (Logos)
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -78,13 +78,13 @@ if btn_analizar and tickers_raw:
             })
             st.rerun()
 
-# --- RE-CÁLCULO SIN DESCARGA (Corrección del KeyError) ---
+# --- RE-CÁLCULO SIN DESCARGA ---
 if st.session_state.datos_cargados and st.session_state.estrategia_cargada != modo_estrategia:
     datos_reconstruidos = []
     for t in st.session_state.tickers:
         if t in st.session_state.df_total.columns:
             fila = dict(zip(st.session_state.df_total.index, st.session_state.df_total[t]))
-            fila["Ticker"] = t  # <- Aquí inyectamos la clave Ticker que faltaba
+            fila["Ticker"] = t
             datos_reconstruidos.append(fila)
             
     df_total, df_comp, puntos, posibles = calcular_puntajes(datos_reconstruidos, st.session_state.tickers, modo_estrategia)
@@ -101,7 +101,10 @@ if st.session_state.datos_cargados:
         df_val = dft.loc[filas_reales]
         
         h1 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador</th>'
-        for col in df_val.columns: h1 += f'<th>{col}</th>'
+        for col in df_val.columns:
+            # INYECCIÓN DEL LOGO
+            logo_html = f'<img src="{st.session_state.analisis[col]["logo_url"]}" class="company-logo" onerror="this.style.display=\'none\'">' if col in st.session_state.analisis and st.session_state.analisis[col].get("logo_url") else ''
+            h1 += f'<th>{logo_html}{col}</th>'
         h1 += '</tr>'
         for idx in df_val.index:
             t_text = TOOLTIPS.get(idx, "")
@@ -137,7 +140,13 @@ if st.session_state.datos_cargados:
         st.header(f"Ratios Contables (Evaluados como: {modo_estrategia})")
         df_comp = st.session_state.df_comp
         h2 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador</th>'
-        for col in df_comp.columns: h2 += f'<th>{col}</th>'
+        for col in df_comp.columns:
+            if col == "REFERENCIA":
+                h2 += f'<th>{col}</th>'
+            else:
+                # INYECCIÓN DEL LOGO
+                logo_html = f'<img src="{st.session_state.analisis[col]["logo_url"]}" class="company-logo" onerror="this.style.display=\'none\'">' if col in st.session_state.analisis and st.session_state.analisis[col].get("logo_url") else ''
+                h2 += f'<th>{logo_html}{col}</th>'
         h2 += '</tr>'
         for idx in df_comp.index:
             t_text = TOOLTIPS.get(idx, "")
@@ -175,7 +184,9 @@ if st.session_state.datos_cargados:
             for c in df_rev_pd.columns: h3 += f'<th>{c}</th>'
             h3 += '</tr>'
             for t_idx in df_rev_pd.index:
-                h3 += f'<tr><td class="col-header">{t_idx}</td>'
+                # INYECCIÓN DEL LOGO
+                logo_html = f'<img src="{st.session_state.analisis[t_idx]["logo_url"]}" class="company-logo" onerror="this.style.display=\'none\'">' if t_idx in st.session_state.analisis and st.session_state.analisis[t_idx].get("logo_url") else ''
+                h3 += f'<tr><td class="col-header">{logo_html}{t_idx}</td>'
                 for c in df_rev_pd.columns:
                     val = df_rev_pd.loc[t_idx, c]
                     v_sh = str(val) if c == "Tendencia" else formatear_moneda(val)
@@ -199,7 +210,9 @@ if st.session_state.datos_cargados:
             for c in df_eps_pd.columns: h4 += f'<th>{c}</th>'
             h4 += '</tr>'
             for t_idx in df_eps_pd.index:
-                h4 += f'<tr><td class="col-header">{t_idx}</td>'
+                # INYECCIÓN DEL LOGO
+                logo_html = f'<img src="{st.session_state.analisis[t_idx]["logo_url"]}" class="company-logo" onerror="this.style.display=\'none\'">' if t_idx in st.session_state.analisis and st.session_state.analisis[t_idx].get("logo_url") else ''
+                h4 += f'<tr><td class="col-header">{logo_html}{t_idx}</td>'
                 for c in df_eps_pd.columns:
                     val = df_eps_pd.loc[t_idx, c]
                     v_sh = str(val) if c == "Tendencia" else f"{val:.2f}" if pd.notna(val) else "-"
@@ -223,7 +236,10 @@ if st.session_state.datos_cargados:
         df_tec = pd.DataFrame(st.session_state.df_tec).set_index("Ticker").T
         if not df_tec.empty:
             h6 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador Técnico</th>'
-            for col in df_tec.columns: h6 += f'<th>{col}</th>'
+            for col in df_tec.columns:
+                # INYECCIÓN DEL LOGO
+                logo_html = f'<img src="{st.session_state.analisis[col]["logo_url"]}" class="company-logo" onerror="this.style.display=\'none\'">' if col in st.session_state.analisis and st.session_state.analisis[col].get("logo_url") else ''
+                h6 += f'<th>{logo_html}{col}</th>'
             h6 += '</tr>'
             for idx in df_tec.index:
                 h6 += f'<tr><td class="col-header">{idx}</td>'
@@ -280,9 +296,13 @@ if st.session_state.datos_cargados:
                 col_box, col_text = st.columns([1, 4])
                 
                 with col_box:
+                    # LOGO TOP 10 (MÁS GRANDE)
+                    logo_html = f'<img src="{st.session_state.analisis[s["t"]]["logo_url"]}" class="top10-logo" onerror="this.style.display=\'none\'">' if s['t'] in st.session_state.analisis and st.session_state.analisis[s['t']].get("logo_url") else ''
+                    
                     st.markdown(f"""
-                    <div style="background-color: #12161f; padding: 12px 5px; border-radius: 12px; border: 1px solid #2a2e39; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center;">
-                        <p style='color:#a3a8b8; margin:0; font-size: 0.75rem;'>Puesto #{i+1}</p>
+                    <div style="background-color: #12161f; padding: 12px 5px; border-radius: 12px; border: 1px solid #2a2e39; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                        <p style='color:#a3a8b8; margin:0 0 5px 0; font-size: 0.75rem;'>Puesto #{i+1}</p>
+                        {logo_html}
                         <h2 style='margin: 4px 0; color:#ffffff; font-size: 1.6rem;'>{s['t']}</h2>
                         <p style='color:#2ecca6; margin:0; font-size: 0.95rem;'><b>{s['total']} Puntos</b></p>
                     </div>
