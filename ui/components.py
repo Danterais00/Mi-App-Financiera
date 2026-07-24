@@ -19,23 +19,26 @@ def inyectar_css():
         .custom-table tr:last-child td { border-bottom: none; }
         .custom-table tr:hover td { background-color: #1a1f2b; transition: background-color 0.2s ease; }
         .col-header { font-weight: 600; background-color: #12161f !important; border-right: 1px solid #1f2430; color: #ffffff; }
-        
-        /* Nuevo estilo para la columna de Benchmark Absoluto */
         .col-ref { font-weight: 600; background-color: #161b26 !important; border-right: 1px solid #1f2430; color: #4d8bf0; font-size: 0.85rem; }
-        
         .highlight-green { color: #2ecca6 !important; font-weight: bold; background-color: rgba(46, 204, 166, 0.05) !important;}
         .highlight-red { color: #ff6b6b !important; font-weight: bold; background-color: rgba(255, 107, 107, 0.05) !important;}
     </style>
     """, unsafe_allow_html=True)
 
 TOOLTIPS = {
-    "PER": "0-25: Rango razonable de valoración. >25: Exige fuerte crecimiento futuro.",
-    "Margen Neto (%)": "Porcentaje de ventas convertido en ganancia limpia. Refleja eficiencia.",
-    "Gross Margin (%)": "Margen Bruto. Mide el poder de fijación de precios y foso económico (Moat).",
-    "ROE (%)": "Rentabilidad sobre el capital de los accionistas (>15% ideal).",
-    "ROA (%)": "Rentabilidad sobre los activos totales (>5% ideal).",
-    "FCF Yield (%)": "Rendimiento del Flujo de Caja Libre. Cuánto efectivo genera por cada dólar que cuesta la empresa.",
-    "Debt/Equity": "Nivel de apalancamiento/deuda (<1.2 ideal).",
+    "PER": "0-20: Rango razonable. Mide cuánto pagas por los beneficios del pasado.",
+    "Forward P/E": "Mide cuánto pagas por los beneficios estimados del próximo año.",
+    "PEG Ratio": "< 1.5 indica que la empresa está barata respecto a su crecimiento explosivo.",
+    "EV/EBITDA": "Valor real de adquisición incluyendo deuda. < 12 es excelente.",
+    "Payout Ratio (%)": "Porcentaje de ganancias destinado a pagar dividendos. > 70% es riesgoso.",
+    "Short Interest (%)": "Porcentaje de acciones apostadas a la baja. > 10% indica pesimismo institucional.",
+    "Consenso (1-5)": "1.0 = Fuerte Compra | 3.0 = Mantener | 5.0 = Fuerte Venta.",
+    "Margen Neto (%)": "Porcentaje de ventas convertido en ganancia limpia.",
+    "Gross Margin (%)": "Margen Bruto. Mide el foso económico (Moat).",
+    "ROE (%)": "Rentabilidad sobre el capital de los accionistas.",
+    "ROA (%)": "Rentabilidad sobre los activos totales.",
+    "FCF Yield (%)": "Cuánto efectivo libre genera por cada dólar que cuesta la empresa.",
+    "Debt/Equity": "Nivel de apalancamiento/deuda."
 }
 
 def formatear_moneda(n):
