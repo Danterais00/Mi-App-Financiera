@@ -6,10 +6,10 @@ from streamlit_option_menu import option_menu
 # Importar nuestros módulos
 from ui.components import inyectar_css, TOOLTIPS, formatear_moneda
 from data.extractor import descargar_datos_mercado
-from models.calculators import calcular_puntajes
+from models.calculators import calcular_puntajes, BENCHMARKS
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v2.1"  # <-- Versión actualizada sin numeración en títulos internos
+APP_VERSION = "v3.0"
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -19,44 +19,27 @@ inyectar_css()
 if 'datos_cargados' not in st.session_state:
     st.session_state.datos_cargados = False
 
-# --- BARRA LATERAL (SMARTFINANCE STYLE) ---
+# --- BARRA LATERAL ---
 with st.sidebar:
-    st.write("") # Espaciado superior
+    st.write("")
     modo_estrategia = st.selectbox("Estrategia activa:", ["Crecimiento (Agresivo)", "Fortaleza (Defensivo)"])
     
     st.write("")
     menu_seccion = option_menu(
         menu_title=None,
-        options=[
-            "Datos y Valuación", 
-            "Comparativa", 
-            "Evolución Financiera", 
-            "Análisis Técnico",
-            "Top 10 Elite"
-        ],
+        options=["Datos y Valuación", "Comparativa", "Evolución Financiera", "Análisis Técnico", "Top 10 Elite"],
         icons=['buildings', 'bar-chart-line', 'graph-up-arrow', 'activity', 'trophy'],
         menu_icon="cast",
         default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#a3a8b8", "font-size": "16px"},
-            "nav-link": {
-                "font-size": "14px", 
-                "text-align": "left", 
-                "margin": "0px", 
-                "--hover-color": "#1f2430",
-                "color": "#a3a8b8",
-                "white-space": "nowrap"
-            },
-            "nav-link-selected": {
-                "background-color": "#4d8bf0",
-                "color": "#ffffff",
-                "font-weight": "600"
-            },
+            "nav-link": {"font-size": "14px", "text-align": "left", "margin": "0px", "--hover-color": "#1f2430", "color": "#a3a8b8", "white-space": "nowrap"},
+            "nav-link-selected": {"background-color": "#4d8bf0", "color": "#ffffff", "font-weight": "600"},
         }
     )
 
-# --- HEADER PRINCIPAL (BRANDING) ---
+# --- HEADER PRINCIPAL ---
 st.markdown(f"""
     <div style="margin-top: -30px; margin-bottom: 25px;">
         <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">SmartInvest</h1>
@@ -126,7 +109,7 @@ if st.session_state.datos_cargados:
         st.write(h1 + '</table></div>', unsafe_allow_html=True)
 
     elif menu_seccion == "Comparativa":
-        st.header("Ratios Fundamentales")
+        st.header("Ratios Fundamentales Absolutos")
         df_comp = st.session_state.df_comp
         h2 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador</th>'
         for col in df_comp.columns: h2 += f'<th>{col}</th>'
@@ -137,19 +120,20 @@ if st.session_state.datos_cargados:
             h2 += f'<tr><td class="col-header" title="{t_text}"><span style="{sty}">{idx}</span></td>'
             for col in df_comp.columns:
                 val = df_comp.loc[idx, col]; cls = ""
-                if pd.isna(val) or val is None: v_sh = "-"
-                elif idx == "Empresa": v_sh = f"<b>{val}</b>" if col != "PROMEDIO" else "-"
+                if col == "REFERENCIA":
+                    h2 += f'<td class="col-ref">{val}</td>'
+                elif pd.isna(val) or val is None: v_sh = "-"
+                elif idx == "Empresa": v_sh = f"<b>{val}</b>"
                 else:
                     try:
                         v_n = float(val)
-                        if col != "PROMEDIO":
-                            prom = float(df_comp.loc[idx, "PROMEDIO"])
-                            es_mejor = (0 < v_n < prom) if idx == "PER" else (v_n < prom) if idx in ["Debt/Equity", "Cost of Revenue"] else (v_n > prom)
+                        if idx in BENCHMARKS:
+                            es_mejor = BENCHMARKS[idx]["cond"](v_n)
                             if es_mejor: cls = "highlight-green"
                         
                         if "%" in idx: v_sh = f"{v_n*100:.2f}%"
-                        elif idx in ["Free Cash Flow", "Net Income", "Cost of Revenue"]: v_sh = formatear_moneda(v_n)
-                        else: v_sh = f"{v_n:.2f}"
+                        elif idx in ["Current Ratio", "Quick Ratio", "Debt/Equity", "PER"]: v_sh = f"{v_n:.2f}"
+                        else: v_sh = str(v_n)
                     except: v_sh = str(val)
                 h2 += f'<td class="{cls}">{v_sh}</td>'
             h2 += '</tr>'
@@ -233,10 +217,13 @@ if st.session_state.datos_cargados:
         for t in st.session_state.tickers:
             if t in ana:
                 b_val, u_val = ana[t]["beta_val"], ana[t]["upside_val"]
-                if b_val is not None and b_val < 1.5 and ((u_val is None) or (u_val > 0)):
+                # Filtro Estricto: Solo Beta menor a 1.5. Upside ahora es un Bonus.
+                if b_val is not None and b_val < 1.5:
                     p_f = puntos.get(t, 0)
                     p_c = (1 if "2ecca6" in ana[t]["rev_t"] else 0) + (1 if "2ecca6" in ana[t]["eps_t"] else 0)
-                    total = (p_f + p_c + 1) if "Agresivo" in modo_estrategia else (p_f + 1)
+                    p_u = 1 if (u_val is not None and u_val > 0) else 0 # Bonus de Upside
+                    
+                    total = (p_f + p_c + p_u)
                     
                     scores.append({
                         "t": t, "total": total, "pf": p_f, "pc": p_c, "b": b_val, "u": u_val,
@@ -247,7 +234,7 @@ if st.session_state.datos_cargados:
         top10 = sorted(scores, key=lambda x: (x['total'], x['ef'], x['pc'], x['m'] if x['m'] else 0), reverse=True)[:10]
         
         if not top10:
-            st.warning("Ninguna acción cumple los filtros de Beta < 1.5 y Upside > 0%.")
+            st.warning("Ninguna acción cumple el filtro exigido: Beta < 1.5.")
         else:
             for i in range(0, len(top10), 5):
                 cols = st.columns(5)
