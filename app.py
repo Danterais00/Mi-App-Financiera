@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-from streamlit_option_menu import option_menu # <-- Nueva librería de UI
+from streamlit_option_menu import option_menu
 
 # Importar nuestros módulos
 from ui.components import inyectar_css, TOOLTIPS, formatear_moneda
@@ -27,11 +27,11 @@ with st.sidebar:
     menu_seccion = option_menu(
         menu_title=None,
         options=[
-            "1. Datos Generales y Valuación", 
-            "2. Comparativa Fundamental", 
-            "3. Evolución Financiera (Rev & EPS)", 
-            "4. Análisis Técnico",
-            "🏆 5. Top 10 (Filtro Elite)"
+            "Datos y Valuación", 
+            "Comparativa", 
+            "Evolución Financiera", 
+            "Análisis Técnico",
+            "Top 10 Elite"
         ],
         icons=['buildings', 'bar-chart-line', 'graph-up-arrow', 'activity', 'trophy'],
         menu_icon="cast",
@@ -44,7 +44,8 @@ with st.sidebar:
                 "text-align": "left", 
                 "margin": "0px", 
                 "--hover-color": "#1f2430",
-                "color": "#a3a8b8"
+                "color": "#a3a8b8",
+                "white-space": "nowrap"  # <-- Evita que el texto salte al segundo renglón
             },
             "nav-link-selected": {
                 "background-color": "#4d8bf0",
@@ -92,7 +93,7 @@ if btn_analizar and tickers_raw:
 if st.session_state.datos_cargados:
     dft = st.session_state.df_total
     
-    if menu_seccion == "1. Datos Generales y Valuación":
+    if menu_seccion == "Datos y Valuación":
         st.header("1. Valuación y Perfil de Mercado")
         df_val = dft.loc[["Empresa", "Precio", "Fair Value (Target)", "Upside (%)", "Beta", "Volumen Promedio"]]
         h1 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador</th>'
@@ -119,7 +120,7 @@ if st.session_state.datos_cargados:
             h1 += '</tr>'
         st.write(h1 + '</table></div>', unsafe_allow_html=True)
 
-    elif menu_seccion == "2. Comparativa Fundamental":
+    elif menu_seccion == "Comparativa":
         st.header("2. Ratios Fundamentales")
         df_comp = st.session_state.df_comp
         h2 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador</th>'
@@ -149,7 +150,7 @@ if st.session_state.datos_cargados:
             h2 += '</tr>'
         st.write(h2 + '</table></div>', unsafe_allow_html=True)
 
-    elif menu_seccion == "3. Evolución Financiera (Rev & EPS)":
+    elif menu_seccion == "Evolución Financiera":
         st.header("3. Evolución Financiera Histórica")
         df_r, df_e = st.session_state.df_rev, st.session_state.df_eps
         
@@ -191,7 +192,7 @@ if st.session_state.datos_cargados:
                 h4 += '</tr>'
             st.write(h4 + '</table></div>', unsafe_allow_html=True)
 
-    elif menu_seccion == "4. Análisis Técnico":
+    elif menu_seccion == "Análisis Técnico":
         st.header("4. Osciladores y Tendencias")
         df_tec = pd.DataFrame(st.session_state.df_tec).set_index("Ticker").T
         if not df_tec.empty:
@@ -217,7 +218,7 @@ if st.session_state.datos_cargados:
                 h6 += '</tr>'
             st.write(h6 + '</table></div>', unsafe_allow_html=True)
 
-    elif menu_seccion == "🏆 5. Top 10 (Filtro Elite)":
+    elif menu_seccion == "Top 10 Elite":
         st.header("🏆 Selección Elite: Top 10")
         ana = st.session_state.analisis
         puntos = st.session_state.puntos
