@@ -9,7 +9,7 @@ from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes, BENCHMARKS
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v3.0"
+APP_VERSION = "v3.1"  # <-- Versión parcheada (Fix Error Comparativa)
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -120,8 +120,13 @@ if st.session_state.datos_cargados:
             h2 += f'<tr><td class="col-header" title="{t_text}"><span style="{sty}">{idx}</span></td>'
             for col in df_comp.columns:
                 val = df_comp.loc[idx, col]; cls = ""
+                
+                # --- SOLUCIÓN DEL ERROR APLICADA AQUÍ ---
                 if col == "REFERENCIA":
                     h2 += f'<td class="col-ref">{val}</td>'
+                    continue  # Obliga al bucle a saltar a la siguiente columna
+                # ----------------------------------------
+                
                 elif pd.isna(val) or val is None: v_sh = "-"
                 elif idx == "Empresa": v_sh = f"<b>{val}</b>"
                 else:
@@ -217,11 +222,10 @@ if st.session_state.datos_cargados:
         for t in st.session_state.tickers:
             if t in ana:
                 b_val, u_val = ana[t]["beta_val"], ana[t]["upside_val"]
-                # Filtro Estricto: Solo Beta menor a 1.5. Upside ahora es un Bonus.
                 if b_val is not None and b_val < 1.5:
                     p_f = puntos.get(t, 0)
                     p_c = (1 if "2ecca6" in ana[t]["rev_t"] else 0) + (1 if "2ecca6" in ana[t]["eps_t"] else 0)
-                    p_u = 1 if (u_val is not None and u_val > 0) else 0 # Bonus de Upside
+                    p_u = 1 if (u_val is not None and u_val > 0) else 0
                     
                     total = (p_f + p_c + p_u)
                     
