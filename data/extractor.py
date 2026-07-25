@@ -37,13 +37,15 @@ def descargar_datos_mercado(lista_tickers):
         gross_margin = (gross / rev) if (gross and rev and rev > 0) else None
         fcf_yield = (fcf / mcap) if (fcf and mcap and mcap > 0) else None
         
-        # --- EXTRACCIÓN DE LOGO (NUEVO) ---
+        # --- EXTRACCIÓN DE LOGO (MOTOR DE GOOGLE) ---
         website = info.get('website')
         domain = None
         if website and isinstance(website, str):
             domain = website.split('//')[-1].split('/')[0].replace('www.', '')
-        logo_url = f"https://logo.clearbit.com/{domain}?size=60" if domain else None
-        # ----------------------------------
+        
+        # Usamos el servicio de Google: estable y devuelve un ícono por defecto si no hay logo
+        logo_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=128" if domain else "https://www.google.com/s2/favicons?domain=finance.yahoo.com&sz=128"
+        # --------------------------------------------
         
         datos_fundamentales.append({
             "Ticker": ticker, "Empresa": info.get('longName', ticker),
@@ -118,7 +120,7 @@ def descargar_datos_mercado(lista_tickers):
             "nombre": info.get('longName', ticker), "rev_t": icon_r, "eps_t": icon_e,
             "net_margin": info.get('profitMargins', -1), "upside_val": upside,
             "beta_val": info.get('beta', 99), "rsi_val": rsi_val, "dist_sma": dist_sma,
-            "logo_url": logo_url # <- Guardamos el logo en el análisis
+            "logo_url": logo_url # <- Guardamos la URL segura
         }
 
     return datos_fundamentales, datos_tecnicos, datos_revenue, datos_eps, analisis_completo
