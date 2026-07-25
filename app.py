@@ -9,7 +9,7 @@ from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v4.3"  # <-- Versión con Identidad Visual (Logos)
+APP_VERSION = "v4.4"  # <-- Racional Dinámico Institucional inyectado
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -90,6 +90,14 @@ if st.session_state.datos_cargados and st.session_state.estrategia_cargada != mo
     df_total, df_comp, puntos, posibles = calcular_puntajes(datos_reconstruidos, st.session_state.tickers, modo_estrategia)
     st.session_state.update({"df_total": df_total, "df_comp": df_comp, "puntos": puntos, "posibles": posibles, "estrategia_cargada": modo_estrategia})
 
+# --- FUNCIONES DE APOYO PARA EXTRACCIÓN SEGURA ---
+def get_val(df, metric, ticker):
+    try:
+        val = df.loc[metric, ticker]
+        return float(val) if not pd.isna(val) else None
+    except:
+        return None
+
 # --- RENDERIZADO DE VISTAS ---
 if st.session_state.datos_cargados:
     dft = st.session_state.df_total
@@ -102,7 +110,6 @@ if st.session_state.datos_cargados:
         
         h1 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador</th>'
         for col in df_val.columns:
-            # INYECCIÓN DEL LOGO
             logo_html = f'<img src="{st.session_state.analisis[col]["logo_url"]}" class="company-logo" onerror="this.style.display=\'none\'">' if col in st.session_state.analisis and st.session_state.analisis[col].get("logo_url") else ''
             h1 += f'<th>{logo_html}{col}</th>'
         h1 += '</tr>'
@@ -144,7 +151,6 @@ if st.session_state.datos_cargados:
             if col == "REFERENCIA":
                 h2 += f'<th>{col}</th>'
             else:
-                # INYECCIÓN DEL LOGO
                 logo_html = f'<img src="{st.session_state.analisis[col]["logo_url"]}" class="company-logo" onerror="this.style.display=\'none\'">' if col in st.session_state.analisis and st.session_state.analisis[col].get("logo_url") else ''
                 h2 += f'<th>{logo_html}{col}</th>'
         h2 += '</tr>'
@@ -184,7 +190,6 @@ if st.session_state.datos_cargados:
             for c in df_rev_pd.columns: h3 += f'<th>{c}</th>'
             h3 += '</tr>'
             for t_idx in df_rev_pd.index:
-                # INYECCIÓN DEL LOGO
                 logo_html = f'<img src="{st.session_state.analisis[t_idx]["logo_url"]}" class="company-logo" onerror="this.style.display=\'none\'">' if t_idx in st.session_state.analisis and st.session_state.analisis[t_idx].get("logo_url") else ''
                 h3 += f'<tr><td class="col-header">{logo_html}{t_idx}</td>'
                 for c in df_rev_pd.columns:
@@ -210,7 +215,6 @@ if st.session_state.datos_cargados:
             for c in df_eps_pd.columns: h4 += f'<th>{c}</th>'
             h4 += '</tr>'
             for t_idx in df_eps_pd.index:
-                # INYECCIÓN DEL LOGO
                 logo_html = f'<img src="{st.session_state.analisis[t_idx]["logo_url"]}" class="company-logo" onerror="this.style.display=\'none\'">' if t_idx in st.session_state.analisis and st.session_state.analisis[t_idx].get("logo_url") else ''
                 h4 += f'<tr><td class="col-header">{logo_html}{t_idx}</td>'
                 for c in df_eps_pd.columns:
@@ -237,7 +241,6 @@ if st.session_state.datos_cargados:
         if not df_tec.empty:
             h6 = '<div class="table-container"><table class="custom-table"><tr><th>Indicador Técnico</th>'
             for col in df_tec.columns:
-                # INYECCIÓN DEL LOGO
                 logo_html = f'<img src="{st.session_state.analisis[col]["logo_url"]}" class="company-logo" onerror="this.style.display=\'none\'">' if col in st.session_state.analisis and st.session_state.analisis[col].get("logo_url") else ''
                 h6 += f'<th>{logo_html}{col}</th>'
             h6 += '</tr>'
@@ -277,7 +280,6 @@ if st.session_state.datos_cargados:
                     p_f = puntos.get(t, 0)
                     p_c = (1 if "2ecca6" in ana[t]["rev_t"] else 0) + (1 if "2ecca6" in ana[t]["eps_t"] else 0)
                     p_u = 1 if (u_val is not None and u_val > 0) else 0
-                    
                     total = (p_f + p_c + p_u)
                     
                     scores.append({
@@ -294,39 +296,80 @@ if st.session_state.datos_cargados:
             st.write("---")
             for i, s in enumerate(top10):
                 col_box, col_text = st.columns([1, 4])
+                ticker = s['t']
                 
                 with col_box:
-                    # LOGO TOP 10 (MÁS GRANDE)
-                    logo_html = f'<img src="{st.session_state.analisis[s["t"]]["logo_url"]}" class="top10-logo" onerror="this.style.display=\'none\'">' if s['t'] in st.session_state.analisis and st.session_state.analisis[s['t']].get("logo_url") else ''
+                    logo_html = f'<img src="{st.session_state.analisis[ticker]["logo_url"]}" class="top10-logo" onerror="this.style.display=\'none\'">' if ticker in st.session_state.analisis and st.session_state.analisis[ticker].get("logo_url") else ''
                     
                     st.markdown(f"""
                     <div style="background-color: #12161f; padding: 12px 5px; border-radius: 12px; border: 1px solid #2a2e39; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
                         <p style='color:#a3a8b8; margin:0 0 5px 0; font-size: 0.75rem;'>Puesto #{i+1}</p>
                         {logo_html}
-                        <h2 style='margin: 4px 0; color:#ffffff; font-size: 1.6rem;'>{s['t']}</h2>
+                        <h2 style='margin: 4px 0; color:#ffffff; font-size: 1.6rem;'>{ticker}</h2>
                         <p style='color:#2ecca6; margin:0; font-size: 0.95rem;'><b>{s['total']} Puntos</b></p>
                     </div>
                     """, unsafe_allow_html=True)
                     
                 with col_text:
+                    # --- EXTRACCIÓN DE DATOS PARA RACIONAL DINÁMICO ---
+                    roe = get_val(dft, "ROE (%)", ticker)
+                    net_margin = get_val(dft, "Margen Neto (%)", ticker)
+                    fwd_pe = get_val(dft, "Forward P/E", ticker)
+                    peg = get_val(dft, "PEG Ratio", ticker)
+                    evebitda = get_val(dft, "EV/EBITDA", ticker)
+                    div_yield = get_val(dft, "Div Yield (%)", ticker)
+                    payout = get_val(dft, "Payout Ratio (%)", ticker)
+                    consenso = get_val(dft, "Consenso (1-5)", ticker)
+                    short_int = get_val(dft, "Short Interest (%)", ticker)
+                    deuda = get_val(dft, "Debt/Equity", ticker)
+                    
+                    # 1. ARMADO DINÁMICO: FUNDAMENTAL
                     if es_agresivo:
-                        fun_str = f"Cumple con {s['pf']} métricas agresivas (busca infravaloración frente a estimaciones futuras y PEG Ratios bajos)."
+                        fun_parts = []
+                        if roe and roe > 0.15: fun_parts.append(f"ROE sobresaliente del <strong>{roe*100:.1f}%</strong>")
+                        if net_margin and net_margin > 0.10: fun_parts.append(f"márgenes netos del <strong>{net_margin*100:.1f}%</strong>")
+                        if deuda is not None and deuda < 1.0: fun_parts.append(f"deuda controlada (Debt/Equity: <strong>{deuda:.2f}</strong>)")
+                        
+                        if fun_parts: fun_str = "Excelente eficiencia de capital, con " + " y ".join(fun_parts) + "."
+                        else: fun_str = f"Cumple con {s['pf']} métricas institucionales de solvencia y rentabilidad."
                     else:
-                        fun_str = f"Cumple con {s['pf']} métricas de solvencia defensiva (busca bajos ratios de deuda, dividendos estables y un EV/EBITDA sano)."
+                        fun_parts = []
+                        if div_yield and div_yield > 0.02:
+                            dy_str = f"rendimiento por dividendo del <strong>{div_yield*100:.1f}%</strong>"
+                            if payout and payout < 0.6: dy_str += f" (seguro, con Payout Ratio del <strong>{payout*100:.1f}%</strong>)"
+                            fun_parts.append(dy_str)
+                        if roe and roe > 0.10: fun_parts.append(f"sólida rentabilidad (ROE <strong>{roe*100:.1f}%</strong>)")
                         
-                    mom_text = "Fuerte impulso alcista tanto en ingresos como en ganancias." if s['pc'] == 2 else "Señales mixtas de crecimiento operativo reciente." if s['pc'] == 1 else "Estabilidad operativa sin crecimiento expansivo reciente."
-                    riesgo_str = f"Volatilidad controlada (Beta: <strong>{s['b']:.2f}</strong>)."
-                    if s['u'] and s['u'] > 0:
-                        riesgo_str += f" Consenso de analistas proyecta un upside del <strong>{s['u']*100:.1f}%</strong>."
-                        
+                        if fun_parts: fun_str = "Destaca por su perfil de valor, ofreciendo " + " y ".join(fun_parts) + "."
+                        else: fun_str = f"Cumple con {s['pf']} métricas de solvencia defensiva y generación de caja."
+
+                    # 2. ARMADO DINÁMICO: MOMENTUM
+                    mom_text = "Fuerte impulso alcista tanto en ingresos como en ganancias recientes." if s['pc'] == 2 else "Señales positivas en el crecimiento operativo reciente." if s['pc'] == 1 else "Estabilidad operativa sin un crecimiento expansivo en el corto plazo."
+                    
+                    # 3. ARMADO DINÁMICO: VALORACIÓN Y PERFIL
+                    val_parts = [f"Beta: <strong>{s['b']:.2f}</strong>"]
+                    if es_agresivo:
+                        if fwd_pe: val_parts.append(f"Forward P/E: <strong>{fwd_pe:.1f}</strong>")
+                        if peg and peg < 1.5: val_parts.append(f"PEG Ratio excepcional de <strong>{peg:.1f}</strong>")
+                    else:
+                        if evebitda and evebitda < 12: val_parts.append(f"Atractivo EV/EBITDA de <strong>{evebitda:.1f}</strong>")
+                        elif fwd_pe and fwd_pe < 20: val_parts.append(f"Valoración razonable (Forward P/E: <strong>{fwd_pe:.1f}</strong>)")
+                    
+                    if s['u'] and s['u'] > 0: val_parts.append(f"Upside analistas: <strong>{s['u']*100:.1f}%</strong>")
+                    if consenso and consenso <= 2.5: val_parts.append(f"Consenso: <strong>Compra ({consenso:.1f}/5)</strong>")
+                    if short_int and short_int < 0.05: val_parts.append(f"Bajo riesgo de cortos (Short Int: <strong>{short_int*100:.1f}%</strong>)")
+                    
+                    riesgo_str = " | ".join(val_parts) + "."
+                    
+                    # 4. ARMADO DINÁMICO: TÉCNICO
                     r, d = s['rsi'], s['dsma']
                     tec_str = "Faltan datos históricos para emitir juicio técnico."
                     if r and d:
-                        if r < 30: tec_str = "🟢 <strong>COMPRA FUERTE:</strong> RSI indica sobreventa profunda."
-                        elif 0 <= d <= 5: tec_str = "🟢 <strong>ENTRADA IDEAL:</strong> Rebote inminente sobre media de 200 días."
-                        elif r > 70: tec_str = "🔴 <strong>PRECAUCIÓN:</strong> Indicadores eufóricos, alto riesgo de recorte."
-                        elif d < 0: tec_str = "🟡 <strong>ALERTA BAJISTA:</strong> El precio cotiza bajo la tendencia de largo plazo."
-                        else: tec_str = "⚪ <strong>ZONA NEUTRAL:</strong> Indicadores estables, sin oportunidades técnicas extremas."
+                        if r < 30: tec_str = f"🟢 <strong>COMPRA FUERTE:</strong> RSI en <strong>{r:.1f}</strong> indica sobreventa profunda."
+                        elif 0 <= d <= 5: tec_str = f"🟢 <strong>ENTRADA IDEAL:</strong> Rebote inminente sobre media de 200 días."
+                        elif r > 70: tec_str = f"🔴 <strong>PRECAUCIÓN:</strong> RSI en <strong>{r:.1f}</strong> (euforia); alto riesgo de recorte."
+                        elif d < 0: tec_str = f"🟡 <strong>ALERTA BAJISTA:</strong> Cotizando un <strong>{abs(d):.1f}%</strong> por debajo de su media de largo plazo."
+                        else: tec_str = f"⚪ <strong>ZONA NEUTRAL:</strong> RSI en <strong>{r:.1f}</strong>, tendencia sin oportunidades extremas."
                     
                     html_text = f"""
                     <div style="font-size: 0.88rem; line-height: 1.4; color: #cbd5e1; padding: 4px 0;">
