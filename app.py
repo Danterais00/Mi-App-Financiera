@@ -7,10 +7,10 @@ from streamlit_option_menu import option_menu
 from ui.components import inyectar_css, TOOLTIPS, formatear_moneda
 from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
-from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones # <-- NUEVA IMPORTACIÓN
+from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v4.5"  # <-- Terminal Híbrida: Racional Dinámico + Macro News
+APP_VERSION = "v4.5"  # <-- Terminal Híbrida: Racional Dinámico + Macro News (Corregida)
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -26,7 +26,6 @@ with st.sidebar:
     modo_estrategia = st.selectbox("Estrategia activa:", ["Crecimiento (Agresivo)", "Fortaleza (Defensivo)"])
     
     st.write("")
-    # SE AGREGÓ "Noticias de Mercado" AL MENÚ
     menu_seccion = option_menu(
         menu_title=None,
         options=["Datos y Valuación", "Comparativa", "Evolución Financiera", "Análisis Técnico", "Top 10 Elite", "Noticias de Mercado"],
@@ -102,9 +101,6 @@ def get_val(df, metric, ticker):
 # --- RENDERIZADO DE VISTAS ---
 if st.session_state.datos_cargados:
     dft = st.session_state.df_total
-    
-    # [VISTAS ANTERIORES: Datos, Comparativa, Evolución, Técnico, Top 10]
-    # (El código de las otras vistas permanece intacto y minimizado para la legibilidad estructural)
     
     if menu_seccion == "Datos y Valuación":
         st.header("Valuación Futura y Perfil de Mercado")
@@ -192,6 +188,15 @@ if st.session_state.datos_cargados:
                     h3 += f'<td>{v_sh}</td>'
                 h3 += '</tr>'
             st.write(h3 + '</table></div>', unsafe_allow_html=True)
+            
+            df_p = df_rev_pd.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
+            df_p['v_b'] = pd.to_numeric(df_p['value'], errors='coerce') / 1e9
+            df_p['Trimestre'] = df_p['variable'].str.split('<').str[0]
+            st.altair_chart(alt.Chart(df_p).mark_line(point=True).encode(
+                x=alt.X('Trimestre', sort=None), y=alt.Y('v_b', title='Billions (USD)'), color='Ticker',
+                tooltip=['Ticker', 'Trimestre', 'v_b']
+            ).properties(height=250).configure_view(strokeOpacity=0), use_container_width=True)
+
         if df_e:
             st.divider()
             st.subheader("Beneficio por Acción (EPS)")
@@ -208,6 +213,17 @@ if st.session_state.datos_cargados:
                     h4 += f'<td>{v_sh}</td>'
                 h4 += '</tr>'
             st.write(h4 + '</table></div>', unsafe_allow_html=True)
+            
+            df_p_eps = df_eps_pd.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
+            df_p_eps['value'] = pd.to_numeric(df_p_eps['value'], errors='coerce')
+            df_p_eps['Trimestre'] = df_p_eps['variable'].str.split('<').str[0]
+            
+            st.altair_chart(alt.Chart(df_p_eps).mark_line(point=True).encode(
+                x=alt.X('Trimestre', sort=None), 
+                y=alt.Y('value', title='EPS (USD)'), 
+                color='Ticker',
+                tooltip=['Ticker', 'Trimestre', 'value']
+            ).properties(height=250).configure_view(strokeOpacity=0), use_container_width=True)
 
     elif menu_seccion == "Análisis Técnico":
         st.header("Osciladores y Tendencias")
@@ -350,7 +366,7 @@ if st.session_state.datos_cargados:
                 with st.spinner("Sincronizando datos locales..."):
                     macro_arg = obtener_macro_argentina()
                     
-                    # Panel Riesgo País & Merval
+                    # Panel Riesgo País & Merval (AQUÍ ESTÁ LA CORRECCIÓN EXACTA)
                     rp = macro_arg.get("riesgo_pais")
                     merv = macro_arg.get("merval")
                     st.markdown(f"""
@@ -359,7 +375,7 @@ if st.session_state.datos_cargados:
                         <h3 style="margin:5px 0; color:#fff;">{rp['valor'] if rp else 'N/D'} pts <span style="font-size:1rem; color:{'#ff6b6b' if rp and rp['variacion'].startswith('+') else '#2ecca6'};">({rp['variacion'] if rp else '-'})</span></h3>
                         
                         <p style="margin:10px 0 0 0; color:#a3a8b8; font-size:0.85rem; font-weight:bold;">S&P MERVAL</p>
-                        <h3 style="margin:5px 0; color:#fff;">{f"{merv['valor']:,.0f}" if merv else 'N/D'} <span style="font-size:1rem; color:{'#2ecca6' if merv and merv['var'] > 0 else '#ff6b6b'};">({merv['var']:.2f}% if merv else '-'})</span></h3>
+                        <h3 style="margin:5px 0; color:#fff;">{f"{merv['valor']:,.0f}" if merv else 'N/D'} <span style="font-size:1rem; color:{'#2ecca6' if merv and merv['var'] > 0 else '#ff6b6b'};">({f"{merv['var']:.2f}%" if merv else "-"})</span></h3>
                     </div>
                     """, unsafe_allow_html=True)
                     
