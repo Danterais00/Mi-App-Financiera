@@ -10,7 +10,7 @@ from models.calculators import calcular_puntajes
 from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v4.5"  # Terminal Híbrida
+APP_VERSION = "v4.5"  # Terminal Híbrida: Tablas Minimalistas Macro
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -105,52 +105,53 @@ if menu_seccion == "Noticias de Mercado":
     st.header("Noticias de Mercado")
     tab_gen, tab_acc = st.tabs(["🌐 Información General de Mercado", "📰 Noticias de Acciones"])
     
+    # --- TAB 1: MACROECONOMÍA (DISEÑO MINIMALISTA HORIZONTAL) ---
     with tab_gen:
-        col_arg, col_int = st.columns(2)
-        
-        with col_arg:
-            st.subheader("🇦🇷 Mercado Argentino")
-            with st.spinner("Sincronizando datos locales..."):
-                macro_arg = obtener_macro_argentina()
-                rp = macro_arg.get("riesgo_pais")
-                merv = macro_arg.get("merval")
-                
-                html_arg = f"""<div style="background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px;">
-<p style="margin:0; color:#a3a8b8; font-size:0.85rem; font-weight:bold;">RIESGO PAÍS JP MORGAN</p>
-<h3 style="margin:5px 0; color:#fff;">{rp['valor'] if rp else 'N/D'} pts <span style="font-size:1rem; color:{'#ff6b6b' if rp and rp.get('variacion', '').startswith('+') else '#2ecca6'};">({rp['variacion'] if rp else '-'})</span></h3>
-<p style="margin:10px 0 0 0; color:#a3a8b8; font-size:0.85rem; font-weight:bold;">S&P MERVAL</p>
-<h3 style="margin:5px 0; color:#fff;">{f"{merv['valor']:,.0f}" if merv else 'N/D'} <span style="font-size:1rem; color:{'#2ecca6' if merv and merv['var'] > 0 else '#ff6b6b'};">({f"{merv['var']:.2f}%" if merv else "-"})</span></h3>
-</div>"""
-                st.markdown(html_arg, unsafe_allow_html=True)
-                
-                st.markdown("#### Cotizaciones del Dólar")
-                dolares = macro_arg.get("dolares", [])
-                if dolares:
-                    d_html = '<div class="table-container"><table class="custom-table"><tr><th>Tipo</th><th>Compra</th><th>Venta</th></tr>'
-                    for d in dolares:
-                        d_html += f"<tr><td class='col-header'>{d['nombre']}</td><td>${d['compra']}</td><td>${d['venta']}</td></tr>"
-                    d_html += "</table></div>"
-                    st.write(d_html, unsafe_allow_html=True)
-                else:
-                    st.info("Mercado local cerrado o API en mantenimiento.")
+        # --- MERCADO ARGENTINO ---
+        st.subheader("🇦🇷 Mercado Argentino")
+        with st.spinner("Sincronizando datos locales..."):
+            macro_arg = obtener_macro_argentina()
+            rp = macro_arg.get("riesgo_pais")
+            merv = macro_arg.get("merval")
+            dolares = macro_arg.get("dolares", [])
+            
+            # Armado de la tabla unificada horizontal
+            html_arg = '<div class="table-container" style="margin-bottom: 30px;"><table class="custom-table" style="width: 100%;">'
+            html_arg += '<tr><th style="text-align: left;">Indicador / Activo</th><th>Último Valor (Venta)</th><th>Variación / Compra</th></tr>'
+            
+            # Fila: Riesgo País
+            v_rp = f"{rp['valor']}" if rp else 'N/D'
+            var_rp = f"<span style='color:{'#ff6b6b' if rp and rp.get('variacion', '').startswith('+') else '#2ecca6'}; font-weight:bold;'>{rp['variacion']}</span>" if rp else '-'
+            html_arg += f"<tr><td class='col-header' style='text-align: left;'>Riesgo País (Puntos)</td><td>{v_rp}</td><td>{var_rp}</td></tr>"
+            
+            # Fila: S&P Merval
+            v_merv = f"{merv['valor']:,.0f}" if merv else 'N/D'
+            var_merv = f"<span style='color:{'#2ecca6' if merv and merv['var'] > 0 else '#ff6b6b'}; font-weight:bold;'>{f'{merv['var']:.2f}%'}</span>" if merv else '-'
+            html_arg += f"<tr><td class='col-header' style='text-align: left;'>S&P Merval</td><td>{v_merv}</td><td>{var_merv}</td></tr>"
+            
+            # Filas: Dólares
+            if dolares:
+                for d in dolares:
+                    html_arg += f"<tr><td class='col-header' style='text-align: left;'>Dólar {d['nombre']}</td><td>${d['venta']}</td><td><span style='color:#8ba1b6; font-size:0.85rem;'>(Compra: ${d['compra']})</span></td></tr>"
+            
+            html_arg += '</table></div>'
+            st.write(html_arg, unsafe_allow_html=True)
 
-        with col_int:
-            st.subheader("🌎 Mercado Internacional")
-            with st.spinner("Sincronizando contexto global..."):
-                macro_int = obtener_macro_internacional()
-                for nombre, datos in macro_int.items():
-                    color = "#2ecca6" if datos['var'] > 0 else "#ff6b6b"
-                    simbolo = "▲" if datos['var'] > 0 else "▼"
-                    html_int = f"""<div style="background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
-<div>
-<p style="margin:0; color:#a3a8b8; font-size:0.85rem; font-weight:bold;">{nombre}</p>
-<h3 style="margin:5px 0; color:#fff;">{datos['valor']:.2f}</h3>
-</div>
-<div style="text-align:right;">
-<h4 style="margin:0; color:{color};">{simbolo} {abs(datos['var']):.2f}%</h4>
-</div>
-</div>"""
-                    st.markdown(html_int, unsafe_allow_html=True)
+        # --- MERCADO INTERNACIONAL ---
+        st.subheader("🌎 Mercado Internacional")
+        with st.spinner("Sincronizando contexto global..."):
+            macro_int = obtener_macro_internacional()
+            
+            html_int = '<div class="table-container"><table class="custom-table" style="width: 100%;">'
+            html_int += '<tr><th style="text-align: left;">Indicador Global</th><th>Cotización</th><th>Variación Diaria</th></tr>'
+            
+            for nombre, datos in macro_int.items():
+                color = "#2ecca6" if datos['var'] > 0 else "#ff6b6b"
+                simbolo = "▲" if datos['var'] > 0 else "▼"
+                html_int += f"<tr><td class='col-header' style='text-align: left;'>{nombre}</td><td>{datos['valor']:.2f}</td><td><span style='color:{color}; font-weight:bold;'>{simbolo} {abs(datos['var']):.2f}%</span></td></tr>"
+            
+            html_int += '</table></div>'
+            st.write(html_int, unsafe_allow_html=True)
 
     with tab_acc:
         st.subheader("📰 Titulares Recientes de tu Cartera")
