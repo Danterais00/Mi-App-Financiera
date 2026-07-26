@@ -31,7 +31,6 @@ def obtener_macro_argentina():
         if len(merv) >= 2:
             act = merv['Close'].iloc[-1]
             prev = merv['Close'].iloc[-2]
-            # Filtro anti-NaN
             if not pd.isna(act) and not pd.isna(prev):
                 datos["merval"] = {"valor": act, "var": ((act / prev) - 1) * 100}
     except: pass
@@ -40,7 +39,13 @@ def obtener_macro_argentina():
 
 @st.cache_data(ttl=3600)
 def obtener_macro_internacional():
-    tickers_macro = {"Petróleo Crudo (WTI)": "CL=F", "S&P 500 (Mercado Global)": "^GSPC", "Tasas FED (Bono 10Y EE.UU)": "^TNX"}
+    # AÑADIDO: Índice Dólar (DXY) para medir la fuerza del dólar a nivel global
+    tickers_macro = {
+        "S&P 500 (Mercado Global)": "^GSPC",
+        "Petróleo Crudo (WTI)": "CL=F", 
+        "DXY (Índice Dólar)": "DX-Y.NYB",
+        "Tasas FED (Bono 10Y EE.UU)": "^TNX"
+    }
     datos = {}
     for nombre, t in tickers_macro.items():
         try:
@@ -48,7 +53,6 @@ def obtener_macro_internacional():
             if len(hist) >= 2:
                 actual = hist['Close'].iloc[-1]
                 previo = hist['Close'].iloc[-2]
-                # Filtro anti-NaN
                 if not pd.isna(actual) and not pd.isna(previo):
                     datos[nombre] = {"valor": actual, "var": ((actual / previo) - 1) * 100}
         except: pass
