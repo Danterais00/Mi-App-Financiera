@@ -1,5 +1,8 @@
 streamlit
-yfinance
 pandas
 altair
+yfinance
 streamlit-option-menu
+feedparser
+beautifulsoup4
+requests
