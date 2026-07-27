@@ -27,7 +27,8 @@ def obtener_macro_argentina():
     except: pass
 
     try:
-        merv = yf.Ticker("^MERV").history(period="2d")
+        # Ampliamos a 5d para evitar cortes de fin de semana
+        merv = yf.Ticker("^MERV").history(period="5d")
         if len(merv) >= 2:
             act = merv['Close'].iloc[-1]
             prev = merv['Close'].iloc[-2]
@@ -39,7 +40,6 @@ def obtener_macro_argentina():
 
 @st.cache_data(ttl=3600)
 def obtener_macro_internacional():
-    # AÑADIDO: Índice Dólar (DXY) para medir la fuerza del dólar a nivel global
     tickers_macro = {
         "S&P 500 (Mercado Global)": "^GSPC",
         "Petróleo Crudo (WTI)": "CL=F", 
@@ -48,8 +48,11 @@ def obtener_macro_internacional():
     }
     datos = {}
     for nombre, t in tickers_macro.items():
+        # INYECCIÓN: Forzamos la creación del dato en estado "Nulo" para que no desaparezca de la tabla
+        datos[nombre] = {"valor": None, "var": None}
         try:
-            hist = yf.Ticker(t).history(period="2d")
+            # Ampliamos a 5d para garantizar lectura en fines de semana
+            hist = yf.Ticker(t).history(period="5d")
             if len(hist) >= 2:
                 actual = hist['Close'].iloc[-1]
                 previo = hist['Close'].iloc[-2]
