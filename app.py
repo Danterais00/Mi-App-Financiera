@@ -3,14 +3,14 @@ import pandas as pd
 import altair as alt
 from streamlit_option_menu import option_menu
 
-# Importar nuestros módulos
+# Importar nuestros módulos (AHORA INCLUYE generar_analisis_ia)
 from ui.components import inyectar_css, TOOLTIPS, formatear_moneda
 from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
-from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones
+from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones, generar_analisis_ia
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v4.7"  # Terminal Híbrida: Nivel 2 Macro (FRED API)
+APP_VERSION = "v5.0"  # Terminal Híbrida: Motor IA Integrado
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -106,16 +106,19 @@ if menu_seccion == "Noticias de Mercado":
     tab_gen, tab_acc = st.tabs(["🌐 Información General de Mercado", "📰 Noticias de Acciones"])
     
     with tab_gen:
+        brecha_calculada = None # Inicializamos la brecha global para la IA
+        macro_arg_data = {}
+        macro_int_data = {}
+        
         col_arg, col_int = st.columns(2)
         
         with col_arg:
-            # --- MERCADO ARGENTINO ---
             st.subheader("🇦🇷 Mercado Argentino")
             with st.spinner("Sincronizando datos locales..."):
-                macro_arg = obtener_macro_argentina()
-                rp = macro_arg.get("riesgo_pais")
-                merv = macro_arg.get("merval")
-                dolares = macro_arg.get("dolares", [])
+                macro_arg_data = obtener_macro_argentina()
+                rp = macro_arg_data.get("riesgo_pais")
+                merv = macro_arg_data.get("merval")
+                dolares = macro_arg_data.get("dolares", [])
                 
                 html_caja = f"""<div style="background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between;">
                     <div style="width: 48%;">
@@ -132,36 +135,35 @@ if menu_seccion == "Noticias de Mercado":
                 if dolares:
                     val_oficial = next((float(d['venta']) for d in dolares if d['nombre'] == 'Oficial'), None)
                     val_ccl = next((float(d['venta']) for d in dolares if d['nombre'] == 'CCL'), None)
-                    brecha = ((val_ccl / val_oficial) - 1) * 100 if val_oficial and val_ccl else None
+                    brecha_calculada = ((val_ccl / val_oficial) - 1) * 100 if val_oficial and val_ccl else None
 
                     html_arg = '<div class="table-container" style="margin-bottom: 30px;"><table class="custom-table" style="width: 100%;">'
                     html_arg += '<tr><th style="text-align: left;">Tipo de Cambio</th><th>Venta</th><th>Compra</th></tr>'
                     for d in dolares:
                         html_arg += f"<tr><td class='col-header' style='text-align: left;'>Dólar {d['nombre']}</td><td>${d['venta']}</td><td><span style='color:#8ba1b6;'>${d['compra']}</span></td></tr>"
-                    if brecha is not None:
-                        html_arg += f"<tr style='background-color: rgba(255, 213, 79, 0.05);'><td class='col-header' style='text-align: left; color: #ffd54f;'>Brecha (CCL / Oficial)</td><td colspan='2' style='color: #ffd54f; font-weight: bold; text-align: left; padding-left: 15px;'>{brecha:.1f}%</td></tr>"
+                    if brecha_calculada is not None:
+                        html_arg += f"<tr style='background-color: rgba(255, 213, 79, 0.05);'><td class='col-header' style='text-align: left; color: #ffd54f;'>Brecha (CCL / Oficial)</td><td colspan='2' style='color: #ffd54f; font-weight: bold; text-align: left; padding-left: 15px;'>{brecha_calculada:.1f}%</td></tr>"
                     html_arg += '</table></div>'
                     st.write(html_arg, unsafe_allow_html=True)
                 else:
                     st.info("Cotizaciones cambiarias no disponibles en este momento.")
 
         with col_int:
-            # --- MERCADO INTERNACIONAL ---
             st.subheader("🌎 Mercado Internacional")
             with st.spinner("Sincronizando contexto global..."):
-                macro_int = obtener_macro_internacional()
+                macro_int_data = obtener_macro_internacional()
                 
                 html_int = '<div class="table-container"><table class="custom-table" style="width: 100%;">'
                 html_int += '<tr><th style="text-align: left;">Indicador Global</th><th>Cotización</th><th>Variación Diaria</th></tr>'
                 
-                for nombre, datos in macro_int.items():
+                for nombre, datos in macro_int_data.items():
                     if datos['valor'] is not None and datos['var'] is not None:
-                        if abs(datos['var']) < 0.001:  # Manejo de cambios nulos (muy común en tasas de la FED mes a mes)
+                        if abs(datos['var']) < 0.001:
                             var_str = "<span style='color:#8ba1b6; font-weight:bold;'>= 0.00</span>"
                         else:
                             color = "#2ecca6" if datos['var'] > 0 else "#ff6b6b"
                             simbolo = "▲" if datos['var'] > 0 else "▼"
-                            suffix = " pts" if "%" in nombre else "%"  # Si es porcentaje puro, mostramos variación en puntos
+                            suffix = " pts" if "%" in nombre else "%"
                             var_str = f"<span style='color:{color}; font-weight:bold;'>{simbolo} {abs(datos['var']):.2f}{suffix}</span>"
                         val_str = f"{datos['valor']:.2f}"
                     else:
@@ -172,6 +174,24 @@ if menu_seccion == "Noticias de Mercado":
                 
                 html_int += '</table></div>'
                 st.write(html_int, unsafe_allow_html=True)
+
+        # ==========================================
+        # CAJA DE ANÁLISIS IA (VISIÓN ESTRATÉGICA)
+        # ==========================================
+        st.write("")
+        st.markdown("<h3 style='margin-bottom: 15px; color: #ffffff;'>💡 Visión Estratégica de Mercado (IA)</h3>", unsafe_allow_html=True)
+        with st.spinner("El motor de IA de SmartInvest está redactando el análisis estratégico..."):
+            analisis_texto = generar_analisis_ia(macro_arg_data, macro_int_data, brecha_calculada)
+            
+            # Contenedor premium para el texto de la IA
+            st.markdown(f"""
+            <div style="background-color: #12161f; padding: 25px 30px; border-radius: 12px; border-left: 5px solid #4d8bf0; border-top: 1px solid #2a2e39; border-right: 1px solid #2a2e39; border-bottom: 1px solid #2a2e39; box-shadow: 0px 4px 15px rgba(0,0,0,0.2);">
+                <div style="font-size: 0.95rem; line-height: 1.7; color: #e2e8f0;">
+                    {analisis_texto}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        st.write("")
 
     with tab_acc:
         st.subheader("📰 Titulares Recientes de tu Cartera")
@@ -192,7 +212,7 @@ if menu_seccion == "Noticias de Mercado":
         else:
             st.info("👈 Ingresa los tickers y presiona 'Sincronizar Datos' para ver las noticias específicas de tus acciones.")
 
-# 2. VISTAS DEPENDIENTES: (Requieren que existan datos de las acciones)
+# 2. VISTAS DEPENDIENTES:
 else:
     if st.session_state.datos_cargados:
         dft = st.session_state.df_total
