@@ -9,7 +9,6 @@ HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 @st.cache_data(ttl=1800)
 def obtener_macro_argentina():
     datos = {"dolares": [], "riesgo_pais": None, "merval": None}
-    
     try:
         res = requests.get("https://dolarapi.com/v1/dolares", timeout=5)
         if res.status_code == 200:
@@ -27,7 +26,6 @@ def obtener_macro_argentina():
     except: pass
 
     try:
-        # Ampliamos a 5d para evitar cortes de fin de semana
         merv = yf.Ticker("^MERV").history(period="5d")
         if len(merv) >= 2:
             act = merv['Close'].iloc[-1]
@@ -35,30 +33,57 @@ def obtener_macro_argentina():
             if not pd.isna(act) and not pd.isna(prev):
                 datos["merval"] = {"valor": act, "var": ((act / prev) - 1) * 100}
     except: pass
-
     return datos
 
 @st.cache_data(ttl=3600)
 def obtener_macro_internacional():
+    datos = {}
+    
+    # 1. DATOS DEL MERCADO (Yahoo Finance)
     tickers_macro = {
         "S&P 500 (Mercado Global)": "^GSPC",
         "Petróleo Crudo (WTI)": "CL=F", 
         "DXY (Índice Dólar)": "DX-Y.NYB",
-        "Tasas FED (Bono 10Y EE.UU)": "^TNX"
+        "Bono 10Y EE.UU (%)": "^TNX"
     }
-    datos = {}
+    
     for nombre, t in tickers_macro.items():
-        # INYECCIÓN: Forzamos la creación del dato en estado "Nulo" para que no desaparezca de la tabla
         datos[nombre] = {"valor": None, "var": None}
         try:
-            # Ampliamos a 5d para garantizar lectura en fines de semana
             hist = yf.Ticker(t).history(period="5d")
             if len(hist) >= 2:
                 actual = hist['Close'].iloc[-1]
                 previo = hist['Close'].iloc[-2]
                 if not pd.isna(actual) and not pd.isna(previo):
-                    datos[nombre] = {"valor": actual, "var": ((actual / previo) - 1) * 100}
+                    datos[nombre] = {"valor": float(actual), "var": float(((actual / previo) - 1) * 100)}
         except: pass
+
+    # 2. DATOS INSTITUCIONALES MACRO (FRED API - Nivel 2)
+    try:
+        if "FRED_API_KEY" in st.secrets:
+            api_key = st.secrets["FRED_API_KEY"]
+            fred_series = {
+                "Tasa FED (%)": {"id": "FEDFUNDS", "units": "lin"},
+                "Inflación EE.UU YoY (%)": {"id": "CPIAUCSL", "units": "pc1"},
+                "Desempleo EE.UU (%)": {"id": "UNRATE", "units": "lin"}
+            }
+            
+            for nombre, config in fred_series.items():
+                datos[nombre] = {"valor": None, "var": None}
+                url = f"https://api.stlouisfed.org/fred/series/observations?series_id={config['id']}&api_key={api_key}&file_type=json&units={config['units']}&sort_order=desc&limit=2"
+                try:
+                    res = requests.get(url, timeout=5)
+                    if res.status_code == 200:
+                        obs = res.json().get("observations", [])
+                        if len(obs) >= 2:
+                            v_act = obs[0]["value"]
+                            v_prev = obs[1]["value"]
+                            if v_act != "." and v_prev != ".":
+                                act = float(v_act)
+                                prev = float(v_prev)
+                                datos[nombre] = {"valor": act, "var": act - prev} # Para tasas e inflación medimos la variación en puntos, no porcentaje de porcentaje
+                except: pass
+    except: pass # Cae silenciosamente si hay error en la conexión o la llave
     return datos
 
 @st.cache_data(ttl=1800)
