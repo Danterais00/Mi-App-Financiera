@@ -10,7 +10,7 @@ from models.calculators import calcular_puntajes
 from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v4.6"  # Terminal Híbrida: Nivel 1 Macro Integrado
+APP_VERSION = "v4.6"  # Terminal Híbrida: Nivel 1 Macro Integrado + Fix Fallo Silencioso
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -162,9 +162,17 @@ if menu_seccion == "Noticias de Mercado":
                 html_int += '<tr><th style="text-align: left;">Indicador Global</th><th>Cotización</th><th>Variación Diaria</th></tr>'
                 
                 for nombre, datos in macro_int.items():
-                    color = "#2ecca6" if datos['var'] > 0 else "#ff6b6b"
-                    simbolo = "▲" if datos['var'] > 0 else "▼"
-                    html_int += f"<tr><td class='col-header' style='text-align: left;'>{nombre}</td><td>{datos['valor']:.2f}</td><td><span style='color:{color}; font-weight:bold;'>{simbolo} {abs(datos['var']):.2f}%</span></td></tr>"
+                    # LÓGICA DE SEGURIDAD: Si el dato existe, formatea con color. Si no, pon "N/D".
+                    if datos['valor'] is not None and datos['var'] is not None:
+                        color = "#2ecca6" if datos['var'] > 0 else "#ff6b6b"
+                        simbolo = "▲" if datos['var'] > 0 else "▼"
+                        var_str = f"<span style='color:{color}; font-weight:bold;'>{simbolo} {abs(datos['var']):.2f}%</span>"
+                        val_str = f"{datos['valor']:.2f}"
+                    else:
+                        var_str = "<span style='color:#8ba1b6; font-weight:bold;'>-</span>"
+                        val_str = "N/D"
+                        
+                    html_int += f"<tr><td class='col-header' style='text-align: left;'>{nombre}</td><td>{val_str}</td><td>{var_str}</td></tr>"
                 
                 html_int += '</table></div>'
                 st.write(html_int, unsafe_allow_html=True)
