@@ -102,7 +102,7 @@ def obtener_noticias_acciones(lista_tickers):
             noticias[ticker] = []
     return noticias
 
-# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CON DIAGNÓSTICO ACTIVO) ---
+# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CONECTADO A GEMINI 2.5) ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -128,38 +128,28 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         Riesgo País: {rp_val}
         Merval: {merv_val}
         Brecha Cambiaria (CCL vs Oficial): {brecha_str}
+        
+        --- DATOS INTERNACIONALES ---
         """
         for nombre, datos in macro_int.items():
             v = datos['valor'] if datos['valor'] is not None else 'N/D'
             var = datos['var'] if datos['var'] is not None else 'N/D'
             prompt += f"{nombre}: {v} (Var: {var})\n"
             
-        # 2. Intentamos conectar a la API versión V1 (Estable)
-        url_gen = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+        # 2. Conexión HTTP pura usando el modelo exacto autorizado por tu cuenta: gemini-2.5-flash
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
         headers = {'Content-Type': 'application/json'}
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}]
+        }
         
-        res = requests.post(url_gen, headers=headers, json=payload, timeout=15)
+        res = requests.post(url, headers=headers, json=payload, timeout=15)
         
         if res.status_code == 200:
             data = res.json()
             return data['candidates'][0]['content']['parts'][0]['text']
-        elif res.status_code == 404:
-            # 3. MODO DIAGNÓSTICO: Si falla, le preguntamos a Google qué modelos existen para esta llave
-            url_models = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-            res_models = requests.get(url_models, timeout=10)
-            
-            if res_models.status_code == 200:
-                models_data = res_models.json()
-                # Filtramos solo los nombres de los modelos que soportan generación de texto
-                nombres_modelos = [m['name'] for m in models_data.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
-                lista_str = ", ".join(nombres_modelos) if nombres_modelos else "Ninguno (Tu llave no tiene modelos asignados)."
-                
-                return f"❌ **Diagnóstico de Google:** Tu llave es válida, pero no tiene permiso para 'gemini-1.5-flash'.\n\n🔍 **Modelos que SÍ tienes autorizados:** {lista_str}"
-            else:
-                return f"❌ **Error 404 Doble:** No se pudo obtener la lista de modelos. Posible bloqueo regional o llave restringida."
         else:
-            return f"❌ **Error del servidor de IA:** Código {res.status_code} - {res.text}"
+            return f"❌ **Error del servidor de IA:** Código {res.status_code} - Fallo en el endpoint de Google. Respuesta: {res.text}"
             
     except Exception as e:
-        return f"❌ **Error crítico de conexión:** {e}"
+        return f"❌ **Error crítico de conexión:** No se pudo procesar la IA. Detalle: {e}"
