@@ -38,8 +38,6 @@ def obtener_macro_argentina():
 @st.cache_data(ttl=3600)
 def obtener_macro_internacional():
     datos = {}
-    
-    # 1. DATOS DEL MERCADO (Yahoo Finance)
     tickers_macro = {
         "S&P 500 (Mercado Global)": "^GSPC",
         "Petróleo Crudo (WTI)": "CL=F", 
@@ -58,7 +56,6 @@ def obtener_macro_internacional():
                     datos[nombre] = {"valor": float(actual), "var": float(((actual / previo) - 1) * 100)}
         except: pass
 
-    # 2. DATOS INSTITUCIONALES MACRO (FRED API - Nivel 2)
     try:
         if "FRED_API_KEY" in st.secrets:
             api_key = st.secrets["FRED_API_KEY"]
@@ -81,9 +78,9 @@ def obtener_macro_internacional():
                             if v_act != "." and v_prev != ".":
                                 act = float(v_act)
                                 prev = float(v_prev)
-                                datos[nombre] = {"valor": act, "var": act - prev} # Para tasas e inflación medimos la variación en puntos, no porcentaje de porcentaje
+                                datos[nombre] = {"valor": act, "var": act - prev}
                 except: pass
-    except: pass # Cae silenciosamente si hay error en la conexión o la llave
+    except: pass 
     return datos
 
 @st.cache_data(ttl=1800)
@@ -104,3 +101,47 @@ def obtener_noticias_acciones(lista_tickers):
         except:
             noticias[ticker] = []
     return noticias
+
+# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL ---
+@st.cache_data(ttl=3600)  # Guarda el análisis 1 hora para no consumir tokens innecesarios
+def generar_analisis_ia(macro_arg, macro_int, brecha):
+    if "GEMINI_API_KEY" not in st.secrets:
+        return "⚠️ **Falta la clave API de Gemini.** Configura `GEMINI_API_KEY` en los Secrets de Streamlit."
+    
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        
+        # 1. Empaquetamos los datos para que la IA los entienda
+        rp = macro_arg.get('riesgo_pais')
+        rp_val = rp['valor'] if rp else 'N/D'
+        merv = macro_arg.get('merval')
+        merv_val = f"{merv['valor']:.0f} (Var: {merv['var']:.2f}%)" if merv else 'N/D'
+        brecha_str = f"{brecha:.2f}%" if brecha is not None else 'N/D'
+        
+        # 2. Creamos el Prompt Estratégico (La instrucción)
+        prompt = f"""
+        Eres un experto estratega financiero de Wall Street asesorando a un fondo institucional.
+        Analiza el siguiente tablero macroeconómico de Argentina y EE.UU. 
+        Redacta un análisis estratégico directo en 4 bullet points indicando oportunidades de inversión claras 
+        (ej: CEDEARs, Renta Fija Internacional, Acciones locales, Carry Trade, etc.).
+        Sé conciso, profesional, y justifica tu racional cruzando los datos provistos. Evita saludos, ve directo al análisis.
+        
+        --- DATOS ARGENTINA ---
+        Riesgo País: {rp_val}
+        Merval: {merv_val}
+        Brecha Cambiaria (CCL vs Oficial): {brecha_str}
+        
+        --- DATOS INTERNACIONALES ---
+        """
+        for nombre, datos in macro_int.items():
+            v = datos['valor'] if datos['valor'] is not None else 'N/D'
+            var = datos['var'] if datos['var'] is not None else 'N/D'
+            prompt += f"{nombre}: {v} (Var: {var})\n"
+            
+        # 3. Llamamos al cerebro de la IA
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"❌ **Error al generar el análisis:** No se pudo procesar la IA. Error: {e}"
