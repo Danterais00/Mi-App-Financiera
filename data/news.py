@@ -138,8 +138,8 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             var = datos['var'] if datos['var'] is not None else 'N/D'
             prompt += f"{nombre}: {v} (Var: {var})\n"
             
-        # 3. BYPASS DEL SDK: Conexión HTTP pura a los servidores de Google
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        # 3. BYPASS DEL SDK: Conexión HTTP pura usando gemini-pro (El modelo universal)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
         headers = {'Content-Type': 'application/json'}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}]
@@ -152,7 +152,7 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             data = res.json()
             return data['candidates'][0]['content']['parts'][0]['text']
         else:
-            return f"❌ **Error del servidor de IA:** Código {res.status_code} - Revisa que la API Key sea correcta."
+            return f"❌ **Error del servidor de IA:** Código {res.status_code} - La API rechazó la solicitud. Revisa el modelo."
             
     except Exception as e:
         return f"❌ **Error crítico de conexión:** No se pudo procesar la IA. Detalle: {e}"
