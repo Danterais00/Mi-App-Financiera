@@ -140,7 +140,7 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             prompt += f"{nombre}: {v} (Var: {var})\n"
             
         # 3. Llamamos al cerebro de la IA
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
