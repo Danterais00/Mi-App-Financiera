@@ -139,8 +139,9 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             var = datos['var'] if datos['var'] is not None else 'N/D'
             prompt += f"{nombre}: {v} (Var: {var})\n"
             
-        # 3. Llamamos al cerebro de la IA
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # 3. Llamamos al cerebro de la IA (CORREGIDO AL NOMBRE ESTÁNDAR)
+        # Aquí eliminamos la etiqueta "-latest" que causaba el conflicto 404
+        model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
