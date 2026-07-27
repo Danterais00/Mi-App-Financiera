@@ -10,7 +10,7 @@ from models.calculators import calcular_puntajes
 from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones
 
 # --- CONSTANTES DE LA APP ---
-APP_VERSION = "v4.6"  # Terminal Híbrida: Nivel 1 Macro Integrado + Fix Fallo Silencioso
+APP_VERSION = "v4.7"  # Terminal Híbrida: Nivel 2 Macro (FRED API)
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
@@ -117,7 +117,6 @@ if menu_seccion == "Noticias de Mercado":
                 merv = macro_arg.get("merval")
                 dolares = macro_arg.get("dolares", [])
                 
-                # 1. CAJA DESTACADA (Para Merval y Riesgo País)
                 html_caja = f"""<div style="background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between;">
                     <div style="width: 48%;">
                         <p style="margin:0; color:#a3a8b8; font-size:0.85rem; font-weight:bold;">RIESGO PAÍS</p>
@@ -130,23 +129,17 @@ if menu_seccion == "Noticias de Mercado":
                 </div>"""
                 st.markdown(html_caja, unsafe_allow_html=True)
                 
-                # 2. CÁLCULO DE LA BRECHA Y TABLA MINIMALISTA
                 if dolares:
-                    # Extraer Oficial y CCL para calcular la brecha
                     val_oficial = next((float(d['venta']) for d in dolares if d['nombre'] == 'Oficial'), None)
                     val_ccl = next((float(d['venta']) for d in dolares if d['nombre'] == 'CCL'), None)
                     brecha = ((val_ccl / val_oficial) - 1) * 100 if val_oficial and val_ccl else None
 
                     html_arg = '<div class="table-container" style="margin-bottom: 30px;"><table class="custom-table" style="width: 100%;">'
                     html_arg += '<tr><th style="text-align: left;">Tipo de Cambio</th><th>Venta</th><th>Compra</th></tr>'
-                    
                     for d in dolares:
                         html_arg += f"<tr><td class='col-header' style='text-align: left;'>Dólar {d['nombre']}</td><td>${d['venta']}</td><td><span style='color:#8ba1b6;'>${d['compra']}</span></td></tr>"
-                    
-                    # Fila de Brecha Cambiaria
                     if brecha is not None:
                         html_arg += f"<tr style='background-color: rgba(255, 213, 79, 0.05);'><td class='col-header' style='text-align: left; color: #ffd54f;'>Brecha (CCL / Oficial)</td><td colspan='2' style='color: #ffd54f; font-weight: bold; text-align: left; padding-left: 15px;'>{brecha:.1f}%</td></tr>"
-                    
                     html_arg += '</table></div>'
                     st.write(html_arg, unsafe_allow_html=True)
                 else:
@@ -162,11 +155,14 @@ if menu_seccion == "Noticias de Mercado":
                 html_int += '<tr><th style="text-align: left;">Indicador Global</th><th>Cotización</th><th>Variación Diaria</th></tr>'
                 
                 for nombre, datos in macro_int.items():
-                    # LÓGICA DE SEGURIDAD: Si el dato existe, formatea con color. Si no, pon "N/D".
                     if datos['valor'] is not None and datos['var'] is not None:
-                        color = "#2ecca6" if datos['var'] > 0 else "#ff6b6b"
-                        simbolo = "▲" if datos['var'] > 0 else "▼"
-                        var_str = f"<span style='color:{color}; font-weight:bold;'>{simbolo} {abs(datos['var']):.2f}%</span>"
+                        if abs(datos['var']) < 0.001:  # Manejo de cambios nulos (muy común en tasas de la FED mes a mes)
+                            var_str = "<span style='color:#8ba1b6; font-weight:bold;'>= 0.00</span>"
+                        else:
+                            color = "#2ecca6" if datos['var'] > 0 else "#ff6b6b"
+                            simbolo = "▲" if datos['var'] > 0 else "▼"
+                            suffix = " pts" if "%" in nombre else "%"  # Si es porcentaje puro, mostramos variación en puntos
+                            var_str = f"<span style='color:{color}; font-weight:bold;'>{simbolo} {abs(datos['var']):.2f}{suffix}</span>"
                         val_str = f"{datos['valor']:.2f}"
                     else:
                         var_str = "<span style='color:#8ba1b6; font-weight:bold;'>-</span>"
