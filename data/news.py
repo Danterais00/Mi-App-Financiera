@@ -143,7 +143,8 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             "contents": [{"parts": [{"text": prompt}]}]
         }
         
-        res = requests.post(url, headers=headers, json=payload, timeout=15)
+        # AUMENTAMOS EL TIMEOUT A 45 SEGUNDOS PARA DARLE TIEMPO A LA IA
+        res = requests.post(url, headers=headers, json=payload, timeout=45)
         
         if res.status_code == 200:
             data = res.json()
