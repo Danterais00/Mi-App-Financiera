@@ -102,7 +102,7 @@ def obtener_noticias_acciones(lista_tickers):
             noticias[ticker] = []
     return noticias
 
-# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CONECTADO A GEMINI 2.5) ---
+# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CONECTADO A GEMINI 3.5 FLASH) ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -136,8 +136,8 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             var = datos['var'] if datos['var'] is not None else 'N/D'
             prompt += f"{nombre}: {v} (Var: {var})\n"
             
-        # 2. Conexión HTTP pura usando el modelo exacto autorizado por tu cuenta: gemini-2.5-flash
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        # 2. Conexión HTTP pura usando el modelo de última generación: gemini-3.5-flash
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={api_key}"
         headers = {'Content-Type': 'application/json'}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}]
