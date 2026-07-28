@@ -15,10 +15,10 @@ st.set_page_config(
 )
 
 st.title("📈 SmartInvest - Tablero Estratégico")
-st.markdown("Monitor de variables macroeconómicas y análisis sectorial impulsado por Inteligencia Artificial.")
+st.markdown("Monitor de variables macroeconómicas, noticias en tiempo real y análisis sectorial impulsado por Inteligencia Artificial.")
 st.divider()
 
-# --- CARGA DE DATOS ---
+# --- CARGA DE DATOS MACRO ---
 with st.spinner("Obteniendo datos del mercado..."):
     macro_arg = obtener_macro_argentina()
     macro_int = obtener_macro_internacional()
@@ -61,7 +61,7 @@ st.divider()
 
 # --- SECCIÓN 2: MERCADO INTERNACIONAL Y TENDENCIAS ---
 st.header("🌎 Mercado Internacional y Tendencias")
-st.markdown("Visualización de variables clave y su evolución histórica (1 Mes y 6 Meses).")
+st.markdown("Visualización de variables clave y su evolución histórica.")
 
 # Iteramos sobre los datos internacionales para armar el "mini tablero"
 for nombre, datos in macro_int.items():
@@ -84,17 +84,44 @@ for nombre, datos in macro_int.items():
     if var_6m is not None:
         col4.metric("Tendencia 6 Meses", f"{var_6m:.2f}%", delta=f"{var_6m:.2f}%")
         
-    st.markdown("---") # Línea separadora sutil
+    st.markdown("---") 
 
-# --- SECCIÓN 3: INTELIGENCIA ARTIFICIAL ---
+# --- SECCIÓN 3: NOTICIAS FINANCIERAS (RECUPERADA) ---
+st.header("📰 Noticias del Mercado")
+st.markdown("Consulta los últimos titulares de tus activos favoritos.")
+
+# Input interactivo para que el usuario elija los Tickers
+tickers_input = st.text_input("Ingresa los Tickers separados por coma (ej: AAPL, MSFT, GGAL, SPY):", "SPY, QQQ, AAPL")
+lista_tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
+
+if lista_tickers:
+    with st.spinner("Buscando titulares en Yahoo Finance..."):
+        noticias = obtener_noticias_acciones(lista_tickers)
+        
+        # Mostramos las noticias en columnas dinámicas (hasta 3 columnas para organizar el espacio)
+        cols_news = st.columns(min(len(lista_tickers), 3))
+        
+        for idx, (ticker, entradas) in enumerate(noticias.items()):
+            col = cols_news[idx % 3] # Distribuye los tickers uniformemente en las columnas
+            with col:
+                with st.expander(f"Titulares: {ticker}", expanded=True):
+                    if entradas:
+                        for noticia in entradas:
+                            st.markdown(f"- [{noticia['titulo']}]({noticia['link']})")
+                    else:
+                        st.write("No se encontraron noticias recientes.")
+
+st.divider()
+
+# --- SECCIÓN 4: INTELIGENCIA ARTIFICIAL ---
 st.header("💡 Visión Estratégica de Mercado (IA)")
-st.info("El siguiente análisis es generado en tiempo real por el motor Gemini 3.5 Flash, cruzando la macroeconomía local con las tendencias globales.")
+st.info("El siguiente análisis es generado en tiempo real por el motor Gemini 3.5 Flash, cruzando la macroeconomía local con las tendencias globales (1M y 6M).")
 
 # Botón para generar el reporte de forma interactiva
 if st.button("Generar / Actualizar Análisis IA", type="primary"):
     with st.spinner("Analizando ciclo económico y evaluando los 11 sectores GICS. Esto puede tardar hasta 30 segundos..."):
-        # Llamamos al motor de IA que ya programamos en data/news.py
+        # Llamamos al motor de IA programado en data/news.py
         reporte_ia = generar_analisis_ia(macro_arg, macro_int, brecha)
         
-        # Mostramos el reporte en pantalla (Streamlit renderizará la tabla Markdown automáticamente)
+        # Mostramos el reporte en pantalla
         st.markdown(reporte_ia)
