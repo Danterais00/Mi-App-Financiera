@@ -3,6 +3,7 @@ import feedparser
 import yfinance as yf
 import pandas as pd
 import streamlit as st
+import time  # NUEVO: Importación necesaria para los reintentos automáticos
 
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
@@ -129,8 +130,8 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA OPTIMIZADO (EVITANDO 429 Y AHORRANDO CUOTA) ---
-@st.cache_data(ttl=3600)
+# --- MOTOR DE IA SIN CACHÉ Y CON REINTENTOS AUTOMÁTICOS ---
+# NOTA: Se eliminó @st.cache_data para evitar que los errores queden atrapados en memoria.
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
         return "⚠️ **Falta la clave API de Gemini.** Configura `GEMINI_API_KEY` en los Secrets de Streamlit."
@@ -195,39 +196,46 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             
             prompt += f"{nombre}: {v_str} ({str_d}{str_1y})\n"
             
-        # Priorizamos el modelo 1.5-flash que permite más consultas gratuitas (15 RPM)
-        modelos = [
-            "gemini-1.5-flash", 
-            "gemini-2.0-flash", 
-            "gemini-1.5-pro"
-        ]
-        
+        modelos = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
         ultimo_error = ""
+        max_reintentos = 3
         
         for modelo in modelos:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
-            res = requests.post(url, headers=headers, json=payload, timeout=45)
-            
-            if res.status_code == 200:
-                texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
-                return texto_ia.replace('</div>', '').replace('<div>', '').strip()
-            
-            elif res.status_code == 429:
-                # Interrupción elegante: Si superas la cuota, mostramos un mensaje amigable
-                return "⚠️ **Límite de Consultas Alcanzado (Código 429):** La API gratuita de Google está saturada. Por favor, **espera 60 segundos** y presiona el botón nuevamente."
-            
-            elif res.status_code == 404:
-                ultimo_error = f"Modelo no soportado ({modelo})"
-                continue
-                
-            else:
-                ultimo_error = f"Código {res.status_code}. Detalle: {res.text}"
-                continue
-                
-        return f"❌ **Error del servidor de IA:** Ningún modelo respondió. Último fallo: {ultimo_error}"
+            for intento in range(max_reintentos):
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
+                try:
+                    res = requests.post(url, headers=headers, json=payload, timeout=45)
+                    
+                    if res.status_code == 200:
+                        texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
+                        return texto_ia.replace('</div>', '').replace('<div>', '').strip()
+                    
+                    elif res.status_code == 429:
+                        # Si es 429, esperamos 2 segundos y volvemos a intentar silenciosamente
+                        if intento < max_reintentos - 1:
+                            time.sleep(2.5) 
+                            continue
+                        else:
+                            # Si ya agotó los 3 intentos en este modelo, pasa al siguiente
+                            ultimo_error = f"Límite de cuota excedido (Código 429) tras {max_reintentos} intentos automáticos."
+                            break 
+                    
+                    elif res.status_code == 404:
+                        ultimo_error = f"Modelo no soportado ({modelo})"
+                        break # Sale del bucle de reintentos, pasa directo al siguiente modelo
+                        
+                    else:
+                        ultimo_error = f"Código {res.status_code}. Detalle: {res.text}"
+                        break # Sale del bucle de reintentos
+                        
+                except requests.exceptions.RequestException as e:
+                    ultimo_error = f"Fallo de conexión: {e}"
+                    break
+                    
+        return f"⚠️ **Servidores de Google Saturados:** {ultimo_error} Por favor, intenta presionar el botón nuevamente. Si el problema persiste constantemente, verifica los límites de uso de tu API Key."
         
     except Exception as e: 
-        return f"❌ **Error crítico de conexión:** No se pudo procesar la IA. Detalle: {e}"
+        return f"❌ **Error crítico de procesamiento:** No se pudo procesar la IA. Detalle: {e}"
