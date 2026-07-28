@@ -8,7 +8,7 @@ HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 
 @st.cache_data(ttl=1800)
 def obtener_macro_argentina():
-    datos = {"dolares": [], "riesgo_pais": None, "merval": None}
+    datos = {"dolares": [], "riesgo_pais": None, "merval": {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}}
     try:
         res = requests.get("https://dolarapi.com/v1/dolares", timeout=5)
         if res.status_code == 200:
@@ -26,12 +26,19 @@ def obtener_macro_argentina():
     except: pass
 
     try:
-        merv = yf.Ticker("^MERV").history(period="5d")
+        # Ampliamos a 1 año de historia para el Merval
+        merv = yf.Ticker("^MERV").history(period="1y")
         if len(merv) >= 2:
             act = merv['Close'].iloc[-1]
-            prev = merv['Close'].iloc[-2]
-            if not pd.isna(act) and not pd.isna(prev):
-                datos["merval"] = {"valor": act, "var": ((act / prev) - 1) * 100}
+            datos["merval"]["valor"] = act
+            datos["merval"]["var_diaria"] = ((act / merv['Close'].iloc[-2]) - 1) * 100
+            
+            if len(merv) >= 21:
+                datos["merval"]["var_1m"] = ((act / merv['Close'].iloc[-21]) - 1) * 100
+            if len(merv) >= 126:
+                datos["merval"]["var_6m"] = ((act / merv['Close'].iloc[-126]) - 1) * 100
+            if len(merv) >= 250:
+                datos["merval"]["var_1y"] = ((act / merv['Close'].iloc[0]) - 1) * 100
     except: pass
     return datos
 
@@ -46,14 +53,22 @@ def obtener_macro_internacional():
     }
     
     for nombre, t in tickers_macro.items():
-        datos[nombre] = {"valor": None, "var": None}
+        datos[nombre] = {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}
         try:
-            hist = yf.Ticker(t).history(period="5d")
+            # Descargamos 1 año completo para calcular tendencias
+            hist = yf.Ticker(t).history(period="1y")
             if len(hist) >= 2:
                 actual = hist['Close'].iloc[-1]
-                previo = hist['Close'].iloc[-2]
-                if not pd.isna(actual) and not pd.isna(previo):
-                    datos[nombre] = {"valor": float(actual), "var": float(((actual / previo) - 1) * 100)}
+                
+                datos[nombre]["valor"] = float(actual)
+                datos[nombre]["var_diaria"] = float(((actual / hist['Close'].iloc[-2]) - 1) * 100)
+                
+                if len(hist) >= 21: # 1 Mes (~21 días hábiles)
+                    datos[nombre]["var_1m"] = float(((actual / hist['Close'].iloc[-21]) - 1) * 100)
+                if len(hist) >= 126: # 6 Meses (~126 días hábiles)
+                    datos[nombre]["var_6m"] = float(((actual / hist['Close'].iloc[-126]) - 1) * 100)
+                if len(hist) >= 250: # 1 Año (~250 días hábiles)
+                    datos[nombre]["var_1y"] = float(((actual / hist['Close'].iloc[0]) - 1) * 100)
         except: pass
 
     try:
@@ -66,7 +81,7 @@ def obtener_macro_internacional():
             }
             
             for nombre, config in fred_series.items():
-                datos[nombre] = {"valor": None, "var": None}
+                datos[nombre] = {"valor": None, "var_diaria": None}
                 url = f"https://api.stlouisfed.org/fred/series/observations?series_id={config['id']}&api_key={api_key}&file_type=json&units={config['units']}&sort_order=desc&limit=2"
                 try:
                     res = requests.get(url, timeout=5)
@@ -78,7 +93,8 @@ def obtener_macro_internacional():
                             if v_act != "." and v_prev != ".":
                                 act = float(v_act)
                                 prev = float(v_prev)
-                                datos[nombre] = {"valor": act, "var": act - prev}
+                                datos[nombre]["valor"] = act
+                                datos[nombre]["var_diaria"] = act - prev
                 except: pass
     except: pass 
     return datos
@@ -102,7 +118,7 @@ def obtener_noticias_acciones(lista_tickers):
             noticias[ticker] = []
     return noticias
 
-# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CON FILTRO DE LIMPIEZA) ---
+# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CON CONTEXTO HISTÓRICO) ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -111,17 +127,21 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         
-        # 1. Empaquetamos los datos
         rp = macro_arg.get('riesgo_pais')
         rp_val = rp['valor'] if rp else 'N/D'
-        merv = macro_arg.get('merval')
-        merv_val = f"{merv['valor']:.0f} (Var: {merv['var']:.2f}%)" if merv else 'N/D'
+        
+        merv = macro_arg.get('merval', {})
+        merv_val = f"{merv.get('valor', 0):.0f}"
+        merv_var = merv.get('var_diaria')
+        merv_var_str = f"Var Diaria: {merv_var:.2f}%" if merv_var is not None else "N/D"
+        merv_6m = f"Var 6M: {merv.get('var_6m', 0):.2f}%" if merv.get('var_6m') is not None else ""
+        
         brecha_str = f"{brecha:.2f}%" if brecha is not None else 'N/D'
         
-        # 2. PROMPT ESTRATÉGICO MODIFICADO (Top-Down Sectorial)
         prompt = f"""
         Eres un asesor financiero didáctico, claro y amigable.
         Analiza el siguiente tablero macroeconómico de Argentina y EE.UU. 
+        Presta especial atención a las tendencias de 1 Mes, 6 Meses y 1 Año para deducir en qué etapa del ciclo económico nos encontramos.
         
         Tu respuesta debe tener EXACTAMENTE dos partes:
         
@@ -129,7 +149,7 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         Redacta un análisis en 4 bullet points indicando oportunidades de inversión claras, explicadas con un lenguaje sencillo, fácil de entender para un inversor principiante o intermedio. Si usas jerga financiera, explícala brevemente en términos cotidianos.
         
         ### 2. Perspectiva de los 11 Sectores (Clasificación GICS)
-        Basándote ESTRICTAMENTE en los datos macroeconómicos provistos y usando deducción lógica, dibuja una tabla en formato Markdown con los 11 sectores de la economía.
+        Basándote ESTRICTAMENTE en los datos macroeconómicos provistos y sus tendencias históricas, usando deducción lógica, dibuja una tabla en formato Markdown con los 11 sectores de la economía.
         La tabla debe tener exactamente 3 columnas:
         | Sector (GICS) | Veredicto (Atractivo / Neutral / Cautela) | Justificación Macroeconómica (1 oración sencilla) |
         
@@ -139,15 +159,24 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         
         --- DATOS ARGENTINA ---
         Riesgo País: {rp_val}
-        Merval: {merv_val}
+        Merval: {merv_val} ({merv_var_str} | {merv_6m})
         Brecha Cambiaria (CCL vs Oficial): {brecha_str}
         
-        --- DATOS INTERNACIONALES ---
+        --- DATOS INTERNACIONALES (CON HISTORIAL) ---
         """
         for nombre, datos in macro_int.items():
-            v = datos['valor'] if datos['valor'] is not None else 'N/D'
-            var = datos['var'] if datos['var'] is not None else 'N/D'
-            prompt += f"{nombre}: {v} (Var: {var})\n"
+            v = datos.get('valor', 'N/D')
+            var_d = datos.get('var_diaria')
+            var_1m = datos.get('var_1m')
+            var_6m = datos.get('var_6m')
+            var_1y = datos.get('var_1y')
+            
+            str_d = f"Diaria: {var_d:.2f}%" if var_d is not None else "N/D"
+            str_1m = f" | 1M: {var_1m:.2f}%" if var_1m is not None else ""
+            str_6m = f" | 6M: {var_6m:.2f}%" if var_6m is not None else ""
+            str_1y = f" | 1Y: {var_1y:.2f}%" if var_1y is not None else ""
+            
+            prompt += f"{nombre}: {v} ({str_d}{str_1m}{str_6m}{str_1y})\n"
             
         modelos_a_probar = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
         headers = {'Content-Type': 'application/json'}
@@ -160,7 +189,6 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             if res.status_code == 200:
                 data = res.json()
                 texto_ia = data['candidates'][0]['content']['parts'][0]['text']
-                # FILTRO DEFENSIVO: Limpiamos cualquier etiqueta HTML residual que la IA intente agregar
                 texto_limpio = texto_ia.replace('</div>', '').replace('<div>', '').strip()
                 return texto_limpio
             elif res.status_code == 503:
