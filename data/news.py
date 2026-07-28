@@ -129,7 +129,7 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA CON AUTO-DESCUBRIMIENTO DE MODELOS ---
+# --- MOTOR DE IA REVISADO (OPTIMIZADO PARA EVITAR EL ERROR 429) ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -195,58 +195,41 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             
             prompt += f"{nombre}: {v_str} ({str_d}{str_1y})\n"
             
-        # ---------------------------------------------------------
-        # SOLUCIÓN MAESTRA: AUTO-DESCUBRIMIENTO DINÁMICO DE MODELOS
-        # ---------------------------------------------------------
+        # Utilizamos los modelos optimizados basándonos en tu éxito previo, sin gastar cuota extra
+        modelos = [
+            "gemini-2.0-flash", 
+            "gemini-1.5-flash", 
+            "gemini-1.5-pro"
+        ]
         
-        # 1. Consultamos a Google qué modelos están habilitados para esta API Key
-        url_list = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        res_list = requests.get(url_list, timeout=10)
-        
-        if res_list.status_code != 200:
-            return f"❌ **Error conectando con Google:** {res_list.text}"
-            
-        modelos_disponibles = res_list.json().get("models", [])
-        modelos_validos = []
-        
-        # Filtramos solo los que soportan generación de texto
-        for m in modelos_disponibles:
-            if "generateContent" in m.get("supportedGenerationMethods", []):
-                nombre_limpio = m.get("name", "").replace("models/", "")
-                modelos_validos.append(nombre_limpio)
-                
-        if not modelos_validos:
-            return "❌ **Permisos Insuficientes:** Tu API Key no tiene modelos de texto habilitados."
-            
-        # 2. Priorizamos los mejores modelos encontrados (Flash y Pro son mejores y más rápidos)
-        def puntuar_modelo(nombre):
-            puntos = 0
-            if "flash" in nombre: puntos += 10
-            if "pro" in nombre: puntos += 5
-            if "1.5" in nombre: puntos += 2
-            if "vision" in nombre: puntos -= 5 # Evitamos modelos enfocados solo en imágenes
-            return puntos
-            
-        modelos_validos.sort(key=puntuar_modelo, reverse=True)
-        
-        # 3. Ejecutamos la petición usando el mejor modelo garantizado por Google
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
         ultimo_error = ""
-        # Intentamos con los 3 mejores modelos disponibles
-        for modelo_elegido in modelos_validos[:3]:
-            url_gen = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo_elegido}:generateContent?key={api_key}"
-            res_gen = requests.post(url_gen, headers=headers, json=payload, timeout=45)
+        
+        for modelo in modelos:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
+            res = requests.post(url, headers=headers, json=payload, timeout=45)
             
-            if res_gen.status_code == 200:
-                texto_ia = res_gen.json()['candidates'][0]['content']['parts'][0]['text']
+            if res.status_code == 200:
+                texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
                 return texto_ia.replace('</div>', '').replace('<div>', '').strip()
-            else:
-                ultimo_error = f"Falló {modelo_elegido} (Código: {res_gen.status_code})"
+            
+            elif res.status_code == 429:
+                # Si recibimos un 429, detenemos el ciclo. No tiene sentido intentar otro modelo 
+                # porque la restricción aplica a la API Key, no al modelo específico.
+                return "⚠️ **Límite de Consultas Alcanzado:** Has superado la cuota gratuita de peticiones por minuto a la Inteligencia Artificial. Por favor, **espera unos 60 segundos** y presiona el botón nuevamente."
+            
+            elif res.status_code == 404:
+                # Si el modelo no existe, continuamos con el siguiente de la lista
+                ultimo_error = f"Modelo no soportado ({modelo})"
                 continue
                 
-        return f"❌ **Error del servidor de IA:** Ninguno de los modelos autorizados respondió. Último fallo: {ultimo_error}"
+            else:
+                ultimo_error = f"Código {res.status_code}. Detalle: {res.text}"
+                continue
+                
+        return f"❌ **Error del servidor de IA:** Ningún modelo respondió. Último fallo: {ultimo_error}"
         
     except Exception as e: 
         return f"❌ **Error crítico de conexión:** No se pudo procesar la IA. Detalle: {e}"
