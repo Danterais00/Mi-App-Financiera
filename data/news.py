@@ -11,7 +11,7 @@ def obtener_macro_argentina():
     datos = {
         "dolares": [], "riesgo_pais": None, 
         "merval": {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None},
-        "inflacion": None, "tasa_bcra": None # NUEVOS DATOS
+        "inflacion": None, "tasa_bcra": None 
     }
     
     # 1. Dólares
@@ -32,22 +32,22 @@ def obtener_macro_argentina():
             datos["riesgo_pais"] = {"valor": rp_json.get("valor"), "variacion": rp_json.get("variacion")}
     except: pass
 
-    # 3. Inflación Argentina (IPC) - PROTEGIDO CON TRY/EXCEPT
+    # 3. Inflación Argentina (IPC) 
     try:
         res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", timeout=5)
         if res_inf.status_code == 200:
             data_inf = res_inf.json()
             if data_inf:
-                datos["inflacion"] = float(data_inf[-1]["valor"]) # Toma el último dato reportado
+                datos["inflacion"] = float(data_inf[-1]["valor"]) 
     except: pass
 
-    # 4. Tasa de Referencia (Plazo Fijo/Política Monetaria) - PROTEGIDO CON TRY/EXCEPT
+    # 4. Tasa de Referencia 
     try:
         res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=5)
         if res_tasa.status_code == 200:
             data_tasa = res_tasa.json()
             if data_tasa:
-                datos["tasa_bcra"] = float(data_tasa[-1]["tasa"]) # TNA nominal actual
+                datos["tasa_bcra"] = float(data_tasa[-1]["tasa"]) 
     except: pass
 
     # 5. Merval
@@ -55,11 +55,11 @@ def obtener_macro_argentina():
         merv = yf.Ticker("^MERV").history(period="1y")
         if len(merv) >= 2:
             act = merv['Close'].iloc[-1]
-            datos["merval"]["valor"] = act
-            datos["merval"]["var_diaria"] = ((act / merv['Close'].iloc[-2]) - 1) * 100
-            if len(merv) >= 21: datos["merval"]["var_1m"] = ((act / merv['Close'].iloc[-21]) - 1) * 100
-            if len(merv) >= 126: datos["merval"]["var_6m"] = ((act / merv['Close'].iloc[-126]) - 1) * 100
-            if len(merv) >= 250: datos["merval"]["var_1y"] = ((act / merv['Close'].iloc[0]) - 1) * 100
+            datos["merval"]["valor"] = float(act)
+            datos["merval"]["var_diaria"] = float(((act / merv['Close'].iloc[-2]) - 1) * 100)
+            if len(merv) >= 21: datos["merval"]["var_1m"] = float(((act / merv['Close'].iloc[-21]) - 1) * 100)
+            if len(merv) >= 126: datos["merval"]["var_6m"] = float(((act / merv['Close'].iloc[-126]) - 1) * 100)
+            if len(merv) >= 250: datos["merval"]["var_1y"] = float(((act / merv['Close'].iloc[0]) - 1) * 100)
     except: pass
     
     return datos
@@ -129,7 +129,7 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# --- NUEVO MOTOR DE IA CON RENTA FIJA ARGENTINA ---
+# --- MOTOR DE IA REPARADO (CERO ERRORES DE NONETYPE) ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -138,14 +138,21 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         
-        rp = macro_arg.get('riesgo_pais')
-        rp_val = rp['valor'] if rp else 'N/D'
-        merv = macro_arg.get('merval', {})
-        merv_val = f"{merv.get('valor', 0):.0f}"
+        # EXTRACCIÓN Y FORMATEO SEGURO (Evita el error NoneType.__format__)
+        rp = macro_arg.get('riesgo_pais') or {}
+        rp_val = rp.get('valor')
+        rp_str = str(rp_val) if rp_val is not None else 'N/D'
         
-        # NUEVOS DATOS ARG
-        inf_arg = f"{macro_arg.get('inflacion'):.1f}%" if macro_arg.get('inflacion') else 'N/D'
-        tasa_arg = f"{macro_arg.get('tasa_bcra'):.1f}%" if macro_arg.get('tasa_bcra') else 'N/D'
+        merv = macro_arg.get('merval', {})
+        merv_val = merv.get('valor')
+        merv_str = f"{merv_val:.0f}" if merv_val is not None else 'N/D'
+        
+        inf_val = macro_arg.get('inflacion')
+        inf_arg = f"{inf_val:.1f}%" if inf_val is not None else 'N/D'
+        
+        tasa_val = macro_arg.get('tasa_bcra')
+        tasa_arg = f"{tasa_val:.1f}%" if tasa_val is not None else 'N/D'
+        
         brecha_str = f"{brecha:.2f}%" if brecha is not None else 'N/D'
         
         prompt = f"""
@@ -169,8 +176,8 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         REGLA ESTRICTA: NO uses HTML. Solo Markdown.
         
         --- DATOS ARGENTINA ---
-        Riesgo País: {rp_val}
-        Merval: {merv_val}
+        Riesgo País: {rp_str}
+        Merval: {merv_str}
         Brecha Cambiaria (CCL vs Oficial): {brecha_str}
         Inflación Mensual (Último dato): {inf_arg}
         Tasa Referencia (TNA): {tasa_arg}
@@ -178,14 +185,17 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         --- DATOS INTERNACIONALES ---
         """
         for nombre, datos in macro_int.items():
-            v = datos.get('valor', 'N/D')
+            v = datos.get('valor')
             var_d = datos.get('var_diaria')
             var_1y = datos.get('var_1y')
+            
+            v_str = f"{v:.2f}" if v is not None else 'N/D'
             str_d = f"Diaria: {var_d:.2f}%" if var_d is not None else "N/D"
             str_1y = f" | 1Y: {var_1y:.2f}%" if var_1y is not None else ""
-            prompt += f"{nombre}: {v} ({str_d}{str_1y})\n"
             
-        modelos = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
+            prompt += f"{nombre}: {v_str} ({str_d}{str_1y})\n"
+            
+        modelos = ["gemini-1.5-flash", "gemini-1.5-pro"]
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
@@ -197,7 +207,9 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
                 texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
                 return texto_ia.replace('</div>', '').replace('<div>', '').strip()
             elif res.status_code == 503: continue
-            else: return f"❌ Error API: {res.status_code}"
+            else: 
+                return f"❌ **Error del servidor de IA:** Código {res.status_code}. Detalle: {res.text}"
             
-        return "⚠️ Servidores Saturados, intenta de nuevo."
-    except Exception as e: return f"❌ Error crítico: {e}"
+        return "⚠️ **Servidores de Google Saturados:** En este momento la API gratuita está experimentando un pico de tráfico global. Por favor, intenta de nuevo en unos minutos."
+    except Exception as e: 
+        return f"❌ **Error crítico de conexión:** No se pudo procesar la IA. Detalle: {e}"
