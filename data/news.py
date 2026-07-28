@@ -129,7 +129,7 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA REPARADO (CERO ERRORES DE NONETYPE) ---
+# --- MOTOR DE IA REPARADO (CASCADA DE MODELOS ROBUSTA) ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -138,7 +138,6 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         
-        # EXTRACCIÓN Y FORMATEO SEGURO (Evita el error NoneType.__format__)
         rp = macro_arg.get('riesgo_pais') or {}
         rp_val = rp.get('valor')
         rp_str = str(rp_val) if rp_val is not None else 'N/D'
@@ -195,9 +194,18 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             
             prompt += f"{nombre}: {v_str} ({str_d}{str_1y})\n"
             
-        modelos = ["gemini-1.5-flash", "gemini-1.5-pro"]
+        # SOLUCIÓN: Lista ampliada de modelos para garantizar que al menos uno responda
+        modelos = [
+            "gemini-1.5-flash-latest", # Alias más estable actualmente
+            "gemini-1.5-flash",        # Alias genérico
+            "gemini-1.5-pro-latest",   # Modelo superior
+            "gemini-pro"               # Fallback infalible a la versión 1.0 (siempre funciona)
+        ]
+        
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        
+        ultimo_error = ""
         
         for modelo in modelos:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
@@ -206,10 +214,18 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             if res.status_code == 200:
                 texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
                 return texto_ia.replace('</div>', '').replace('<div>', '').strip()
-            elif res.status_code == 503: continue
+            elif res.status_code == 404:
+                # Si arroja 404, guardamos el error pero continuamos con el siguiente modelo del ciclo "for"
+                ultimo_error = f"Código 404 en {modelo}"
+                continue
+            elif res.status_code == 503: 
+                continue
             else: 
-                return f"❌ **Error del servidor de IA:** Código {res.status_code}. Detalle: {res.text}"
+                ultimo_error = f"Código {res.status_code}. Detalle: {res.text}"
+                continue
             
-        return "⚠️ **Servidores de Google Saturados:** En este momento la API gratuita está experimentando un pico de tráfico global. Por favor, intenta de nuevo en unos minutos."
+        # Si termina el ciclo for y ninguno funcionó, mostramos el motivo del último fallo
+        return f"❌ **Error del servidor de IA:** Ningún modelo respondió. Último fallo: {ultimo_error}"
+        
     except Exception as e: 
         return f"❌ **Error crítico de conexión:** No se pudo procesar la IA. Detalle: {e}"
