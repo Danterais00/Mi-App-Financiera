@@ -4,8 +4,12 @@ import yfinance as yf
 import pandas as pd
 import streamlit as st
 import time
+import os
+import json
+from datetime import datetime
 
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+ARCHIVO_REPORTE = "reporte_diario.json"
 
 @st.cache_data(ttl=1800)
 def obtener_macro_argentina():
@@ -15,7 +19,6 @@ def obtener_macro_argentina():
         "inflacion": None, "tasa_bcra": None 
     }
     
-    # 1. Dólares
     try:
         res = requests.get("https://dolarapi.com/v1/dolares", timeout=5)
         if res.status_code == 200:
@@ -25,7 +28,6 @@ def obtener_macro_argentina():
                     datos["dolares"].append({"nombre": nombre, "compra": d["compra"], "venta": d["venta"]})
     except: pass
     
-    # 2. Riesgo País
     try:
         res_rp = requests.get("https://mercados.ambito.com//riesgopais/info", headers=HEADERS, timeout=5)
         if res_rp.status_code == 200:
@@ -33,7 +35,6 @@ def obtener_macro_argentina():
             datos["riesgo_pais"] = {"valor": rp_json.get("valor"), "variacion": rp_json.get("variacion")}
     except: pass
 
-    # 3. Inflación Argentina (IPC) 
     try:
         res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", timeout=5)
         if res_inf.status_code == 200:
@@ -42,7 +43,6 @@ def obtener_macro_argentina():
                 datos["inflacion"] = float(data_inf[-1]["valor"]) 
     except: pass
 
-    # 4. Tasa de Referencia 
     try:
         res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=5)
         if res_tasa.status_code == 200:
@@ -51,7 +51,6 @@ def obtener_macro_argentina():
                 datos["tasa_bcra"] = float(data_tasa[-1]["tasa"]) 
     except: pass
 
-    # 5. Merval
     try:
         merv = yf.Ticker("^MERV").history(period="1y")
         if len(merv) >= 2:
@@ -130,15 +129,28 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA CON EXPONENTIAL BACKOFF (GRADO INSTITUCIONAL) ---
+# --- MOTOR DE IA BLINDADO CON CACHÉ LOCAL DIARIO ---
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
         return "⚠️ **Falta la clave API de Gemini.** Configura `GEMINI_API_KEY` en los Secrets de Streamlit."
     
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    
+    # 1. INTENTAR LEER EL REPORTE GUARDADO HOY (Velocidad instantánea, 0 API)
+    if os.path.exists(ARCHIVO_REPORTE):
+        try:
+            with open(ARCHIVO_REPORTE, "r", encoding="utf-8") as f:
+                datos_guardados = json.load(f)
+                if datos_guardados.get("fecha") == hoy:
+                    mensaje_memoria = "*(💡 Reporte estratégico del día cargado desde la memoria local)*\n\n"
+                    return mensaje_memoria + datos_guardados.get("contenido", "")
+        except:
+            pass # Si el archivo está corrupto o no se puede leer, seguimos de largo y generamos uno nuevo.
+
+    # 2. SI NO HAY REPORTE HOY, CONECTAMOS CON GOOGLE
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         
-        # EXTRACCIÓN Y FORMATEO SEGURO
         rp = macro_arg.get('riesgo_pais') or {}
         rp_val = rp.get('valor')
         rp_str = str(rp_val) if rp_val is not None else 'N/D'
@@ -199,7 +211,7 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
         ultimo_error = ""
-        tiempos_espera = [5, 15, 30] # Espera exponencial: 5s, luego 15s, luego 30s.
+        tiempos_espera = [5, 15] # 2 intentos máximos para no trabar la app
         max_reintentos = len(tiempos_espera)
         
         for modelo in modelos:
@@ -210,20 +222,27 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
                     
                     if res.status_code == 200:
                         texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
-                        return texto_ia.replace('</div>', '').replace('<div>', '').strip()
+                        texto_limpio = texto_ia.replace('</div>', '').replace('<div>', '').strip()
+                        
+                        # 3. GUARDAMOS EL REPORTE EN LA MEMORIA LOCAL PARA EL RESTO DEL DÍA
+                        try:
+                            with open(ARCHIVO_REPORTE, "w", encoding="utf-8") as f:
+                                json.dump({"fecha": hoy, "contenido": texto_limpio}, f, ensure_ascii=False, indent=4)
+                        except:
+                            pass # Fallback silencioso si el entorno no permite crear el archivo
+                            
+                        return texto_limpio
                     
                     elif res.status_code == 429:
                         if intento < max_reintentos - 1:
-                            # Aplicamos la pausa silenciosa y escalonada antes de reintentar
                             time.sleep(tiempos_espera[intento])
                             continue
                         else:
-                            # Aborto Total Inmediato: Si la clave está bloqueada, no saltamos al siguiente modelo.
-                            return "⚠️ **Penalización Temporal de Google (429):** La API gratuita ha bloqueado tu acceso por exceso de peticiones. Por favor, **no presiones ningún botón y espera entre 5 y 10 minutos** para que tu cuota se reinicie."
+                            return "⚠️ **Penalización Temporal de Google (429):** La API gratuita ha bloqueado tu acceso por exceso de peticiones. Por favor, espera entre 5 y 10 minutos."
                     
                     elif res.status_code == 404:
                         ultimo_error = f"{modelo} (No soportado)"
-                        break # Salimos del bucle de intentos y pasamos al siguiente modelo
+                        break 
                         
                     else:
                         ultimo_error = f"Código {res.status_code}. Detalle: {res.text}"
