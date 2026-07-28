@@ -1,38 +1,31 @@
 import streamlit as st
-# ¡CRÍTICO! set_page_config DEBE ser el primer comando de Streamlit, ANTES de importar módulos locales.
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
 
 import pandas as pd
 import altair as alt
 from streamlit_option_menu import option_menu
 
-# Importar nuestros módulos
 from ui.components import inyectar_css, TOOLTIPS, formatear_moneda
 from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
 from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones, generar_analisis_ia
 
-# --- CONSTANTES DE LA APP ---
-APP_VERSION = "v5.0"  # Terminal Híbrida: Motor IA Integrado
+APP_VERSION = "v6.0 - Renta Fija Local"
 
 inyectar_css()
 
-# --- INICIALIZACIÓN DE VARIABLES DE SESIÓN ---
 if 'datos_cargados' not in st.session_state:
     st.session_state.datos_cargados = False
 
-# --- BARRA LATERAL ---
 with st.sidebar:
     st.write("")
     modo_estrategia = st.selectbox("Estrategia activa:", ["Crecimiento (Agresivo)", "Fortaleza (Defensivo)"])
-    
     st.write("")
     menu_seccion = option_menu(
         menu_title=None,
         options=["Datos y Valuación", "Comparativa", "Evolución Financiera", "Análisis Técnico", "Top 10 Elite", "Noticias de Mercado"],
         icons=['buildings', 'bar-chart-line', 'graph-up-arrow', 'activity', 'trophy', 'newspaper'],
-        menu_icon="cast",
-        default_index=0,
+        menu_icon="cast", default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#a3a8b8", "font-size": "16px"},
@@ -41,7 +34,6 @@ with st.sidebar:
         }
     )
 
-# --- HEADER PRINCIPAL ---
 st.markdown(f"""
     <div style="margin-top: -30px; margin-bottom: 25px;">
         <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">SmartInvest</h1>
@@ -49,29 +41,22 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# --- INPUT Y EXTRACCIÓN ---
 col1, col2 = st.columns([4, 1])
-with col1:
-    tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, AAPL.BA, MSFT.BA, NVDA.BA")
+with col1: tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, AAPL.BA, MSFT.BA, NVDA.BA")
 with col2:
     st.write("")
     st.write("")
     btn_analizar = st.button("Sincronizar Datos 🔄", use_container_width=True, type="primary")
 
-def corregir_ticker(t):
-    return "BRK-B" if t == "BRKB" else "BRK-A" if t == "BRKA" else t
+def corregir_ticker(t): return "BRK-B" if t == "BRKB" else "BRK-A" if t == "BRKA" else t
 
-# --- LÓGICA PRINCIPAL ---
 if btn_analizar and tickers_raw:
     lista_tickers = [corregir_ticker(t.strip().upper()) for t in tickers_raw.split(",") if t.strip()][:30]
-    
     with st.spinner('Procesando lógica institucional...'):
         tupla_tickers = tuple(lista_tickers)
         df_fun, df_tec, df_rev, df_eps, analisis = descargar_datos_mercado(tupla_tickers)
-        
         if df_fun is not None:
             df_total, df_comp, puntos, posibles = calcular_puntajes(df_fun, lista_tickers, modo_estrategia)
-            
             st.session_state.update({
                 "datos_cargados": True, "df_total": df_total, "df_comp": df_comp,
                 "df_rev": df_rev, "df_eps": df_eps, "df_tec": df_tec,
@@ -80,7 +65,6 @@ if btn_analizar and tickers_raw:
             })
             st.rerun()
 
-# --- RE-CÁLCULO SIN DESCARGA (Validación segura con get) ---
 if st.session_state.get("datos_cargados") and st.session_state.get("estrategia_cargada") != modo_estrategia:
     datos_reconstruidos = []
     for t in st.session_state.tickers:
@@ -88,7 +72,6 @@ if st.session_state.get("datos_cargados") and st.session_state.get("estrategia_c
             fila = dict(zip(st.session_state.df_total.index, st.session_state.df_total[t]))
             fila["Ticker"] = t
             datos_reconstruidos.append(fila)
-            
     df_total, df_comp, puntos, posibles = calcular_puntajes(datos_reconstruidos, st.session_state.tickers, modo_estrategia)
     st.session_state.update({"df_total": df_total, "df_comp": df_comp, "puntos": puntos, "posibles": posibles, "estrategia_cargada": modo_estrategia})
 
@@ -96,10 +79,7 @@ def get_val(df, metric, ticker):
     try:
         val = df.loc[metric, ticker]
         return float(val) if not pd.isna(val) else None
-    except:
-        return None
-
-# --- RENDERIZADO DE VISTAS ---
+    except: return None
 
 if menu_seccion == "Noticias de Mercado":
     st.header("Noticias de Mercado")
@@ -117,9 +97,10 @@ if menu_seccion == "Noticias de Mercado":
             with st.spinner("Sincronizando datos locales..."):
                 macro_arg_data = obtener_macro_argentina()
                 
-                # PROTECCIÓN CONTRA FALLOS DE API
                 rp = macro_arg_data.get("riesgo_pais") or {}
                 merv = macro_arg_data.get("merval") or {}
+                inf = macro_arg_data.get("inflacion")
+                tasa = macro_arg_data.get("tasa_bcra")
                 dolares = macro_arg_data.get("dolares", [])
                 
                 rp_val = rp.get('valor')
@@ -130,27 +111,30 @@ if menu_seccion == "Noticias de Mercado":
                 
                 merv_val = merv.get('valor')
                 merv_vd = merv.get('var_diaria')
-                merv_1m = merv.get('var_1m')
-                merv_6m = merv.get('var_6m')
-                merv_1y = merv.get('var_1y') # Extraemos también el de 1 año para el Merval
-                
                 texto_merv_val = f"{merv_val:,.0f}" if merv_val is not None else 'N/D'
                 color_merv = '#2ecca6' if (merv_vd and float(merv_vd) > 0) else '#ff6b6b'
                 texto_merv_vd = f"{merv_vd:.2f}%" if merv_vd is not None else "-"
                 
-                merv_tendencias = ""
-                if merv_1m is not None and merv_6m is not None and merv_1y is not None:
-                    merv_tendencias = f"<span style='font-size:0.8rem; color:#8ba1b6;'>1M: {merv_1m:.2f}% | 6M: {merv_6m:.2f}% | 12M: {merv_1y:.2f}%</span>"
+                texto_inf = f"{inf:.1f}%" if inf is not None else "N/D"
+                texto_tasa = f"{tasa:.1f}%" if tasa is not None else "N/D"
                 
-                html_caja = f"""<div style="background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between;">
-                    <div style="width: 48%;">
-                        <p style="margin:0; color:#a3a8b8; font-size:0.85rem; font-weight:bold;">RIESGO PAÍS</p>
-                        <h3 style="margin:5px 0; color:#fff;">{texto_rp_val} <span style="font-size:1rem; color:{color_rp};">({texto_rp_var})</span></h3>
+                # NUEVO BLOQUE HTML DE 4 COLUMNAS (Riesgo, Merval, Inflación, Tasa)
+                html_caja = f"""<div style="background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between; flex-wrap: wrap;">
+                    <div style="width: 23%;">
+                        <p style="margin:0; color:#a3a8b8; font-size:0.75rem; font-weight:bold;">RIESGO PAÍS</p>
+                        <h4 style="margin:5px 0; color:#fff; font-size: 1.1rem;">{texto_rp_val} <span style="font-size:0.8rem; color:{color_rp};">({texto_rp_var})</span></h4>
                     </div>
-                    <div style="width: 48%; border-left: 1px solid #2a2e39; padding-left: 15px;">
-                        <p style="margin:0; color:#a3a8b8; font-size:0.85rem; font-weight:bold;">S&P MERVAL</p>
-                        <h3 style="margin:5px 0; color:#fff;">{texto_merv_val} <span style="font-size:1rem; color:{color_merv};">({texto_merv_vd})</span></h3>
-                        {merv_tendencias}
+                    <div style="width: 23%; border-left: 1px solid #2a2e39; padding-left: 10px;">
+                        <p style="margin:0; color:#a3a8b8; font-size:0.75rem; font-weight:bold;">S&P MERVAL</p>
+                        <h4 style="margin:5px 0; color:#fff; font-size: 1.1rem;">{texto_merv_val} <span style="font-size:0.8rem; color:{color_merv};">({texto_merv_vd})</span></h4>
+                    </div>
+                    <div style="width: 23%; border-left: 1px solid #2a2e39; padding-left: 10px;">
+                        <p style="margin:0; color:#a3a8b8; font-size:0.75rem; font-weight:bold;">INFLACIÓN M.</p>
+                        <h4 style="margin:5px 0; color:#fff; font-size: 1.1rem;">{texto_inf}</h4>
+                    </div>
+                    <div style="width: 23%; border-left: 1px solid #2a2e39; padding-left: 10px;">
+                        <p style="margin:0; color:#a3a8b8; font-size:0.75rem; font-weight:bold;">TASA REF TNA</p>
+                        <h4 style="margin:5px 0; color:#fff; font-size: 1.1rem;">{texto_tasa}</h4>
                     </div>
                 </div>"""
                 st.markdown(html_caja, unsafe_allow_html=True)
@@ -160,19 +144,15 @@ if menu_seccion == "Noticias de Mercado":
                         val_oficial = next((float(d['venta']) for d in dolares if d['nombre'] == 'Oficial'), None)
                         val_ccl = next((float(d['venta']) for d in dolares if d['nombre'] == 'CCL'), None)
                         brecha_calculada = ((val_ccl / val_oficial) - 1) * 100 if val_oficial and val_ccl else None
-                    except:
-                        brecha_calculada = None
+                    except: brecha_calculada = None
 
                     html_arg = '<div class="table-container" style="margin-bottom: 30px;"><table class="custom-table" style="width: 100%;">'
                     html_arg += '<tr><th style="text-align: left;">Tipo de Cambio</th><th>Venta</th><th>Compra</th></tr>'
-                    for d in dolares:
-                        html_arg += f"<tr><td class='col-header' style='text-align: left;'>Dólar {d['nombre']}</td><td>${d['venta']}</td><td><span style='color:#8ba1b6;'>${d['compra']}</span></td></tr>"
-                    if brecha_calculada is not None:
-                        html_arg += f"<tr style='background-color: rgba(255, 213, 79, 0.05);'><td class='col-header' style='text-align: left; color: #ffd54f;'>Brecha (CCL / Oficial)</td><td colspan='2' style='color: #ffd54f; font-weight: bold; text-align: left; padding-left: 15px;'>{brecha_calculada:.1f}%</td></tr>"
+                    for d in dolares: html_arg += f"<tr><td class='col-header' style='text-align: left;'>Dólar {d['nombre']}</td><td>${d['venta']}</td><td><span style='color:#8ba1b6;'>${d['compra']}</span></td></tr>"
+                    if brecha_calculada is not None: html_arg += f"<tr style='background-color: rgba(255, 213, 79, 0.05);'><td class='col-header' style='text-align: left; color: #ffd54f;'>Brecha (CCL / Oficial)</td><td colspan='2' style='color: #ffd54f; font-weight: bold; text-align: left; padding-left: 15px;'>{brecha_calculada:.1f}%</td></tr>"
                     html_arg += '</table></div>'
                     st.write(html_arg, unsafe_allow_html=True)
-                else:
-                    st.info("Cotizaciones cambiarias no disponibles en este momento.")
+                else: st.info("Cotizaciones cambiarias no disponibles en este momento.")
 
         with col_int:
             st.subheader("🌎 Mercado Internacional")
@@ -186,10 +166,8 @@ if menu_seccion == "Noticias de Mercado":
                         if abs(v_float) < 0.001: return "<span style='color:#8ba1b6;'>0.00</span>"
                         color = "#2ecca6" if v_float > 0 else "#ff6b6b"
                         return f"<span style='color:{color}; font-weight:bold;'>{v_float:+.2f}{suffix}</span>"
-                    except:
-                        return "<span style='color:#8ba1b6;'>-</span>"
+                    except: return "<span style='color:#8ba1b6;'>-</span>"
 
-                # NUEVO: Agregamos la columna "12 Meses" al encabezado de la tabla
                 html_int = '<div class="table-container"><table class="custom-table" style="width: 100%; font-size: 0.9rem;">'
                 html_int += '<tr><th style="text-align: left;">Indicador Global</th><th>Cotización</th><th>Variación</th><th>1 Mes</th><th>6 Meses</th><th>12 Meses</th></tr>'
                 
@@ -198,14 +176,11 @@ if menu_seccion == "Noticias de Mercado":
                     vd = datos.get('var_diaria')
                     v1m = datos.get('var_1m')
                     v6m = datos.get('var_6m')
-                    v1y = datos.get('var_1y') # NUEVO: Extraemos la variable del historial a 1 año
+                    v1y = datos.get('var_1y')
                     
                     suffix = " pts" if "%" in nombre else "%"
                     val_str = f"{val:.2f}" if val is not None else "N/D"
-                    
-                    # NUEVO: Inyectamos la celda extra en la fila
                     html_int += f"<tr><td class='col-header' style='text-align: left;'>{nombre}</td><td>{val_str}</td><td>{formatear_celda(vd, suffix)}</td><td>{formatear_celda(v1m)}</td><td>{formatear_celda(v6m)}</td><td>{formatear_celda(v1y)}</td></tr>"
-                
                 html_int += '</table></div>'
                 st.write(html_int, unsafe_allow_html=True)
 
@@ -213,7 +188,7 @@ if menu_seccion == "Noticias de Mercado":
         st.markdown("<h3 style='margin-bottom: 15px; color: #ffffff;'>💡 Visión Estratégica de Mercado (IA)</h3>", unsafe_allow_html=True)
         
         if st.button("Generar Reporte Estratégico", type="primary"):
-            with st.spinner("El motor de IA de SmartInvest está redactando el análisis estratégico..."):
+            with st.spinner("El motor de IA de SmartInvest está redactando el análisis estratégico (Equities y Renta Fija)..."):
                 analisis_texto = generar_analisis_ia(macro_arg_data, macro_int_data, brecha_calculada)
                 
                 st.markdown(f"""
@@ -241,10 +216,10 @@ if menu_seccion == "Noticias de Mercado":
                             </div>
                             """, unsafe_allow_html=True)
                         st.write("")
-        else:
-            st.info("👈 Ingresa los tickers y presiona 'Sincronizar Datos' para ver las noticias específicas de tus acciones.")
+        else: st.info("👈 Ingresa los tickers y presiona 'Sincronizar Datos' para ver las noticias específicas de tus acciones.")
 
 else:
+    # EL RESTO DEL CÓDIGO PERMANECE INTACTO (VISTAS DEPENDIENTES)
     if st.session_state.get("datos_cargados"):
         dft = st.session_state.df_total
         
