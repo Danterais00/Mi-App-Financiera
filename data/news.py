@@ -121,7 +121,7 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         prompt = f"""
         Eres un asesor financiero didáctico, claro y amigable.
         Analiza el siguiente tablero macroeconómico de Argentina y EE.UU. 
-        Redacta un análisis en 4 bullet points indicando oportunidades de inversión claras, pero explicadas con un lenguaje sencillo, fácil de entender para un inversor principiante o intermedio.
+        Redacta un análisis en 4 bullet points indicando oportunidades de inversión claras, pero explicadas con un lenguaje sencillo, fácil de entender para un inversor intermedio.
         Si usas jerga financiera (como "carry trade" o "soft landing"), explícala brevemente en términos cotidianos. Evita saludos, ve directo al análisis.
         
         --- DATOS ARGENTINA ---
