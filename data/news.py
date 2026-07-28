@@ -102,7 +102,7 @@ def obtener_noticias_acciones(lista_tickers):
             noticias[ticker] = []
     return noticias
 
-# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CON FALLBACK AUTOMÁTICO Y TABLA GICS) ---
+# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CON FILTRO DE LIMPIEZA) ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -129,13 +129,13 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         Redacta un análisis en 4 bullet points indicando oportunidades de inversión claras, explicadas con un lenguaje sencillo, fácil de entender para un inversor principiante o intermedio. Si usas jerga financiera, explícala brevemente en términos cotidianos.
         
         ### 2. Perspectiva de los 11 Sectores (Clasificación GICS)
-        Basándote ESTRICTAMENTE en los datos macroeconómicos provistos (inflación, tasas, energía, mercado argentino, etc.) y usando deducción lógica, dibuja una tabla en formato Markdown con los 11 sectores de la economía.
+        Basándote ESTRICTAMENTE en los datos macroeconómicos provistos y usando deducción lógica, dibuja una tabla en formato Markdown con los 11 sectores de la economía.
         La tabla debe tener exactamente 3 columnas:
         | Sector (GICS) | Veredicto (Atractivo / Neutral / Cautela) | Justificación Macroeconómica (1 oración sencilla) |
         
         Lista estricta de sectores a incluir: Tecnología, Financiero, Salud, Consumo Discrecional, Consumo Masivo, Energía, Industrial, Materiales Básicos, Servicios Públicos, Bienes Raíces, y Comunicaciones.
         
-        Evita saludos iniciales, ve directo al formato solicitado.
+        REGLA ESTRICTA: NO utilices etiquetas HTML bajo ninguna circunstancia. Devuelve únicamente texto plano y formato Markdown puro. Evita saludos iniciales.
         
         --- DATOS ARGENTINA ---
         Riesgo País: {rp_val}
@@ -149,22 +149,22 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             var = datos['var'] if datos['var'] is not None else 'N/D'
             prompt += f"{nombre}: {v} (Var: {var})\n"
             
-        # 3. Arquitectura de Alta Disponibilidad (Lista de modelos de prioridad)
         modelos_a_probar = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
-        
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
-        # 4. El código intentará cada modelo en orden para evitar el error 503.
         for modelo in modelos_a_probar:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
             res = requests.post(url, headers=headers, json=payload, timeout=45)
             
             if res.status_code == 200:
                 data = res.json()
-                return data['candidates'][0]['content']['parts'][0]['text']
+                texto_ia = data['candidates'][0]['content']['parts'][0]['text']
+                # FILTRO DEFENSIVO: Limpiamos cualquier etiqueta HTML residual que la IA intente agregar
+                texto_limpio = texto_ia.replace('</div>', '').replace('<div>', '').strip()
+                return texto_limpio
             elif res.status_code == 503:
-                continue  # Error de tráfico. El bucle pasa inmediatamente al modelo 'lite'.
+                continue
             else:
                 return f"❌ **Error del servidor de IA:** Código {res.status_code} en {modelo}. Respuesta: {res.text}"
         
