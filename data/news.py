@@ -8,7 +8,13 @@ HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 
 @st.cache_data(ttl=1800)
 def obtener_macro_argentina():
-    datos = {"dolares": [], "riesgo_pais": None, "merval": {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}}
+    datos = {
+        "dolares": [], "riesgo_pais": None, 
+        "merval": {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None},
+        "inflacion": None, "tasa_bcra": None # NUEVOS DATOS
+    }
+    
+    # 1. Dólares
     try:
         res = requests.get("https://dolarapi.com/v1/dolares", timeout=5)
         if res.status_code == 200:
@@ -18,6 +24,7 @@ def obtener_macro_argentina():
                     datos["dolares"].append({"nombre": nombre, "compra": d["compra"], "venta": d["venta"]})
     except: pass
     
+    # 2. Riesgo País
     try:
         res_rp = requests.get("https://mercados.ambito.com//riesgopais/info", headers=HEADERS, timeout=5)
         if res_rp.status_code == 200:
@@ -25,21 +32,36 @@ def obtener_macro_argentina():
             datos["riesgo_pais"] = {"valor": rp_json.get("valor"), "variacion": rp_json.get("variacion")}
     except: pass
 
+    # 3. Inflación Argentina (IPC) - PROTEGIDO CON TRY/EXCEPT
     try:
-        # Ampliamos a 1 año de historia para el Merval
+        res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", timeout=5)
+        if res_inf.status_code == 200:
+            data_inf = res_inf.json()
+            if data_inf:
+                datos["inflacion"] = float(data_inf[-1]["valor"]) # Toma el último dato reportado
+    except: pass
+
+    # 4. Tasa de Referencia (Plazo Fijo/Política Monetaria) - PROTEGIDO CON TRY/EXCEPT
+    try:
+        res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=5)
+        if res_tasa.status_code == 200:
+            data_tasa = res_tasa.json()
+            if data_tasa:
+                datos["tasa_bcra"] = float(data_tasa[-1]["tasa"]) # TNA nominal actual
+    except: pass
+
+    # 5. Merval
+    try:
         merv = yf.Ticker("^MERV").history(period="1y")
         if len(merv) >= 2:
             act = merv['Close'].iloc[-1]
             datos["merval"]["valor"] = act
             datos["merval"]["var_diaria"] = ((act / merv['Close'].iloc[-2]) - 1) * 100
-            
-            if len(merv) >= 21:
-                datos["merval"]["var_1m"] = ((act / merv['Close'].iloc[-21]) - 1) * 100
-            if len(merv) >= 126:
-                datos["merval"]["var_6m"] = ((act / merv['Close'].iloc[-126]) - 1) * 100
-            if len(merv) >= 250:
-                datos["merval"]["var_1y"] = ((act / merv['Close'].iloc[0]) - 1) * 100
+            if len(merv) >= 21: datos["merval"]["var_1m"] = ((act / merv['Close'].iloc[-21]) - 1) * 100
+            if len(merv) >= 126: datos["merval"]["var_6m"] = ((act / merv['Close'].iloc[-126]) - 1) * 100
+            if len(merv) >= 250: datos["merval"]["var_1y"] = ((act / merv['Close'].iloc[0]) - 1) * 100
     except: pass
+    
     return datos
 
 @st.cache_data(ttl=3600)
@@ -55,20 +77,14 @@ def obtener_macro_internacional():
     for nombre, t in tickers_macro.items():
         datos[nombre] = {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}
         try:
-            # Descargamos 1 año completo para calcular tendencias
             hist = yf.Ticker(t).history(period="1y")
             if len(hist) >= 2:
                 actual = hist['Close'].iloc[-1]
-                
                 datos[nombre]["valor"] = float(actual)
                 datos[nombre]["var_diaria"] = float(((actual / hist['Close'].iloc[-2]) - 1) * 100)
-                
-                if len(hist) >= 21: # 1 Mes (~21 días hábiles)
-                    datos[nombre]["var_1m"] = float(((actual / hist['Close'].iloc[-21]) - 1) * 100)
-                if len(hist) >= 126: # 6 Meses (~126 días hábiles)
-                    datos[nombre]["var_6m"] = float(((actual / hist['Close'].iloc[-126]) - 1) * 100)
-                if len(hist) >= 250: # 1 Año (~250 días hábiles)
-                    datos[nombre]["var_1y"] = float(((actual / hist['Close'].iloc[0]) - 1) * 100)
+                if len(hist) >= 21: datos[nombre]["var_1m"] = float(((actual / hist['Close'].iloc[-21]) - 1) * 100)
+                if len(hist) >= 126: datos[nombre]["var_6m"] = float(((actual / hist['Close'].iloc[-126]) - 1) * 100)
+                if len(hist) >= 250: datos[nombre]["var_1y"] = float(((actual / hist['Close'].iloc[0]) - 1) * 100)
         except: pass
 
     try:
@@ -79,22 +95,22 @@ def obtener_macro_internacional():
                 "Inflación EE.UU YoY (%)": {"id": "CPIAUCSL", "units": "pc1"},
                 "Desempleo EE.UU (%)": {"id": "UNRATE", "units": "lin"}
             }
-            
             for nombre, config in fred_series.items():
-                datos[nombre] = {"valor": None, "var_diaria": None}
-                url = f"https://api.stlouisfed.org/fred/series/observations?series_id={config['id']}&api_key={api_key}&file_type=json&units={config['units']}&sort_order=desc&limit=2"
+                datos[nombre] = {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}
+                url = f"https://api.stlouisfed.org/fred/series/observations?series_id={config['id']}&api_key={api_key}&file_type=json&units={config['units']}&sort_order=desc&limit=12"
                 try:
                     res = requests.get(url, timeout=5)
                     if res.status_code == 200:
                         obs = res.json().get("observations", [])
-                        if len(obs) >= 2:
-                            v_act = obs[0]["value"]
-                            v_prev = obs[1]["value"]
-                            if v_act != "." and v_prev != ".":
-                                act = float(v_act)
-                                prev = float(v_prev)
-                                datos[nombre]["valor"] = act
-                                datos[nombre]["var_diaria"] = act - prev
+                        valid_obs = [float(o["value"]) for o in obs if o["value"] != "."]
+                        if len(valid_obs) >= 1:
+                            act = valid_obs[0]
+                            datos[nombre]["valor"] = act
+                            if len(valid_obs) >= 2:
+                                datos[nombre]["var_diaria"] = act - valid_obs[1] 
+                                datos[nombre]["var_1m"] = act - valid_obs[1] 
+                            if len(valid_obs) >= 7: datos[nombre]["var_6m"] = act - valid_obs[6]
+                            if len(valid_obs) >= 12: datos[nombre]["var_1y"] = act - valid_obs[11]
                 except: pass
     except: pass 
     return datos
@@ -108,17 +124,12 @@ def obtener_noticias_acciones(lista_tickers):
             feed = feedparser.parse(url)
             entradas = []
             for entry in feed.entries[:3]:
-                entradas.append({
-                    "titulo": entry.title,
-                    "link": entry.link,
-                    "fecha": entry.published
-                })
+                entradas.append({"titulo": entry.title, "link": entry.link, "fecha": entry.published})
             noticias[ticker] = entradas
-        except:
-            noticias[ticker] = []
+        except: noticias[ticker] = []
     return noticias
 
-# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CON CONTEXTO HISTÓRICO) ---
+# --- NUEVO MOTOR DE IA CON RENTA FIJA ARGENTINA ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -129,74 +140,64 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         
         rp = macro_arg.get('riesgo_pais')
         rp_val = rp['valor'] if rp else 'N/D'
-        
         merv = macro_arg.get('merval', {})
         merv_val = f"{merv.get('valor', 0):.0f}"
-        merv_var = merv.get('var_diaria')
-        merv_var_str = f"Var Diaria: {merv_var:.2f}%" if merv_var is not None else "N/D"
-        merv_6m = f"Var 6M: {merv.get('var_6m', 0):.2f}%" if merv.get('var_6m') is not None else ""
         
+        # NUEVOS DATOS ARG
+        inf_arg = f"{macro_arg.get('inflacion'):.1f}%" if macro_arg.get('inflacion') else 'N/D'
+        tasa_arg = f"{macro_arg.get('tasa_bcra'):.1f}%" if macro_arg.get('tasa_bcra') else 'N/D'
         brecha_str = f"{brecha:.2f}%" if brecha is not None else 'N/D'
         
         prompt = f"""
-        Eres un asesor financiero didáctico, claro y amigable.
-        Analiza el siguiente tablero macroeconómico de Argentina y EE.UU. 
-        Presta especial atención a las tendencias de 1 Mes, 6 Meses y 1 Año para deducir en qué etapa del ciclo económico nos encontramos.
+        Eres un Asesor Financiero Institucional (Portfolio Manager).
+        Analiza el siguiente tablero macroeconómico global y local. 
         
-        Tu respuesta debe tener EXACTAMENTE dos partes:
+        Tu respuesta debe tener EXACTAMENTE TRES partes en formato Markdown:
         
         ### 1. Visión Estratégica General
-        Redacta un análisis en 4 bullet points indicando oportunidades de inversión claras, explicadas con un lenguaje sencillo, fácil de entender para un inversor principiante o intermedio. Si usas jerga financiera, explícala brevemente en términos cotidianos.
+        Redacta un análisis en 4 bullet points indicando oportunidades de inversión en renta variable (acciones), deduciendo en qué etapa del ciclo nos encontramos.
         
-        ### 2. Perspectiva de los 11 Sectores (Clasificación GICS)
-        Basándote ESTRICTAMENTE en los datos macroeconómicos provistos y sus tendencias históricas, usando deducción lógica, dibuja una tabla en formato Markdown con los 11 sectores de la economía.
-        La tabla debe tener exactamente 3 columnas:
-        | Sector (GICS) | Veredicto (Atractivo / Neutral / Cautela) | Justificación Macroeconómica (1 oración sencilla) |
+        ### 2. Estrategia de Renta Fija y Cobertura (Argentina)
+        Evalúa el Riesgo País, Brecha, Inflación local y Tasas de interés. 
+        Recomienda de forma clara en bullet points cómo armar la cartera de bonos: 
+        ¿Es momento de Carry Trade (LECAPs), cobertura inflacionaria (Bonos CER), ganancia de capital soberana (AL30/GD30) o riesgo corporativo (Obligaciones Negociables)? Justifica tu decisión matemáticamente.
         
-        Lista estricta de sectores a incluir: Tecnología, Financiero, Salud, Consumo Discrecional, Consumo Masivo, Energía, Industrial, Materiales Básicos, Servicios Públicos, Bienes Raíces, y Comunicaciones.
+        ### 3. Perspectiva de los 11 Sectores (Clasificación GICS)
+        Basándote en los datos internacionales, dibuja una tabla Markdown de 3 columnas:
+        | Sector (GICS) | Veredicto (Atractivo / Neutral / Cautela) | Justificación (1 oración) |
         
-        REGLA ESTRICTA: NO utilices etiquetas HTML bajo ninguna circunstancia. Devuelve únicamente texto plano y formato Markdown puro. Evita saludos iniciales.
+        REGLA ESTRICTA: NO uses HTML. Solo Markdown.
         
         --- DATOS ARGENTINA ---
         Riesgo País: {rp_val}
-        Merval: {merv_val} ({merv_var_str} | {merv_6m})
+        Merval: {merv_val}
         Brecha Cambiaria (CCL vs Oficial): {brecha_str}
+        Inflación Mensual (Último dato): {inf_arg}
+        Tasa Referencia (TNA): {tasa_arg}
         
-        --- DATOS INTERNACIONALES (CON HISTORIAL) ---
+        --- DATOS INTERNACIONALES ---
         """
         for nombre, datos in macro_int.items():
             v = datos.get('valor', 'N/D')
             var_d = datos.get('var_diaria')
-            var_1m = datos.get('var_1m')
-            var_6m = datos.get('var_6m')
             var_1y = datos.get('var_1y')
-            
             str_d = f"Diaria: {var_d:.2f}%" if var_d is not None else "N/D"
-            str_1m = f" | 1M: {var_1m:.2f}%" if var_1m is not None else ""
-            str_6m = f" | 6M: {var_6m:.2f}%" if var_6m is not None else ""
             str_1y = f" | 1Y: {var_1y:.2f}%" if var_1y is not None else ""
+            prompt += f"{nombre}: {v} ({str_d}{str_1y})\n"
             
-            prompt += f"{nombre}: {v} ({str_d}{str_1m}{str_6m}{str_1y})\n"
-            
-        modelos_a_probar = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
+        modelos = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
-        for modelo in modelos_a_probar:
+        for modelo in modelos:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
             res = requests.post(url, headers=headers, json=payload, timeout=45)
             
             if res.status_code == 200:
-                data = res.json()
-                texto_ia = data['candidates'][0]['content']['parts'][0]['text']
-                texto_limpio = texto_ia.replace('</div>', '').replace('<div>', '').strip()
-                return texto_limpio
-            elif res.status_code == 503:
-                continue
-            else:
-                return f"❌ **Error del servidor de IA:** Código {res.status_code} en {modelo}. Respuesta: {res.text}"
-        
-        return "⚠️ **Servidores de Google Saturados:** En este momento la API gratuita está experimentando un pico de tráfico global. Por favor, intenta sincronizar los datos nuevamente en unos minutos."
+                texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
+                return texto_ia.replace('</div>', '').replace('<div>', '').strip()
+            elif res.status_code == 503: continue
+            else: return f"❌ Error API: {res.status_code}"
             
-    except Exception as e:
-        return f"❌ **Error crítico de conexión:** No se pudo procesar la IA. Detalle: {e}"
+        return "⚠️ Servidores Saturados, intenta de nuevo."
+    except Exception as e: return f"❌ Error crítico: {e}"
