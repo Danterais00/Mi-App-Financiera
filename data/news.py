@@ -130,7 +130,7 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA RECONSTRUIDO CON COMPATIBILIDAD ESPECÍFICA ---
+# --- MOTOR DE IA CON EXPONENTIAL BACKOFF (GRADO INSTITUCIONAL) ---
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
         return "⚠️ **Falta la clave API de Gemini.** Configura `GEMINI_API_KEY` en los Secrets de Streamlit."
@@ -138,6 +138,7 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         
+        # EXTRACCIÓN Y FORMATEO SEGURO
         rp = macro_arg.get('riesgo_pais') or {}
         rp_val = rp.get('valor')
         rp_str = str(rp_val) if rp_val is not None else 'N/D'
@@ -165,8 +166,7 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         
         ### 2. Estrategia de Renta Fija y Cobertura (Argentina)
         Evalúa el Riesgo País, Brecha, Inflación local y Tasas de interés. 
-        Recomienda de forma clara en bullet points cómo armar la cartera de bonos: 
-        ¿Es momento de Carry Trade (LECAPs), cobertura inflacionaria (Bonos CER), ganancia de capital soberana (AL30/GD30) o riesgo corporativo (Obligaciones Negociables)? Justifica tu decisión matemáticamente.
+        Recomienda de forma clara en bullet points cómo armar la cartera de bonos. Justifica matemáticamente.
         
         ### 3. Perspectiva de los 11 Sectores (Clasificación GICS)
         Basándote en los datos internacionales, dibuja una tabla Markdown de 3 columnas:
@@ -178,7 +178,7 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         Riesgo País: {rp_str}
         Merval: {merv_str}
         Brecha Cambiaria (CCL vs Oficial): {brecha_str}
-        Inflación Mensual (Último dato): {inf_arg}
+        Inflación Mensual: {inf_arg}
         Tasa Referencia (TNA): {tasa_arg}
         
         --- DATOS INTERNACIONALES ---
@@ -194,19 +194,13 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             
             prompt += f"{nombre}: {v_str} ({str_d}{str_1y})\n"
             
-        # Lista restaurada con modelos confirmados en el historial de tu API Key
-        modelos = [
-            "gemini-2.0-flash-001",
-            "gemini-2.0-flash",
-            "gemini-1.5-pro",
-            "gemini-pro"
-        ]
-        
+        modelos = ["gemini-1.5-flash", "gemini-2.0-flash-001"]
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
         ultimo_error = ""
-        max_reintentos = 3
+        tiempos_espera = [5, 15, 30] # Espera exponencial: 5s, luego 15s, luego 30s.
+        max_reintentos = len(tiempos_espera)
         
         for modelo in modelos:
             for intento in range(max_reintentos):
@@ -220,23 +214,26 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
                     
                     elif res.status_code == 429:
                         if intento < max_reintentos - 1:
-                            time.sleep(3) 
+                            # Aplicamos la pausa silenciosa y escalonada antes de reintentar
+                            time.sleep(tiempos_espera[intento])
                             continue
                         else:
-                            return "⚠️ **Límite de Consultas Alcanzado (Código 429):** La API gratuita de Google está saturada. Por favor, **espera 60 segundos** sin presionar botones e inténtalo nuevamente."
+                            # Aborto Total Inmediato: Si la clave está bloqueada, no saltamos al siguiente modelo.
+                            return "⚠️ **Penalización Temporal de Google (429):** La API gratuita ha bloqueado tu acceso por exceso de peticiones. Por favor, **no presiones ningún botón y espera entre 5 y 10 minutos** para que tu cuota se reinicie."
                     
                     elif res.status_code == 404:
-                        ultimo_error = f"{modelo} (404 - No soportado)"
-                        break 
+                        ultimo_error = f"{modelo} (No soportado)"
+                        break # Salimos del bucle de intentos y pasamos al siguiente modelo
                         
                     else:
-                        return f"❌ **Error del servidor (Código {res.status_code}):** {res.text}"
+                        ultimo_error = f"Código {res.status_code}. Detalle: {res.text}"
+                        break
                         
                 except requests.exceptions.RequestException as e:
                     ultimo_error = f"Fallo de conexión ({modelo}): {e}"
                     break
                     
-        return f"❌ **Error de configuración:** Tu API Key rechazó todos los modelos compatibles. Detalles de rechazo: {ultimo_error}"
+        return f"❌ **Error de configuración:** Ningún modelo autorizado respondió. Detalles: {ultimo_error}"
         
     except Exception as e: 
-        return f"❌ **Error crítico de procesamiento:** No se pudo procesar la IA. Detalle: {e}"
+        return f"❌ **Error crítico de procesamiento:** Detalle: {e}"
