@@ -102,7 +102,7 @@ def obtener_noticias_acciones(lista_tickers):
             noticias[ticker] = []
     return noticias
 
-# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CON FALLBACK AUTOMÁTICO) ---
+# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CON FALLBACK AUTOMÁTICO Y TABLA GICS) ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -118,13 +118,24 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         merv_val = f"{merv['valor']:.0f} (Var: {merv['var']:.2f}%)" if merv else 'N/D'
         brecha_str = f"{brecha:.2f}%" if brecha is not None else 'N/D'
         
+        # 2. PROMPT ESTRATÉGICO MODIFICADO (Top-Down Sectorial)
         prompt = f"""
         Eres un asesor financiero didáctico, claro y amigable.
         Analiza el siguiente tablero macroeconómico de Argentina y EE.UU. 
-        Redacta un análisis en 4 bullet points indicando oportunidades de inversión claras, pero explicadas con un lenguaje sencillo, fácil de entender para un inversor intermedio.
-        Si usas jerga financiera (como "carry trade" o "soft landing"), explícala brevemente en términos cotidianos. Evita saludos, ve directo al análisis.
         
-        --- DATOS ARGENTINA ---
+        Tu respuesta debe tener EXACTAMENTE dos partes:
+        
+        ### 1. Visión Estratégica General
+        Redacta un análisis en 4 bullet points indicando oportunidades de inversión claras, explicadas con un lenguaje sencillo, fácil de entender para un inversor principiante o intermedio. Si usas jerga financiera, explícala brevemente en términos cotidianos.
+        
+        ### 2. Perspectiva de los 11 Sectores (Clasificación GICS)
+        Basándote ESTRICTAMENTE en los datos macroeconómicos provistos (inflación, tasas, energía, mercado argentino, etc.) y usando deducción lógica, dibuja una tabla en formato Markdown con los 11 sectores de la economía.
+        La tabla debe tener exactamente 3 columnas:
+        | Sector (GICS) | Veredicto (Atractivo / Neutral / Cautela) | Justificación Macroeconómica (1 oración sencilla) |
+        
+        Lista estricta de sectores a incluir: Tecnología, Financiero, Salud, Consumo Discrecional, Consumo Masivo, Energía, Industrial, Materiales Básicos, Servicios Públicos, Bienes Raíces, y Comunicaciones.
+        
+        Evita saludos iniciales, ve directo al formato solicitado.
         
         --- DATOS ARGENTINA ---
         Riesgo País: {rp_val}
@@ -138,13 +149,13 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             var = datos['var'] if datos['var'] is not None else 'N/D'
             prompt += f"{nombre}: {v} (Var: {var})\n"
             
-        # 2. Arquitectura de Alta Disponibilidad (Lista de modelos de prioridad)
+        # 3. Arquitectura de Alta Disponibilidad (Lista de modelos de prioridad)
         modelos_a_probar = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
         
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
-        # 3. El código intentará cada modelo en orden. Si hay cuello de botella (503), salta al siguiente.
+        # 4. El código intentará cada modelo en orden para evitar el error 503.
         for modelo in modelos_a_probar:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
             res = requests.post(url, headers=headers, json=payload, timeout=45)
@@ -157,7 +168,6 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             else:
                 return f"❌ **Error del servidor de IA:** Código {res.status_code} en {modelo}. Respuesta: {res.text}"
         
-        # Si todos los modelos de la lista fallan por 503:
         return "⚠️ **Servidores de Google Saturados:** En este momento la API gratuita está experimentando un pico de tráfico global. Por favor, intenta sincronizar los datos nuevamente en unos minutos."
             
     except Exception as e:
