@@ -130,7 +130,7 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA BLINDADO CONTRA ERRORES FANTASMAS ---
+# --- MOTOR DE IA RECONSTRUIDO CON COMPATIBILIDAD ESPECÍFICA ---
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
         return "⚠️ **Falta la clave API de Gemini.** Configura `GEMINI_API_KEY` en los Secrets de Streamlit."
@@ -138,7 +138,6 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         
-        # EXTRACCIÓN Y FORMATEO SEGURO
         rp = macro_arg.get('riesgo_pais') or {}
         rp_val = rp.get('valor')
         rp_str = str(rp_val) if rp_val is not None else 'N/D'
@@ -195,8 +194,14 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             
             prompt += f"{nombre}: {v_str} ({str_d}{str_1y})\n"
             
-        # Lista limpia y estricta: Solo el modelo flash, el más estable para niveles gratuitos
-        modelos = ["gemini-1.5-flash", "gemini-1.5-flash-latest"]
+        # Lista restaurada con modelos confirmados en el historial de tu API Key
+        modelos = [
+            "gemini-2.0-flash-001",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro",
+            "gemini-pro"
+        ]
+        
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
@@ -215,25 +220,23 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
                     
                     elif res.status_code == 429:
                         if intento < max_reintentos - 1:
-                            time.sleep(3) # Dormir 3 segundos y reintentar silenciosamente
+                            time.sleep(3) 
                             continue
                         else:
-                            # FRENO DE MANO: Si falla 3 veces por cuota, aborta TODO y avisa de inmediato.
-                            return "⚠️ **Límite de Consultas Alcanzado (Código 429):** La API gratuita de Google está saturada en este momento. Por favor, **espera 1 minuto entero** sin presionar botones e inténtalo nuevamente."
+                            return "⚠️ **Límite de Consultas Alcanzado (Código 429):** La API gratuita de Google está saturada. Por favor, **espera 60 segundos** sin presionar botones e inténtalo nuevamente."
                     
                     elif res.status_code == 404:
-                        ultimo_error = f"Modelo no soportado ({modelo})"
-                        break # Pasa al siguiente modelo de la lista
+                        ultimo_error = f"{modelo} (404 - No soportado)"
+                        break 
                         
                     else:
-                        # Si es un error 400, 403 o 500, abortamos de inmediato.
                         return f"❌ **Error del servidor (Código {res.status_code}):** {res.text}"
                         
                 except requests.exceptions.RequestException as e:
-                    ultimo_error = f"Fallo de conexión: {e}"
+                    ultimo_error = f"Fallo de conexión ({modelo}): {e}"
                     break
                     
-        return f"❌ **Error de configuración:** Ningún modelo autorizado respondió. Último fallo: {ultimo_error}"
+        return f"❌ **Error de configuración:** Tu API Key rechazó todos los modelos compatibles. Detalles de rechazo: {ultimo_error}"
         
     except Exception as e: 
         return f"❌ **Error crítico de procesamiento:** No se pudo procesar la IA. Detalle: {e}"
