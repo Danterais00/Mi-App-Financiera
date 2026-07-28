@@ -117,31 +117,30 @@ if menu_seccion == "Noticias de Mercado":
             with st.spinner("Sincronizando datos locales..."):
                 macro_arg_data = obtener_macro_argentina()
                 
-                # PROTECCIÓN CONTRA FALLOS DE API (NoneType)
+                # PROTECCIÓN CONTRA FALLOS DE API
                 rp = macro_arg_data.get("riesgo_pais") or {}
                 merv = macro_arg_data.get("merval") or {}
                 dolares = macro_arg_data.get("dolares", [])
                 
-                # Validaciones seguras Riesgo País
                 rp_val = rp.get('valor')
                 rp_var = str(rp.get('variacion') or '')
                 texto_rp_val = rp_val if rp_val is not None else 'N/D'
                 texto_rp_var = rp_var if rp_var else '-'
                 color_rp = '#ff6b6b' if rp_var.startswith('+') else '#2ecca6'
                 
-                # Validaciones seguras Merval
                 merv_val = merv.get('valor')
                 merv_vd = merv.get('var_diaria')
                 merv_1m = merv.get('var_1m')
                 merv_6m = merv.get('var_6m')
+                merv_1y = merv.get('var_1y') # Extraemos también el de 1 año para el Merval
                 
                 texto_merv_val = f"{merv_val:,.0f}" if merv_val is not None else 'N/D'
                 color_merv = '#2ecca6' if (merv_vd and float(merv_vd) > 0) else '#ff6b6b'
                 texto_merv_vd = f"{merv_vd:.2f}%" if merv_vd is not None else "-"
                 
                 merv_tendencias = ""
-                if merv_1m is not None and merv_6m is not None:
-                    merv_tendencias = f"<span style='font-size:0.8rem; color:#8ba1b6;'>1M: {merv_1m:.2f}% | 6M: {merv_6m:.2f}%</span>"
+                if merv_1m is not None and merv_6m is not None and merv_1y is not None:
+                    merv_tendencias = f"<span style='font-size:0.8rem; color:#8ba1b6;'>1M: {merv_1m:.2f}% | 6M: {merv_6m:.2f}% | 12M: {merv_1y:.2f}%</span>"
                 
                 html_caja = f"""<div style="background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between;">
                     <div style="width: 48%;">
@@ -190,19 +189,22 @@ if menu_seccion == "Noticias de Mercado":
                     except:
                         return "<span style='color:#8ba1b6;'>-</span>"
 
+                # NUEVO: Agregamos la columna "12 Meses" al encabezado de la tabla
                 html_int = '<div class="table-container"><table class="custom-table" style="width: 100%; font-size: 0.9rem;">'
-                html_int += '<tr><th style="text-align: left;">Indicador Global</th><th>Cotización</th><th>Variación</th><th>1 Mes</th><th>6 Meses</th></tr>'
+                html_int += '<tr><th style="text-align: left;">Indicador Global</th><th>Cotización</th><th>Variación</th><th>1 Mes</th><th>6 Meses</th><th>12 Meses</th></tr>'
                 
                 for nombre, datos in macro_int_data.items():
                     val = datos.get('valor')
                     vd = datos.get('var_diaria')
                     v1m = datos.get('var_1m')
                     v6m = datos.get('var_6m')
+                    v1y = datos.get('var_1y') # NUEVO: Extraemos la variable del historial a 1 año
                     
                     suffix = " pts" if "%" in nombre else "%"
                     val_str = f"{val:.2f}" if val is not None else "N/D"
                     
-                    html_int += f"<tr><td class='col-header' style='text-align: left;'>{nombre}</td><td>{val_str}</td><td>{formatear_celda(vd, suffix)}</td><td>{formatear_celda(v1m)}</td><td>{formatear_celda(v6m)}</td></tr>"
+                    # NUEVO: Inyectamos la celda extra en la fila
+                    html_int += f"<tr><td class='col-header' style='text-align: left;'>{nombre}</td><td>{val_str}</td><td>{formatear_celda(vd, suffix)}</td><td>{formatear_celda(v1m)}</td><td>{formatear_celda(v6m)}</td><td>{formatear_celda(v1y)}</td></tr>"
                 
                 html_int += '</table></div>'
                 st.write(html_int, unsafe_allow_html=True)
