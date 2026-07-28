@@ -129,7 +129,7 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA REVISADO (OPTIMIZADO PARA EVITAR EL ERROR 429) ---
+# --- MOTOR DE IA OPTIMIZADO (EVITANDO 429 Y AHORRANDO CUOTA) ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -195,10 +195,10 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             
             prompt += f"{nombre}: {v_str} ({str_d}{str_1y})\n"
             
-        # Utilizamos los modelos optimizados basándonos en tu éxito previo, sin gastar cuota extra
+        # Priorizamos el modelo 1.5-flash que permite más consultas gratuitas (15 RPM)
         modelos = [
-            "gemini-2.0-flash", 
             "gemini-1.5-flash", 
+            "gemini-2.0-flash", 
             "gemini-1.5-pro"
         ]
         
@@ -216,12 +216,10 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
                 return texto_ia.replace('</div>', '').replace('<div>', '').strip()
             
             elif res.status_code == 429:
-                # Si recibimos un 429, detenemos el ciclo. No tiene sentido intentar otro modelo 
-                # porque la restricción aplica a la API Key, no al modelo específico.
-                return "⚠️ **Límite de Consultas Alcanzado:** Has superado la cuota gratuita de peticiones por minuto a la Inteligencia Artificial. Por favor, **espera unos 60 segundos** y presiona el botón nuevamente."
+                # Interrupción elegante: Si superas la cuota, mostramos un mensaje amigable
+                return "⚠️ **Límite de Consultas Alcanzado (Código 429):** La API gratuita de Google está saturada. Por favor, **espera 60 segundos** y presiona el botón nuevamente."
             
             elif res.status_code == 404:
-                # Si el modelo no existe, continuamos con el siguiente de la lista
                 ultimo_error = f"Modelo no soportado ({modelo})"
                 continue
                 
