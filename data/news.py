@@ -119,10 +119,12 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
         brecha_str = f"{brecha:.2f}%" if brecha is not None else 'N/D'
         
         prompt = f"""
-        Eres un experto estratega financiero de Wall Street asesorando a un fondo institucional.
+        Eres un asesor financiero didáctico, claro y amigable.
         Analiza el siguiente tablero macroeconómico de Argentina y EE.UU. 
-        Redacta un análisis estratégico directo en 4 bullet points indicando oportunidades de inversión claras.
-        Sé conciso, profesional, y justifica tu racional cruzando los datos provistos. Evita saludos, ve directo al análisis.
+        Redacta un análisis en 4 bullet points indicando oportunidades de inversión claras, pero explicadas con un lenguaje sencillo, fácil de entender para un inversor principiante o intermedio.
+        Si usas jerga financiera (como "carry trade" o "soft landing"), explícala brevemente en términos cotidianos. Evita saludos, ve directo al análisis.
+        
+        --- DATOS ARGENTINA ---
         
         --- DATOS ARGENTINA ---
         Riesgo País: {rp_val}
