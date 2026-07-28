@@ -102,7 +102,7 @@ def obtener_noticias_acciones(lista_tickers):
             noticias[ticker] = []
     return noticias
 
-# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CONECTADO A GEMINI 3.5 FLASH) ---
+# --- NUEVO MOTOR DE INTELIGENCIA ARTIFICIAL (CON FALLBACK AUTOMÁTICO) ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -136,21 +136,27 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             var = datos['var'] if datos['var'] is not None else 'N/D'
             prompt += f"{nombre}: {v} (Var: {var})\n"
             
-        # 2. Conexión HTTP pura usando el modelo de última generación: gemini-3.5-flash
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={api_key}"
+        # 2. Arquitectura de Alta Disponibilidad (Lista de modelos de prioridad)
+        modelos_a_probar = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
+        
         headers = {'Content-Type': 'application/json'}
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}]
-        }
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
-        # AUMENTAMOS EL TIMEOUT A 45 SEGUNDOS PARA DARLE TIEMPO A LA IA
-        res = requests.post(url, headers=headers, json=payload, timeout=45)
+        # 3. El código intentará cada modelo en orden. Si hay cuello de botella (503), salta al siguiente.
+        for modelo in modelos_a_probar:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
+            res = requests.post(url, headers=headers, json=payload, timeout=45)
+            
+            if res.status_code == 200:
+                data = res.json()
+                return data['candidates'][0]['content']['parts'][0]['text']
+            elif res.status_code == 503:
+                continue  # Error de tráfico. El bucle pasa inmediatamente al modelo 'lite'.
+            else:
+                return f"❌ **Error del servidor de IA:** Código {res.status_code} en {modelo}. Respuesta: {res.text}"
         
-        if res.status_code == 200:
-            data = res.json()
-            return data['candidates'][0]['content']['parts'][0]['text']
-        else:
-            return f"❌ **Error del servidor de IA:** Código {res.status_code} - Fallo en el endpoint de Google. Respuesta: {res.text}"
+        # Si todos los modelos de la lista fallan por 503:
+        return "⚠️ **Servidores de Google Saturados:** En este momento la API gratuita está experimentando un pico de tráfico global. Por favor, intenta sincronizar los datos nuevamente en unos minutos."
             
     except Exception as e:
         return f"❌ **Error crítico de conexión:** No se pudo procesar la IA. Detalle: {e}"
