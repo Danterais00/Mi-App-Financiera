@@ -15,8 +15,9 @@ def obtener_macro_argentina():
         "inflacion": None, "tasa_bcra": None 
     }
     
+    # 1. Dólares
     try:
-        res = requests.get("https://dolarapi.com/v1/dolares", timeout=5)
+        res = requests.get("https://dolarapi.com/v1/dolares", timeout=10)
         if res.status_code == 200:
             for d in res.json():
                 if d["casa"] in ["oficial", "blue", "bolsa", "contadoconliqui", "tarjeta"]:
@@ -24,29 +25,51 @@ def obtener_macro_argentina():
                     datos["dolares"].append({"nombre": nombre, "compra": d["compra"], "venta": d["venta"]})
     except: pass
     
+    # 2. Riesgo País (CON SISTEMA DE RESPALDO)
     try:
-        res_rp = requests.get("https://mercados.ambito.com//riesgopais/info", headers=HEADERS, timeout=5)
-        if res_rp.status_code == 200:
+        # Intento 1: Ámbito Financiero (URL Limpia y timeout ampliado)
+        res_rp = requests.get("https://mercados.ambito.com/riesgopais/info", headers=HEADERS, timeout=10)
+        if res_rp.status_code == 200 and "valor" in res_rp.json():
             rp_json = res_rp.json()
             datos["riesgo_pais"] = {"valor": rp_json.get("valor"), "variacion": rp_json.get("variacion")}
-    except: pass
+        else:
+            raise Exception("Forzando salto al respaldo")
+    except:
+        try:
+            # Intento 2: Respaldo vía DolarAPI
+            res_rp_alt = requests.get("https://dolarapi.com/v1/riesgopais", timeout=10)
+            if res_rp_alt.status_code == 200:
+                datos["riesgo_pais"] = {"valor": res_rp_alt.json().get("valor"), "variacion": ""}
+        except: pass
 
+    # 3. Inflación Argentina (IPC) 
     try:
-        res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", timeout=5)
+        res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", timeout=10)
         if res_inf.status_code == 200:
             data_inf = res_inf.json()
             if data_inf:
                 datos["inflacion"] = float(data_inf[-1]["valor"]) 
     except: pass
 
+    # 4. Tasa de Referencia (CON SISTEMA DE RESPALDO)
     try:
-        res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=5)
-        if res_tasa.status_code == 200:
+        # Intento 1: Tasa Plazo Fijo
+        res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=10)
+        if res_tasa.status_code == 200 and res_tasa.json():
             data_tasa = res_tasa.json()
-            if data_tasa:
-                datos["tasa_bcra"] = float(data_tasa[-1]["tasa"]) 
-    except: pass
+            datos["tasa_bcra"] = float(data_tasa[-1]["tasa"]) 
+        else:
+            raise Exception("Forzando salto al respaldo")
+    except:
+        try:
+            # Intento 2: Tasa Política Monetaria
+            res_tasa_alt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=10)
+            if res_tasa_alt.status_code == 200 and res_tasa_alt.json():
+                data_tasa_alt = res_tasa_alt.json()
+                datos["tasa_bcra"] = float(data_tasa_alt[-1]["tasa"])
+        except: pass
 
+    # 5. Merval
     try:
         merv = yf.Ticker("^MERV").history(period="1y")
         if len(merv) >= 2:
@@ -91,7 +114,6 @@ def obtener_macro_internacional():
                 "Inflación EE.UU YoY (%)": {"id": "CPIAUCSL", "units": "pc1"},
                 "Desempleo EE.UU (%)": {"id": "UNRATE", "units": "lin"}
             }
-            # CORRECCIÓN: Aumentamos el limit a 15 para garantizar el dato a 12 meses.
             for nombre, config in fred_series.items():
                 datos[nombre] = {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}
                 url = f"https://api.stlouisfed.org/fred/series/observations?series_id={config['id']}&api_key={api_key}&file_type=json&units={config['units']}&sort_order=desc&limit=15"
@@ -103,7 +125,6 @@ def obtener_macro_internacional():
                         if len(valid_obs) >= 1:
                             act = valid_obs[0]
                             datos[nombre]["valor"] = act
-                            # CORRECCIÓN: Ajustamos los índices del array basándonos en los 15 registros
                             if len(valid_obs) >= 2:
                                 datos[nombre]["var_diaria"] = act - valid_obs[1] 
                                 datos[nombre]["var_1m"] = act - valid_obs[1] 
@@ -127,6 +148,7 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
+# --- MOTOR DE IA REVERTIDO (ESTABLE Y LIGERO) ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
