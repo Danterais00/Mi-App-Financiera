@@ -259,7 +259,7 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA MEJORADO CON DEPURACIÓN DE ERRORES VISIBLES ---
+# --- MOTOR DE IA MEJORADO CON REGISTRO ACUMULATIVO DE ERRORES ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -293,9 +293,9 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         NO uses HTML. Solo formato Markdown puro.
         
         --- DATOS MACRO ---
-        Bono 10Y EE.UU: {macro_int.get('Bono 10Y EE.UU (%)', {}).get('valor', 'N/D')}
-        Inflación EE.UU: {macro_int.get('Inflación EE.UU YoY (%)', {}).get('valor', 'N/D')}
-        Curva 2Y-10Y EE.UU: {macro_int.get('Yield Curve 2Y-10Y (pts)', {}).get('valor', 'N/D')}
+        Bono 10Y EE.UU: {macro_int.get('Bono 10Y EE.UU (%)', {{}}).get('valor', 'N/D')}
+        Inflación EE.UU: {macro_int.get('Inflación EE.UU YoY (%)', {{}}).get('valor', 'N/D')}
+        Curva 2Y-10Y EE.UU: {macro_int.get('Yield Curve 2Y-10Y (pts)', {{}}).get('valor', 'N/D')}
         Riesgo País ARG: {rp_val}
         Tasa ARG: {tasa}%
         Inflación ARG: {inf}%
@@ -307,12 +307,12 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             pe_str = g['P/E'] if g['P/E'] else "N/D"
             prompt += f"Sector: {g['Sector']} | P/E: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
             
-        # Lista restaurada con los modelos de mayor compatibilidad para tu API Key
-        modelos = ["gemini-2.0-flash-001", "gemini-1.5-flash", "gemini-pro"]
+        # Arsenal actualizado: Versiones actuales ligeras y de alta disponibilidad
+        modelos = ["gemini-1.5-flash", "gemini-1.5-flash-8b"]
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
-        ultimo_error = ""
+        errores_detallados = []
         max_reintentos = 2
         
         for modelo in modelos:
@@ -330,22 +330,22 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
                             time.sleep(3)
                             continue
                         else:
-                            ultimo_error = "429 - Límite de consultas (Saturación de API)"
-                            break # Sale del reintento, prueba otro modelo
+                            errores_detallados.append(f"{modelo}: 429 (Saturado)")
+                            break
                     
                     elif res.status_code == 404:
-                        ultimo_error = f"404 - Modelo {modelo} no autorizado."
-                        break # No reintenta un 404, salta al siguiente modelo
+                        errores_detallados.append(f"{modelo}: 404 (No autorizado)")
+                        break
                     
                     else:
-                        ultimo_error = f"Código {res.status_code}: {res.text}"
+                        errores_detallados.append(f"{modelo}: Error {res.status_code}")
                         break
                         
-                except requests.exceptions.RequestException as e:
-                    ultimo_error = f"Excepción de red ({modelo}): {e}"
+                except requests.exceptions.RequestException:
+                    errores_detallados.append(f"{modelo}: Fallo de red")
                     break
                     
-        return f"❌ **Error del servidor de IA.** Detalle para soporte: {ultimo_error}"
+        return f"❌ **Error del servidor de IA.** Detalle: { ' | '.join(errores_detallados) }"
         
     except Exception as e: 
         return f"❌ **Error crítico de procesamiento:** Detalle: {e}"
