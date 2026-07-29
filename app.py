@@ -1,31 +1,38 @@
 import streamlit as st
+# ¡CRÍTICO! set_page_config DEBE ser el primer comando de Streamlit
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
 
 import pandas as pd
 import altair as alt
 from streamlit_option_menu import option_menu
 
+# Importar nuestros módulos
 from ui.components import inyectar_css, TOOLTIPS, formatear_moneda
 from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
-from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones, generar_analisis_ia
+from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones, generar_analisis_ia, obtener_valuaciones_mercado
 
-APP_VERSION = "v6.0 - Renta Fija Local"
+# --- CONSTANTES DE LA APP ---
+APP_VERSION = "v7.0 - Quant Dashboard"
 
 inyectar_css()
 
+# --- INICIALIZACIÓN DE VARIABLES DE SESIÓN ---
 if 'datos_cargados' not in st.session_state:
     st.session_state.datos_cargados = False
 
+# --- BARRA LATERAL (El menú de tu imagen se mantiene intacto) ---
 with st.sidebar:
     st.write("")
     modo_estrategia = st.selectbox("Estrategia activa:", ["Crecimiento (Agresivo)", "Fortaleza (Defensivo)"])
+    
     st.write("")
     menu_seccion = option_menu(
         menu_title=None,
         options=["Datos y Valuación", "Comparativa", "Evolución Financiera", "Análisis Técnico", "Top 10 Elite", "Noticias de Mercado"],
         icons=['buildings', 'bar-chart-line', 'graph-up-arrow', 'activity', 'trophy', 'newspaper'],
-        menu_icon="cast", default_index=0,
+        menu_icon="cast",
+        default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#a3a8b8", "font-size": "16px"},
@@ -34,6 +41,7 @@ with st.sidebar:
         }
     )
 
+# --- HEADER PRINCIPAL ---
 st.markdown(f"""
     <div style="margin-top: -30px; margin-bottom: 25px;">
         <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">SmartInvest</h1>
@@ -41,22 +49,29 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
+# --- INPUT Y EXTRACCIÓN ---
 col1, col2 = st.columns([4, 1])
-with col1: tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, AAPL.BA, MSFT.BA, NVDA.BA")
+with col1:
+    tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, AAPL.BA, MSFT.BA, NVDA.BA")
 with col2:
     st.write("")
     st.write("")
     btn_analizar = st.button("Sincronizar Datos 🔄", use_container_width=True, type="primary")
 
-def corregir_ticker(t): return "BRK-B" if t == "BRKB" else "BRK-A" if t == "BRKA" else t
+def corregir_ticker(t):
+    return "BRK-B" if t == "BRKB" else "BRK-A" if t == "BRKA" else t
 
+# --- LÓGICA PRINCIPAL ---
 if btn_analizar and tickers_raw:
     lista_tickers = [corregir_ticker(t.strip().upper()) for t in tickers_raw.split(",") if t.strip()][:30]
+    
     with st.spinner('Procesando lógica institucional...'):
         tupla_tickers = tuple(lista_tickers)
         df_fun, df_tec, df_rev, df_eps, analisis = descargar_datos_mercado(tupla_tickers)
+        
         if df_fun is not None:
             df_total, df_comp, puntos, posibles = calcular_puntajes(df_fun, lista_tickers, modo_estrategia)
+            
             st.session_state.update({
                 "datos_cargados": True, "df_total": df_total, "df_comp": df_comp,
                 "df_rev": df_rev, "df_eps": df_eps, "df_tec": df_tec,
@@ -65,6 +80,7 @@ if btn_analizar and tickers_raw:
             })
             st.rerun()
 
+# --- RE-CÁLCULO SIN DESCARGA ---
 if st.session_state.get("datos_cargados") and st.session_state.get("estrategia_cargada") != modo_estrategia:
     datos_reconstruidos = []
     for t in st.session_state.tickers:
@@ -72,6 +88,7 @@ if st.session_state.get("datos_cargados") and st.session_state.get("estrategia_c
             fila = dict(zip(st.session_state.df_total.index, st.session_state.df_total[t]))
             fila["Ticker"] = t
             datos_reconstruidos.append(fila)
+            
     if datos_reconstruidos:
         df_total, df_comp, puntos, posibles = calcular_puntajes(datos_reconstruidos, st.session_state.tickers, modo_estrategia)
         st.session_state.update({"df_total": df_total, "df_comp": df_comp, "puntos": puntos, "posibles": posibles, "estrategia_cargada": modo_estrategia})
@@ -80,120 +97,140 @@ def get_val(df, metric, ticker):
     try:
         val = df.loc[metric, ticker]
         return float(val) if not pd.isna(val) else None
-    except: return None
+    except:
+        return None
+
+# --- RENDERIZADO DE VISTAS ---
 
 if menu_seccion == "Noticias de Mercado":
-    st.header("Noticias de Mercado")
-    tab_gen, tab_acc = st.tabs(["🌐 Información General de Mercado", "📰 Noticias de Acciones"])
+    st.header("Terminal de Decisiones de Inversión")
     
-    with tab_gen:
+    # NUEVA ESTRUCTURA DE 4 NIVELES INSTITUCIONALES
+    tab_n1, tab_n2, tab_n3, tab_n4, tab_noticias = st.tabs([
+        "🌍 Nivel 1: Macro", 
+        "📊 Nivel 2: Valuaciones", 
+        "🏢 Nivel 3: Sectores GICS (Pronto)", 
+        "🤖 Nivel 4: Investment Score (Pronto)",
+        "📰 Noticias Cartera"
+    ])
+    
+    with tab_n1:
+        st.markdown("### Contexto Macroeconómico")
         brecha_calculada = None
         macro_arg_data = {}
         macro_int_data = {}
         
+        with st.spinner("Sincronizando datos macroeconómicos..."):
+            macro_arg_data = obtener_macro_argentina()
+            macro_int_data = obtener_macro_internacional()
+
         col_arg, col_int = st.columns(2)
         
         with col_arg:
             st.subheader("🇦🇷 Mercado Argentino")
-            with st.spinner("Sincronizando datos locales..."):
-                macro_arg_data = obtener_macro_argentina()
-                
-                rp = macro_arg_data.get("riesgo_pais") or {}
-                merv = macro_arg_data.get("merval") or {}
-                inf = macro_arg_data.get("inflacion")
-                tasa = macro_arg_data.get("tasa_bcra")
-                dolares = macro_arg_data.get("dolares", [])
-                
-                rp_val = rp.get('valor')
-                rp_var = str(rp.get('variacion') or '')
-                texto_rp_val = rp_val if rp_val is not None else 'N/D'
-                texto_rp_var = rp_var if rp_var else '-'
-                color_rp = '#ff6b6b' if rp_var.startswith('+') else '#2ecca6'
-                
-                merv_val = merv.get('valor')
-                merv_vd = merv.get('var_diaria')
-                texto_merv_val = f"{merv_val:,.0f}" if merv_val is not None else 'N/D'
-                color_merv = '#2ecca6' if (merv_vd and float(merv_vd) > 0) else '#ff6b6b'
-                texto_merv_vd = f"{merv_vd:.2f}%" if merv_vd is not None else "-"
-                
-                texto_inf = f"{inf:.1f}%" if inf is not None else "N/D"
-                texto_tasa = f"{tasa:.1f}%" if tasa is not None else "N/D"
-                
-                html_caja = f"""<div style="background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between; flex-wrap: wrap;">
-                    <div style="width: 23%;">
-                        <p style="margin:0; color:#a3a8b8; font-size:0.75rem; font-weight:bold;">RIESGO PAÍS</p>
-                        <h4 style="margin:5px 0; color:#fff; font-size: 1.1rem;">{texto_rp_val} <span style="font-size:0.8rem; color:{color_rp};">({texto_rp_var})</span></h4>
-                    </div>
-                    <div style="width: 23%; border-left: 1px solid #2a2e39; padding-left: 10px;">
-                        <p style="margin:0; color:#a3a8b8; font-size:0.75rem; font-weight:bold;">S&P MERVAL</p>
-                        <h4 style="margin:5px 0; color:#fff; font-size: 1.1rem;">{texto_merv_val} <span style="font-size:0.8rem; color:{color_merv};">({texto_merv_vd})</span></h4>
-                    </div>
-                    <div style="width: 23%; border-left: 1px solid #2a2e39; padding-left: 10px;">
-                        <p style="margin:0; color:#a3a8b8; font-size:0.75rem; font-weight:bold;">INFLACIÓN M.</p>
-                        <h4 style="margin:5px 0; color:#fff; font-size: 1.1rem;">{texto_inf}</h4>
-                    </div>
-                    <div style="width: 23%; border-left: 1px solid #2a2e39; padding-left: 10px;">
-                        <p style="margin:0; color:#a3a8b8; font-size:0.75rem; font-weight:bold;">TASA REF TNA</p>
-                        <h4 style="margin:5px 0; color:#fff; font-size: 1.1rem;">{texto_tasa}</h4>
-                    </div>
-                </div>"""
-                st.markdown(html_caja, unsafe_allow_html=True)
-                
-                if dolares:
-                    try:
-                        val_oficial = next((float(d['venta']) for d in dolares if d['nombre'] == 'Oficial'), None)
-                        val_ccl = next((float(d['venta']) for d in dolares if d['nombre'] == 'CCL'), None)
-                        brecha_calculada = ((val_ccl / val_oficial) - 1) * 100 if val_oficial and val_ccl else None
-                    except: brecha_calculada = None
+            
+            rp = macro_arg_data.get("riesgo_pais") or {}
+            merv = macro_arg_data.get("merval") or {}
+            inf = macro_arg_data.get("inflacion")
+            tasa = macro_arg_data.get("tasa_bcra")
+            res_bcra = macro_arg_data.get("reservas")
+            dolares = macro_arg_data.get("dolares", [])
+            
+            texto_rp_val = rp.get('valor') if rp.get('valor') is not None else 'N/D'
+            texto_merv_val = f"{merv.get('valor'):,.0f}" if merv.get('valor') is not None else 'N/D'
+            texto_inf = f"{inf:.1f}%" if inf is not None else "N/D"
+            texto_tasa = f"{tasa:.1f}%" if tasa is not None else "N/D"
+            texto_reservas = f"USD {res_bcra/1000:.1f}B" if res_bcra is not None else "N/D"
+            
+            html_caja = f"""<div style="background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between; flex-wrap: wrap;">
+                <div style="width: 19%;">
+                    <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">RIESGO PAÍS</p>
+                    <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_rp_val}</h4>
+                </div>
+                <div style="width: 21%; border-left: 1px solid #2a2e39; padding-left: 8px;">
+                    <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">S&P MERVAL</p>
+                    <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_merv_val}</h4>
+                </div>
+                <div style="width: 18%; border-left: 1px solid #2a2e39; padding-left: 8px;">
+                    <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">INFLACIÓN</p>
+                    <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_inf}</h4>
+                </div>
+                <div style="width: 18%; border-left: 1px solid #2a2e39; padding-left: 8px;">
+                    <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">TASA REF</p>
+                    <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_tasa}</h4>
+                </div>
+                <div style="width: 20%; border-left: 1px solid #2a2e39; padding-left: 8px;">
+                    <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">RESERVAS</p>
+                    <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_reservas}</h4>
+                </div>
+            </div>"""
+            st.markdown(html_caja, unsafe_allow_html=True)
+            
+            if dolares:
+                val_oficial = next((float(d['venta']) for d in dolares if d['nombre'] == 'Oficial'), None)
+                val_ccl = next((float(d['venta']) for d in dolares if d['nombre'] == 'CCL'), None)
+                brecha_calculada = ((val_ccl / val_oficial) - 1) * 100 if val_oficial and val_ccl else None
 
-                    html_arg = '<div class="table-container" style="margin-bottom: 30px;"><table class="custom-table" style="width: 100%;">'
-                    html_arg += '<tr><th style="text-align: left;">Tipo de Cambio</th><th>Venta</th><th>Compra</th></tr>'
-                    for d in dolares: html_arg += f"<tr><td class='col-header' style='text-align: left;'>Dólar {d['nombre']}</td><td>${d['venta']}</td><td><span style='color:#8ba1b6;'>${d['compra']}</span></td></tr>"
-                    if brecha_calculada is not None: html_arg += f"<tr style='background-color: rgba(255, 213, 79, 0.05);'><td class='col-header' style='text-align: left; color: #ffd54f;'>Brecha (CCL / Oficial)</td><td colspan='2' style='color: #ffd54f; font-weight: bold; text-align: left; padding-left: 15px;'>{brecha_calculada:.1f}%</td></tr>"
-                    html_arg += '</table></div>'
-                    st.write(html_arg, unsafe_allow_html=True)
-                else: st.info("Cotizaciones cambiarias no disponibles en este momento.")
+                html_arg = '<div class="table-container" style="margin-bottom: 30px;"><table class="custom-table" style="width: 100%;">'
+                html_arg += '<tr><th style="text-align: left;">Tipo de Cambio</th><th>Venta</th><th>Compra</th></tr>'
+                for d in dolares: html_arg += f"<tr><td class='col-header' style='text-align: left;'>Dólar {d['nombre']}</td><td>${d['venta']}</td><td><span style='color:#8ba1b6;'>${d['compra']}</span></td></tr>"
+                if brecha_calculada is not None: html_arg += f"<tr style='background-color: rgba(255, 213, 79, 0.05);'><td class='col-header' style='text-align: left; color: #ffd54f;'>Brecha (CCL / Oficial)</td><td colspan='2' style='color: #ffd54f; font-weight: bold; text-align: left; padding-left: 15px;'>{brecha_calculada:.1f}%</td></tr>"
+                html_arg += '</table></div>'
+                st.write(html_arg, unsafe_allow_html=True)
 
         with col_int:
             st.subheader("🌎 Mercado Internacional")
-            with st.spinner("Sincronizando contexto global..."):
-                macro_int_data = obtener_macro_internacional()
-                
-                # CORRECCIÓN 1: Se agrega el suffix a los valores 0.00
-                def formatear_celda(valor, suffix="%"):
-                    if pd.isna(valor) or valor is None: return "<span style='color:#8ba1b6;'>-</span>"
-                    try:
-                        v_float = float(valor)
-                        if abs(v_float) < 0.001: return f"<span style='color:#8ba1b6;'>0.00{suffix}</span>"
-                        color = "#2ecca6" if v_float > 0 else "#ff6b6b"
-                        return f"<span style='color:{color}; font-weight:bold;'>{v_float:+.2f}{suffix}</span>"
-                    except: return "<span style='color:#8ba1b6;'>-</span>"
+            def formatear_celda(valor, suffix="%"):
+                if pd.isna(valor) or valor is None: return "<span style='color:#8ba1b6;'>-</span>"
+                try:
+                    v_float = float(valor)
+                    if abs(v_float) < 0.001: return f"<span style='color:#8ba1b6;'>0.00{suffix}</span>"
+                    color = "#2ecca6" if v_float > 0 else "#ff6b6b"
+                    return f"<span style='color:{color}; font-weight:bold;'>{v_float:+.2f}{suffix}</span>"
+                except: return "<span style='color:#8ba1b6;'>-</span>"
 
-                html_int = '<div class="table-container"><table class="custom-table" style="width: 100%; font-size: 0.9rem;">'
-                html_int += '<tr><th style="text-align: left;">Indicador Global</th><th>Cotización</th><th>Variación</th><th>1 Mes</th><th>6 Meses</th><th>12 Meses</th></tr>'
-                
-                for nombre, datos in macro_int_data.items():
-                    val = datos.get('valor')
-                    vd = datos.get('var_diaria')
-                    v1m = datos.get('var_1m')
-                    v6m = datos.get('var_6m')
-                    v1y = datos.get('var_1y')
-                    
-                    suffix = " pts" if "%" in nombre else "%"
-                    val_str = f"{val:.2f}" if val is not None else "N/D"
-                    
-                    # CORRECCIÓN 2: Pasamos el 'suffix' a absolutamente todas las llamadas de la función
-                    html_int += f"<tr><td class='col-header' style='text-align: left;'>{nombre}</td><td>{val_str}</td><td>{formatear_celda(vd, suffix)}</td><td>{formatear_celda(v1m, suffix)}</td><td>{formatear_celda(v6m, suffix)}</td><td>{formatear_celda(v1y, suffix)}</td></tr>"
-                html_int += '</table></div>'
-                st.write(html_int, unsafe_allow_html=True)
+            html_int = '<div class="table-container"><table class="custom-table" style="width: 100%; font-size: 0.85rem;">'
+            html_int += '<tr><th style="text-align: left;">Indicador Global</th><th>Cotización</th><th>Variación</th><th>1 Mes</th><th>6 Meses</th><th>12 Meses</th></tr>'
+            for nombre, datos in macro_int_data.items():
+                val = datos.get('valor')
+                suffix = " pts" if "%" in nombre or "Yield Curve" in nombre else "%"
+                val_str = f"{val:.2f}" if val is not None else "N/D"
+                html_int += f"<tr><td class='col-header' style='text-align: left;'>{nombre}</td><td>{val_str}</td><td>{formatear_celda(datos.get('var_diaria'), suffix)}</td><td>{formatear_celda(datos.get('var_1m'), suffix)}</td><td>{formatear_celda(datos.get('var_6m'), suffix)}</td><td>{formatear_celda(datos.get('var_1y'), suffix)}</td></tr>"
+            html_int += '</table></div>'
+            st.write(html_int, unsafe_allow_html=True)
 
-        st.write("")
-        st.markdown("<h3 style='margin-bottom: 15px; color: #ffffff;'>💡 Visión Estratégica de Mercado (IA)</h3>", unsafe_allow_html=True)
+    with tab_n2:
+        st.markdown("### Mercado y Valuaciones Relativas")
+        with st.spinner("Descargando métricas de valuación institucional (P/E, ROE, P/B)..."):
+            val_data = obtener_valuaciones_mercado()
+            
+            col_v1, col_v2 = st.columns(2)
+            with col_v1:
+                st.subheader("🇺🇸 Principales Índices y ETFs (USA)")
+                if val_data["USA"]:
+                    df_usa = pd.DataFrame(val_data["USA"]).set_index("Activo")
+                    st.dataframe(df_usa, use_container_width=True)
+                else: st.info("Datos no disponibles temporalmente.")
+                
+            with col_v2:
+                st.subheader("🇦🇷 Principales ADRs (Argentina)")
+                if val_data["ARG"]:
+                    df_arg = pd.DataFrame(val_data["ARG"]).set_index("Activo")
+                    st.dataframe(df_arg, use_container_width=True)
+                else: st.info("Datos no disponibles temporalmente.")
+                
+            st.caption("💡 *Nota: Los datos de valuación son extraídos en tiempo real. Un P/E (Price-to-Earnings) bajo frente a sus pares puede indicar subvaluación.*")
+
+    with tab_n3:
+        st.info("🚧 **Nivel 3 en Desarrollo:** Aquí se desplegará el análisis profundo de los 11 Sectores GICS.")
+
+    with tab_n4:
+        st.info("🚧 **Nivel 4 en Desarrollo:** Aquí se alojará el Motor Cuantitativo (Investment Score) y la IA de recomendaciones.")
         
+        st.markdown("<h4 style='margin-bottom: 15px; color: #ffffff;'>💡 Visión Estratégica (Clásica)</h4>", unsafe_allow_html=True)
         if st.button("Generar Reporte Estratégico", type="primary"):
-            with st.spinner("El motor de IA de SmartInvest está redactando el análisis estratégico (Equities y Renta Fija)..."):
+            with st.spinner("Redactando análisis..."):
                 analisis_texto = generar_analisis_ia(macro_arg_data, macro_int_data, brecha_calculada)
-                
                 st.markdown(f"""
                 <div style="background-color: #12161f; padding: 25px 30px; border-radius: 12px; border-left: 5px solid #4d8bf0; border-top: 1px solid #2a2e39; border-right: 1px solid #2a2e39; border-bottom: 1px solid #2a2e39; box-shadow: 0px 4px 15px rgba(0,0,0,0.2);">
                     <div style="font-size: 0.95rem; line-height: 1.7; color: #e2e8f0;">
@@ -201,9 +238,8 @@ if menu_seccion == "Noticias de Mercado":
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-        st.write("")
 
-    with tab_acc:
+    with tab_noticias:
         st.subheader("📰 Titulares Recientes de tu Cartera")
         if st.session_state.get("datos_cargados"):
             with st.spinner("Rastreando agencias de noticias..."):
@@ -219,10 +255,9 @@ if menu_seccion == "Noticias de Mercado":
                             </div>
                             """, unsafe_allow_html=True)
                         st.write("")
-        else: st.info("👈 Ingresa los tickers y presiona 'Sincronizar Datos' para ver las noticias específicas de tus acciones.")
+        else: st.info("👈 Ingresa los tickers y presiona 'Sincronizar Datos' en la barra lateral.")
 
 else:
-    # EL RESTO DEL CÓDIGO PERMANECE INTACTO (VISTAS DEPENDIENTES)
     if st.session_state.get("datos_cargados"):
         dft = st.session_state.df_total
         
