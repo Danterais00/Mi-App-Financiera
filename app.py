@@ -1,38 +1,31 @@
 import streamlit as st
-# ¡CRÍTICO! set_page_config DEBE ser el primer comando de Streamlit
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
 
 import pandas as pd
 import altair as alt
 from streamlit_option_menu import option_menu
 
-# Importar nuestros módulos
 from ui.components import inyectar_css, TOOLTIPS, formatear_moneda
 from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
-from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones, generar_analisis_ia, obtener_valuaciones_mercado
+from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones, generar_analisis_ia, obtener_valuaciones_mercado, obtener_datos_gics
 
-# --- CONSTANTES DE LA APP ---
-APP_VERSION = "v7.0 - Quant Dashboard"
+APP_VERSION = "v8.0 - Quant Engine"
 
 inyectar_css()
 
-# --- INICIALIZACIÓN DE VARIABLES DE SESIÓN ---
 if 'datos_cargados' not in st.session_state:
     st.session_state.datos_cargados = False
 
-# --- BARRA LATERAL (El menú de tu imagen se mantiene intacto) ---
 with st.sidebar:
     st.write("")
     modo_estrategia = st.selectbox("Estrategia activa:", ["Crecimiento (Agresivo)", "Fortaleza (Defensivo)"])
-    
     st.write("")
     menu_seccion = option_menu(
         menu_title=None,
         options=["Datos y Valuación", "Comparativa", "Evolución Financiera", "Análisis Técnico", "Top 10 Elite", "Noticias de Mercado"],
         icons=['buildings', 'bar-chart-line', 'graph-up-arrow', 'activity', 'trophy', 'newspaper'],
-        menu_icon="cast",
-        default_index=0,
+        menu_icon="cast", default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#a3a8b8", "font-size": "16px"},
@@ -41,7 +34,6 @@ with st.sidebar:
         }
     )
 
-# --- HEADER PRINCIPAL ---
 st.markdown(f"""
     <div style="margin-top: -30px; margin-bottom: 25px;">
         <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">SmartInvest</h1>
@@ -49,29 +41,22 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# --- INPUT Y EXTRACCIÓN ---
 col1, col2 = st.columns([4, 1])
-with col1:
-    tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, AAPL.BA, MSFT.BA, NVDA.BA")
+with col1: tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, AAPL.BA, MSFT.BA, NVDA.BA")
 with col2:
     st.write("")
     st.write("")
     btn_analizar = st.button("Sincronizar Datos 🔄", use_container_width=True, type="primary")
 
-def corregir_ticker(t):
-    return "BRK-B" if t == "BRKB" else "BRK-A" if t == "BRKA" else t
+def corregir_ticker(t): return "BRK-B" if t == "BRKB" else "BRK-A" if t == "BRKA" else t
 
-# --- LÓGICA PRINCIPAL ---
 if btn_analizar and tickers_raw:
     lista_tickers = [corregir_ticker(t.strip().upper()) for t in tickers_raw.split(",") if t.strip()][:30]
-    
     with st.spinner('Procesando lógica institucional...'):
         tupla_tickers = tuple(lista_tickers)
         df_fun, df_tec, df_rev, df_eps, analisis = descargar_datos_mercado(tupla_tickers)
-        
         if df_fun is not None:
             df_total, df_comp, puntos, posibles = calcular_puntajes(df_fun, lista_tickers, modo_estrategia)
-            
             st.session_state.update({
                 "datos_cargados": True, "df_total": df_total, "df_comp": df_comp,
                 "df_rev": df_rev, "df_eps": df_eps, "df_tec": df_tec,
@@ -80,7 +65,6 @@ if btn_analizar and tickers_raw:
             })
             st.rerun()
 
-# --- RE-CÁLCULO SIN DESCARGA ---
 if st.session_state.get("datos_cargados") and st.session_state.get("estrategia_cargada") != modo_estrategia:
     datos_reconstruidos = []
     for t in st.session_state.tickers:
@@ -88,7 +72,6 @@ if st.session_state.get("datos_cargados") and st.session_state.get("estrategia_c
             fila = dict(zip(st.session_state.df_total.index, st.session_state.df_total[t]))
             fila["Ticker"] = t
             datos_reconstruidos.append(fila)
-            
     if datos_reconstruidos:
         df_total, df_comp, puntos, posibles = calcular_puntajes(datos_reconstruidos, st.session_state.tickers, modo_estrategia)
         st.session_state.update({"df_total": df_total, "df_comp": df_comp, "puntos": puntos, "posibles": posibles, "estrategia_cargada": modo_estrategia})
@@ -97,20 +80,17 @@ def get_val(df, metric, ticker):
     try:
         val = df.loc[metric, ticker]
         return float(val) if not pd.isna(val) else None
-    except:
-        return None
+    except: return None
 
-# --- RENDERIZADO DE VISTAS ---
 
 if menu_seccion == "Noticias de Mercado":
     st.header("Terminal de Decisiones de Inversión")
     
-    # NUEVA ESTRUCTURA DE 4 NIVELES INSTITUCIONALES
     tab_n1, tab_n2, tab_n3, tab_n4, tab_noticias = st.tabs([
         "🌍 Nivel 1: Macro", 
         "📊 Nivel 2: Valuaciones", 
-        "🏢 Nivel 3: Sectores GICS (Pronto)", 
-        "🤖 Nivel 4: Investment Score (Pronto)",
+        "🏢 Nivel 3: Sectores GICS", 
+        "🤖 Nivel 4: IA Cuantitativa",
         "📰 Noticias Cartera"
     ])
     
@@ -203,37 +183,76 @@ if menu_seccion == "Noticias de Mercado":
         st.markdown("### Mercado y Valuaciones Relativas")
         with st.spinner("Descargando métricas de valuación institucional (P/E, ROE, P/B)..."):
             val_data = obtener_valuaciones_mercado()
-            
             col_v1, col_v2 = st.columns(2)
             with col_v1:
                 st.subheader("🇺🇸 Principales Índices y ETFs (USA)")
-                if val_data["USA"]:
-                    df_usa = pd.DataFrame(val_data["USA"]).set_index("Activo")
-                    st.dataframe(df_usa, use_container_width=True)
-                else: st.info("Datos no disponibles temporalmente.")
-                
+                if val_data["USA"]: st.dataframe(pd.DataFrame(val_data["USA"]).set_index("Activo"), use_container_width=True)
             with col_v2:
                 st.subheader("🇦🇷 Principales ADRs (Argentina)")
-                if val_data["ARG"]:
-                    df_arg = pd.DataFrame(val_data["ARG"]).set_index("Activo")
-                    st.dataframe(df_arg, use_container_width=True)
-                else: st.info("Datos no disponibles temporalmente.")
-                
-            st.caption("💡 *Nota: Los datos de valuación son extraídos en tiempo real. Un P/E (Price-to-Earnings) bajo frente a sus pares puede indicar subvaluación.*")
+                if val_data["ARG"]: st.dataframe(pd.DataFrame(val_data["ARG"]).set_index("Activo"), use_container_width=True)
+            st.caption("💡 *Nota: Un P/E (Price-to-Earnings) bajo frente a sus pares puede indicar subvaluación.*")
 
     with tab_n3:
-        st.info("🚧 **Nivel 3 en Desarrollo:** Aquí se desplegará el análisis profundo de los 11 Sectores GICS.")
+        st.markdown("### Sectores GICS (Estados Unidos)")
+        st.write("Análisis cuantitativo de los 11 sectores oficiales de la economía para identificar oportunidades de capital.")
+        
+        with st.spinner("Calculando Momentum e Investment Score por Sector..."):
+            datos_sectores = obtener_datos_gics()
+            
+            if datos_sectores:
+                html_gics = '<div class="table-container"><table class="custom-table" style="width: 100%;">'
+                html_gics += '<tr><th style="text-align: left;">Sector (ETF)</th><th>P/E Ratio</th><th>Rend. 1 Mes</th><th>Rend. 6 Meses</th><th>Investment Score</th></tr>'
+                
+                for s in datos_sectores:
+                    pe_str = f"{s['P/E']:.2f}" if s['P/E'] is not None else "N/D"
+                    v1m_c = "#2ecca6" if s['1M (%)'] > 0 else "#ff6b6b"
+                    v6m_c = "#2ecca6" if s['6M (%)'] > 0 else "#ff6b6b"
+                    
+                    # Colorear el Score
+                    sc = s['Score']
+                    if sc >= 75: sc_color = "#2ecca6" # Verde
+                    elif sc >= 50: sc_color = "#ffd54f" # Amarillo
+                    else: sc_color = "#ff6b6b" # Rojo
+                    
+                    html_gics += f"""
+                    <tr>
+                        <td class='col-header' style='text-align: left;'>{s['Sector']} ({s['ETF']})</td>
+                        <td>{pe_str}</td>
+                        <td style='color:{v1m_c}; font-weight:bold;'>{s['1M (%)']:+.2f}%</td>
+                        <td style='color:{v6m_c}; font-weight:bold;'>{s['6M (%)']:+.2f}%</td>
+                        <td><span style='background-color: {sc_color}20; color: {sc_color}; padding: 4px 10px; border-radius: 12px; font-weight: bold;'>{sc} / 100</span></td>
+                    </tr>
+                    """
+                html_gics += '</table></div>'
+                st.write(html_gics, unsafe_allow_html=True)
+                
+                # Desplegables de top holdings
+                st.write("")
+                st.markdown("#### 🔍 Composición Principal de Sectores")
+                col_exp1, col_exp2 = st.columns(2)
+                with col_exp1:
+                    with st.expander("💻 Tecnología (XLK)"): st.write("Microsoft (MSFT), Apple (AAPL), Nvidia (NVDA)")
+                    with st.expander("🏦 Financiero (XLF)"): st.write("Berkshire Hathaway (BRK.B), JPMorgan (JPM), Visa (V)")
+                    with st.expander("🛢️ Energía (XLE)"): st.write("Exxon Mobil (XOM), Chevron (CVX), ConocoPhillips (COP)")
+                with col_exp2:
+                    with st.expander("⚕️ Salud (XLV)"): st.write("Eli Lilly (LLY), UnitedHealth (UNH), Johnson & Johnson (JNJ)")
+                    with st.expander("🛒 Consumo Básico (XLP)"): st.write("Procter & Gamble (PG), Costco (COST), Walmart (WMT)")
+                    with st.expander("🏭 Industriales (XLI)"): st.write("Caterpillar (CAT), Union Pacific (UNP), Boeing (BA)")
+            else:
+                st.error("Error al descargar los datos sectoriales desde Yahoo Finance.")
 
     with tab_n4:
-        st.info("🚧 **Nivel 4 en Desarrollo:** Aquí se alojará el Motor Cuantitativo (Investment Score) y la IA de recomendaciones.")
+        st.markdown("### 🤖 Motor de Recomendación IA (Semáforo)")
+        st.write("La Inteligencia Artificial evaluará los Scores Cuantitativos y la Macro para emitir un veredicto de alocación de capital.")
         
-        st.markdown("<h4 style='margin-bottom: 15px; color: #ffffff;'>💡 Visión Estratégica (Clásica)</h4>", unsafe_allow_html=True)
-        if st.button("Generar Reporte Estratégico", type="primary"):
-            with st.spinner("Redactando análisis..."):
-                analisis_texto = generar_analisis_ia(macro_arg_data, macro_int_data, brecha_calculada)
+        if st.button("Generar Recomendaciones Automáticas", type="primary"):
+            with st.spinner("La IA Cuantitativa está procesando la matriz de datos..."):
+                datos_sectores = obtener_datos_gics()
+                analisis_texto = generar_analisis_ia(macro_arg_data, macro_int_data, datos_sectores)
+                
                 st.markdown(f"""
-                <div style="background-color: #12161f; padding: 25px 30px; border-radius: 12px; border-left: 5px solid #4d8bf0; border-top: 1px solid #2a2e39; border-right: 1px solid #2a2e39; border-bottom: 1px solid #2a2e39; box-shadow: 0px 4px 15px rgba(0,0,0,0.2);">
-                    <div style="font-size: 0.95rem; line-height: 1.7; color: #e2e8f0;">
+                <div style="background-color: #12161f; padding: 25px 30px; border-radius: 12px; border-left: 5px solid #2ecca6; border-top: 1px solid #2a2e39; border-right: 1px solid #2a2e39; border-bottom: 1px solid #2a2e39; box-shadow: 0px 4px 15px rgba(0,0,0,0.2);">
+                    <div style="font-size: 1.05rem; line-height: 1.8; color: #e2e8f0;">
                         {analisis_texto}
                     </div>
                 </div>
