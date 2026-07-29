@@ -259,7 +259,6 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA MEJORADO CON REGISTRO ACUMULATIVO DE ERRORES ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -273,6 +272,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         inf = macro_arg.get('inflacion') or 'N/D'
         tasa = macro_arg.get('tasa_bcra') or 'N/D'
         
+        # CORRECCIÓN DE SINTAXIS APLICADA ABAJO (Uso de {} simple en lugar de {{}})
         prompt = f"""
         Eres un Modelo Cuantitativo de Inversión Institucional. 
         Analiza el tablero global y los scores sectoriales. 
@@ -307,7 +307,6 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             pe_str = g['P/E'] if g['P/E'] else "N/D"
             prompt += f"Sector: {g['Sector']} | P/E: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
             
-        # Arsenal actualizado: Versiones actuales ligeras y de alta disponibilidad
         modelos = ["gemini-1.5-flash", "gemini-1.5-flash-8b"]
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
