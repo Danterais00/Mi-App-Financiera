@@ -25,19 +25,17 @@ def obtener_macro_argentina():
                     datos["dolares"].append({"nombre": nombre, "compra": d["compra"], "venta": d["venta"]})
     except: pass
     
-    # 2. Riesgo País (NUEVO PROVEEDOR PRINCIPAL: ArgentinaDatos)
+    # 2. Riesgo País 
     try:
         res_rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", timeout=10)
         if res_rp.status_code == 200:
             data_rp = res_rp.json()
-            if data_rp:
-                # La API devuelve una lista histórica, tomamos el último valor válido
+            if isinstance(data_rp, list) and len(data_rp) > 0:
                 datos["riesgo_pais"] = {"valor": data_rp[-1]["valor"], "variacion": ""}
         else:
             raise Exception("Saltar al respaldo")
     except:
         try:
-            # Respaldo: Ámbito Financiero
             res_rp_alt = requests.get("https://mercados.ambito.com/riesgopais/info", headers=HEADERS, timeout=10)
             if res_rp_alt.status_code == 200 and "valor" in res_rp_alt.json():
                 rp_json = res_rp_alt.json()
@@ -49,32 +47,41 @@ def obtener_macro_argentina():
         res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", timeout=10)
         if res_inf.status_code == 200:
             data_inf = res_inf.json()
-            if data_inf:
+            if isinstance(data_inf, list) and len(data_inf) > 0:
                 datos["inflacion"] = float(data_inf[-1]["valor"]) 
     except: pass
 
-    # 4. Tasa de Referencia (CORRECCIÓN DE DICCIONARIO: "valor")
+    # 4. Tasa de Referencia (NUEVO: Búsqueda inversa segura y cambio de prioridad)
     try:
-        res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=10)
+        # Intento 1: Tasa de Política Monetaria (Principal)
+        res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=10)
         if res_tasa.status_code == 200:
             data_tasa = res_tasa.json()
-            if data_tasa:
-                # Corregimos la clave "tasa" por "valor" y usamos .get() de forma segura
-                val = data_tasa[-1].get("valor") or data_tasa[-1].get("tasa")
-                if val is not None:
-                    # Algunas veces la API lo devuelve como decimal (0.40) y otras como entero (40.0)
-                    datos["tasa_bcra"] = float(val) * 100 if float(val) < 2 else float(val)
-        else:
-            raise Exception("Saltar al respaldo")
+            if isinstance(data_tasa, list):
+                # Búsqueda inversa: desde el dato más reciente hacia atrás
+                for item in reversed(data_tasa):
+                    val = item.get("valor") or item.get("tasa")
+                    if val is not None:
+                        tasa_num = float(val)
+                        datos["tasa_bcra"] = tasa_num * 100 if tasa_num < 2 else tasa_num
+                        break # Encontramos el último dato válido, detenemos la búsqueda
+        
+        # Si luego del Intento 1 sigue siendo None, forzamos el plan B
+        if datos["tasa_bcra"] is None:
+            raise Exception("Saltar a Plazo Fijo")
     except:
         try:
-            res_tasa_alt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=10)
+            # Intento 2: Tasa de Plazo Fijo (Respaldo)
+            res_tasa_alt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=10)
             if res_tasa_alt.status_code == 200:
                 data_tasa_alt = res_tasa_alt.json()
-                if data_tasa_alt:
-                    val_alt = data_tasa_alt[-1].get("valor") or data_tasa_alt[-1].get("tasa")
-                    if val_alt is not None:
-                        datos["tasa_bcra"] = float(val_alt) * 100 if float(val_alt) < 2 else float(val_alt)
+                if isinstance(data_tasa_alt, list):
+                    for item in reversed(data_tasa_alt):
+                        val_alt = item.get("valor") or item.get("tasa")
+                        if val_alt is not None:
+                            tasa_num = float(val_alt)
+                            datos["tasa_bcra"] = tasa_num * 100 if tasa_num < 2 else tasa_num
+                            break
         except: pass
 
     # 5. Merval
