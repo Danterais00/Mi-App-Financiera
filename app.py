@@ -10,7 +10,7 @@ from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
 from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones, generar_analisis_ia, obtener_valuaciones_mercado, obtener_datos_gics
 
-APP_VERSION = "v8.0 - Quant Engine"
+APP_VERSION = "v8.1 - Quant Engine (UI Fix)"
 
 inyectar_css()
 
@@ -208,25 +208,17 @@ if menu_seccion == "Noticias de Mercado":
                     v1m_c = "#2ecca6" if s['1M (%)'] > 0 else "#ff6b6b"
                     v6m_c = "#2ecca6" if s['6M (%)'] > 0 else "#ff6b6b"
                     
-                    # Colorear el Score
                     sc = s['Score']
-                    if sc >= 75: sc_color = "#2ecca6" # Verde
-                    elif sc >= 50: sc_color = "#ffd54f" # Amarillo
-                    else: sc_color = "#ff6b6b" # Rojo
+                    if sc >= 75: sc_color = "#2ecca6" 
+                    elif sc >= 50: sc_color = "#ffd54f" 
+                    else: sc_color = "#ff6b6b"
                     
-                    html_gics += f"""
-                    <tr>
-                        <td class='col-header' style='text-align: left;'>{s['Sector']} ({s['ETF']})</td>
-                        <td>{pe_str}</td>
-                        <td style='color:{v1m_c}; font-weight:bold;'>{s['1M (%)']:+.2f}%</td>
-                        <td style='color:{v6m_c}; font-weight:bold;'>{s['6M (%)']:+.2f}%</td>
-                        <td><span style='background-color: {sc_color}20; color: {sc_color}; padding: 4px 10px; border-radius: 12px; font-weight: bold;'>{sc} / 100</span></td>
-                    </tr>
-                    """
+                    # CORRECCIÓN DE SANGRÍA: La fila HTML ahora está colapsada en una sola línea.
+                    html_gics += f"<tr><td class='col-header' style='text-align: left;'>{s['Sector']} ({s['ETF']})</td><td>{pe_str}</td><td style='color:{v1m_c}; font-weight:bold;'>{s['1M (%)']:+.2f}%</td><td style='color:{v6m_c}; font-weight:bold;'>{s['6M (%)']:+.2f}%</td><td><span style='background-color: {sc_color}20; color: {sc_color}; padding: 4px 10px; border-radius: 12px; font-weight: bold;'>{sc} / 100</span></td></tr>"
+                    
                 html_gics += '</table></div>'
-                st.write(html_gics, unsafe_allow_html=True)
+                st.markdown(html_gics, unsafe_allow_html=True)
                 
-                # Desplegables de top holdings
                 st.write("")
                 st.markdown("#### 🔍 Composición Principal de Sectores")
                 col_exp1, col_exp2 = st.columns(2)
