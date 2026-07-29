@@ -4,6 +4,11 @@ import yfinance as yf
 import pandas as pd
 import streamlit as st
 import time
+import logging
+
+# --- CONFIGURACIÓN DE LOGS (Fin de la ceguera de errores) ---
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
@@ -22,7 +27,7 @@ def obtener_macro_argentina():
                 if d["casa"] in ["oficial", "blue", "bolsa", "contadoconliqui", "tarjeta"]:
                     nombre = "MEP" if d["casa"] == "bolsa" else "CCL" if d["casa"] == "contadoconliqui" else d["casa"].capitalize()
                     datos["dolares"].append({"nombre": nombre, "compra": d["compra"], "venta": d["venta"]})
-    except: pass
+    except Exception as e: logger.warning(f"Error DolarAPI: {e}")
     
     try:
         res_rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", timeout=10)
@@ -31,12 +36,12 @@ def obtener_macro_argentina():
             if isinstance(data_rp, list) and len(data_rp) > 0:
                 datos["riesgo_pais"] = {"valor": data_rp[-1]["valor"], "variacion": ""}
         else: raise Exception("Saltar al respaldo")
-    except:
+    except Exception as e:
         try:
             res_rp_alt = requests.get("https://mercados.ambito.com/riesgopais/info", headers=HEADERS, timeout=10)
             if res_rp_alt.status_code == 200 and "valor" in res_rp_alt.json():
                 datos["riesgo_pais"] = {"valor": res_rp_alt.json().get("valor"), "variacion": res_rp_alt.json().get("variacion")}
-        except: pass
+        except Exception as e2: logger.warning(f"Error Riesgo País (ambos): {e2}")
 
     try:
         res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", timeout=10)
@@ -44,7 +49,7 @@ def obtener_macro_argentina():
             data_inf = res_inf.json()
             if isinstance(data_inf, list) and len(data_inf) > 0:
                 datos["inflacion"] = float(data_inf[-1]["valor"]) 
-    except: pass
+    except Exception as e: logger.warning(f"Error Inflación: {e}")
 
     try:
         res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=10)
@@ -58,7 +63,7 @@ def obtener_macro_argentina():
                         datos["tasa_bcra"] = tasa_num * 100 if tasa_num < 2 else tasa_num
                         break 
         if datos["tasa_bcra"] is None: raise Exception("Saltar a Plazo Fijo")
-    except:
+    except Exception as e:
         try:
             res_tasa_alt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=10)
             if res_tasa_alt.status_code == 200:
@@ -70,7 +75,7 @@ def obtener_macro_argentina():
                             tasa_num = float(val_alt)
                             datos["tasa_bcra"] = tasa_num * 100 if tasa_num < 2 else tasa_num
                             break
-        except: pass
+        except Exception as e2: logger.warning(f"Error Tasa BCRA: {e2}")
 
     try:
         res_bcra = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", timeout=10)
@@ -81,7 +86,7 @@ def obtener_macro_argentina():
                     if item.get("valor") is not None:
                         datos["reservas"] = float(item["valor"])
                         break
-    except: pass
+    except Exception as e: logger.warning(f"Error Reservas BCRA: {e}")
 
     try:
         merv = yf.Ticker("^MERV").history(period="1y")
@@ -92,7 +97,7 @@ def obtener_macro_argentina():
             if len(merv) >= 21: datos["merval"]["var_1m"] = float(((act / merv['Close'].iloc[-21]) - 1) * 100)
             if len(merv) >= 126: datos["merval"]["var_6m"] = float(((act / merv['Close'].iloc[-126]) - 1) * 100)
             if len(merv) >= 250: datos["merval"]["var_1y"] = float(((act / merv['Close'].iloc[0]) - 1) * 100)
-    except: pass
+    except Exception as e: logger.warning(f"Error Merval: {e}")
     
     return datos
 
@@ -110,18 +115,26 @@ def obtener_macro_internacional():
         "Bono 10Y EE.UU (%)": "^TNX"
     }
     
-    for nombre, t in tickers_macro.items():
+    for nombre in tickers_macro.keys():
         datos[nombre] = {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}
-        try:
-            hist = yf.Ticker(t).history(period="1y")
-            if len(hist) >= 2:
-                actual = hist['Close'].iloc[-1]
-                datos[nombre]["valor"] = float(actual)
-                datos[nombre]["var_diaria"] = float(((actual / hist['Close'].iloc[-2]) - 1) * 100)
-                if len(hist) >= 21: datos[nombre]["var_1m"] = float(((actual / hist['Close'].iloc[-21]) - 1) * 100)
-                if len(hist) >= 126: datos[nombre]["var_6m"] = float(((actual / hist['Close'].iloc[-126]) - 1) * 100)
-                if len(hist) >= 250: datos[nombre]["var_1y"] = float(((actual / hist['Close'].iloc[0]) - 1) * 100)
-        except: pass
+    
+    # NUEVO: BATCH DOWNLOAD (Alta velocidad y protección de IP)
+    lista_tickers = list(tickers_macro.values())
+    try:
+        hist_data = yf.download(lista_tickers, period="1y", progress=False)
+        if not hist_data.empty and 'Close' in hist_data:
+            df_close = hist_data['Close']
+            for nombre, t in tickers_macro.items():
+                if t in df_close.columns:
+                    serie = df_close[t].dropna()
+                    if len(serie) >= 2:
+                        actual = float(serie.iloc[-1])
+                        datos[nombre]["valor"] = actual
+                        datos[nombre]["var_diaria"] = float(((actual / serie.iloc[-2]) - 1) * 100)
+                        if len(serie) >= 21: datos[nombre]["var_1m"] = float(((actual / serie.iloc[-21]) - 1) * 100)
+                        if len(serie) >= 126: datos[nombre]["var_6m"] = float(((actual / serie.iloc[-126]) - 1) * 100)
+                        if len(serie) >= 250: datos[nombre]["var_1y"] = float(((actual / serie.iloc[0]) - 1) * 100)
+    except Exception as e: logger.warning(f"Error Batch Download Macro: {e}")
 
     try:
         if "FRED_API_KEY" in st.secrets:
@@ -148,8 +161,9 @@ def obtener_macro_internacional():
                                 datos[nombre]["var_1m"] = act - valid_obs[1] 
                             if len(valid_obs) >= 7: datos[nombre]["var_6m"] = act - valid_obs[6]
                             if len(valid_obs) >= 13: datos[nombre]["var_1y"] = act - valid_obs[12]
-                except: pass
-    except: pass 
+                except Exception as e: logger.warning(f"Error extrayendo {nombre} de FRED: {e}")
+    except Exception as e: logger.warning(f"Error FRED general: {e}")
+    
     return datos
 
 @st.cache_data(ttl=3600)
@@ -178,7 +192,7 @@ def obtener_valuaciones_mercado():
             }
             if ticker in activos_arg: valuaciones["ARG"].append(data)
             else: valuaciones["USA"].append(data)
-        except: pass
+        except Exception as e: logger.warning(f"Error valuación {ticker}: {e}")
     return valuaciones
 
 @st.cache_data(ttl=3600)
@@ -191,53 +205,54 @@ def obtener_datos_gics():
     }
     
     datos_sectores = []
+    tickers = list(etfs_sectores.values())
     
+    # NUEVO: BATCH DOWNLOAD GICS
+    try:
+        hist_data = yf.download(tickers, period="6mo", progress=False)
+        df_close = hist_data['Close'] if 'Close' in hist_data else pd.DataFrame()
+    except Exception as e:
+        logger.warning(f"Error Batch Download GICS: {e}")
+        df_close = pd.DataFrame()
+        
     for sector, ticker in etfs_sectores.items():
-        exito = False
-        for intento in range(2):
-            try:
-                tk = yf.Ticker(ticker)
-                info = tk.info
-                hist = tk.history(period="6mo")
-                
-                if len(hist) < 20: 
-                    continue 
-                
-                precio_actual = hist['Close'].iloc[-1]
-                precio_1m = hist['Close'].iloc[-21] if len(hist) >= 21 else precio_actual
-                precio_6m = hist['Close'].iloc[0]
-                
-                var_1m = ((precio_actual / precio_1m) - 1) * 100
-                var_6m = ((precio_actual / precio_6m) - 1) * 100
-                
-                pe = info.get("trailingPE") or info.get("forwardPE")
-                pe_val = float(pe) if pe else None
-                
-                score = 50.0 
-                score += (var_6m * 1.5) 
-                
-                if pe_val:
-                    if pe_val < 15: score += 15
-                    elif 15 <= pe_val <= 22: score += 5
-                    elif 22 < pe_val <= 28: score -= 5
-                    elif pe_val > 28: score -= 10 
-                
-                score = max(0, min(100, int(score))) 
-                
-                datos_sectores.append({
-                    "Sector": sector,
-                    "ETF": ticker,
-                    "P/E": pe_val,
-                    "1M (%)": var_1m,
-                    "6M (%)": var_6m,
-                    "Score": score
-                })
-                exito = True
-                break 
-            except:
-                time.sleep(1) 
-                
-        if not exito:
+        try:
+            tk = yf.Ticker(ticker)
+            info = tk.info
+            pe = info.get("trailingPE") or info.get("forwardPE")
+            pe_val = float(pe) if pe else None
+            
+            var_1m, var_6m = 0.0, 0.0
+            if not df_close.empty and ticker in df_close.columns:
+                serie = df_close[ticker].dropna()
+                if len(serie) >= 20:
+                    precio_actual = serie.iloc[-1]
+                    precio_1m = serie.iloc[-21] if len(serie) >= 21 else precio_actual
+                    precio_6m = serie.iloc[0]
+                    var_1m = ((precio_actual / precio_1m) - 1) * 100
+                    var_6m = ((precio_actual / precio_6m) - 1) * 100
+            
+            score = 50.0 
+            score += (var_6m * 1.5) 
+            
+            if pe_val:
+                if pe_val < 15: score += 15
+                elif 15 <= pe_val <= 22: score += 5
+                elif 22 < pe_val <= 28: score -= 5
+                elif pe_val > 28: score -= 10 
+            
+            score = max(0, min(100, int(score))) 
+            
+            datos_sectores.append({
+                "Sector": sector,
+                "ETF": ticker,
+                "P/E": pe_val,
+                "1M (%)": var_1m,
+                "6M (%)": var_6m,
+                "Score": score
+            })
+        except Exception as e:
+            logger.warning(f"Error procesando {sector}: {e}")
             datos_sectores.append({
                 "Sector": sector, "ETF": ticker, "P/E": None,
                 "1M (%)": 0.0, "6M (%)": 0.0, "Score": 50
@@ -256,7 +271,7 @@ def obtener_noticias_acciones(lista_tickers):
             for entry in feed.entries[:3]:
                 entradas.append({"titulo": entry.title, "link": entry.link, "fecha": entry.published})
             noticias[ticker] = entradas
-        except: noticias[ticker] = []
+        except Exception as e: logger.warning(f"Error noticias {ticker}: {e}"); noticias[ticker] = []
     return noticias
 
 @st.cache_data(ttl=3600)
@@ -272,7 +287,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         inf = macro_arg.get('inflacion') or 'N/D'
         tasa = macro_arg.get('tasa_bcra') or 'N/D'
         
-        # CORRECCIÓN DE SINTAXIS APLICADA ABAJO (Uso de {} simple en lugar de {{}})
+        # Corchetes simples corregidos {} para evitar el error de Diccionario en el Set
         prompt = f"""
         Eres un Modelo Cuantitativo de Inversión Institucional. 
         Analiza el tablero global y los scores sectoriales. 
