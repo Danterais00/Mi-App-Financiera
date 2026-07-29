@@ -12,7 +12,7 @@ def obtener_macro_argentina():
     datos = {
         "dolares": [], "riesgo_pais": None, 
         "merval": {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None},
-        "inflacion": None, "tasa_bcra": None 
+        "inflacion": None, "tasa_bcra": None, "reservas": None
     }
     
     # 1. Dólares
@@ -32,14 +32,12 @@ def obtener_macro_argentina():
             data_rp = res_rp.json()
             if isinstance(data_rp, list) and len(data_rp) > 0:
                 datos["riesgo_pais"] = {"valor": data_rp[-1]["valor"], "variacion": ""}
-        else:
-            raise Exception("Saltar al respaldo")
+        else: raise Exception("Saltar al respaldo")
     except:
         try:
             res_rp_alt = requests.get("https://mercados.ambito.com/riesgopais/info", headers=HEADERS, timeout=10)
             if res_rp_alt.status_code == 200 and "valor" in res_rp_alt.json():
-                rp_json = res_rp_alt.json()
-                datos["riesgo_pais"] = {"valor": rp_json.get("valor"), "variacion": rp_json.get("variacion")}
+                datos["riesgo_pais"] = {"valor": res_rp_alt.json().get("valor"), "variacion": res_rp_alt.json().get("variacion")}
         except: pass
 
     # 3. Inflación Argentina (IPC) 
@@ -51,27 +49,21 @@ def obtener_macro_argentina():
                 datos["inflacion"] = float(data_inf[-1]["valor"]) 
     except: pass
 
-    # 4. Tasa de Referencia (NUEVO: Búsqueda inversa segura y cambio de prioridad)
+    # 4. Tasa de Referencia 
     try:
-        # Intento 1: Tasa de Política Monetaria (Principal)
         res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=10)
         if res_tasa.status_code == 200:
             data_tasa = res_tasa.json()
             if isinstance(data_tasa, list):
-                # Búsqueda inversa: desde el dato más reciente hacia atrás
                 for item in reversed(data_tasa):
                     val = item.get("valor") or item.get("tasa")
                     if val is not None:
                         tasa_num = float(val)
                         datos["tasa_bcra"] = tasa_num * 100 if tasa_num < 2 else tasa_num
-                        break # Encontramos el último dato válido, detenemos la búsqueda
-        
-        # Si luego del Intento 1 sigue siendo None, forzamos el plan B
-        if datos["tasa_bcra"] is None:
-            raise Exception("Saltar a Plazo Fijo")
+                        break 
+        if datos["tasa_bcra"] is None: raise Exception("Saltar a Plazo Fijo")
     except:
         try:
-            # Intento 2: Tasa de Plazo Fijo (Respaldo)
             res_tasa_alt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=10)
             if res_tasa_alt.status_code == 200:
                 data_tasa_alt = res_tasa_alt.json()
@@ -83,6 +75,18 @@ def obtener_macro_argentina():
                             datos["tasa_bcra"] = tasa_num * 100 if tasa_num < 2 else tasa_num
                             break
         except: pass
+
+    # 4.5. Reservas BCRA (Nuevo)
+    try:
+        res_bcra = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", timeout=10)
+        if res_bcra.status_code == 200:
+            data_bcra = res_bcra.json()
+            if isinstance(data_bcra, list):
+                for item in reversed(data_bcra):
+                    if item.get("valor") is not None:
+                        datos["reservas"] = float(item["valor"])
+                        break
+    except: pass
 
     # 5. Merval
     try:
@@ -101,10 +105,15 @@ def obtener_macro_argentina():
 @st.cache_data(ttl=3600)
 def obtener_macro_internacional():
     datos = {}
+    # EXPANDIDO: Nivel 1 Macro
     tickers_macro = {
-        "S&P 500 (Mercado Global)": "^GSPC",
+        "S&P 500 (Global)": "^GSPC",
+        "Nasdaq (Tech)": "^IXIC",
+        "Russell 2000 (Small Caps)": "^RUT",
+        "Oro (Refugio)": "GC=F",
         "Petróleo Crudo (WTI)": "CL=F", 
         "DXY (Índice Dólar)": "DX-Y.NYB",
+        "VIX (Miedo)": "^VIX",
         "Bono 10Y EE.UU (%)": "^TNX"
     }
     
@@ -124,9 +133,11 @@ def obtener_macro_internacional():
     try:
         if "FRED_API_KEY" in st.secrets:
             api_key = st.secrets["FRED_API_KEY"]
+            # EXPANDIDO: Curva de rendimientos 2Y-10Y
             fred_series = {
                 "Tasa FED (%)": {"id": "FEDFUNDS", "units": "lin"},
                 "Inflación EE.UU YoY (%)": {"id": "CPIAUCSL", "units": "pc1"},
+                "Yield Curve 2Y-10Y (pts)": {"id": "T10Y2Y", "units": "lin"},
                 "Desempleo EE.UU (%)": {"id": "UNRATE", "units": "lin"}
             }
             for nombre, config in fred_series.items():
@@ -149,6 +160,40 @@ def obtener_macro_internacional():
     except: pass 
     return datos
 
+# NUEVO: MOTOR DE VALUACIONES (NIVEL 2)
+@st.cache_data(ttl=3600)
+def obtener_valuaciones_mercado():
+    # ADRs Argentinos y ETFs de Sectores USA
+    activos_arg = {"YPF": "Energía", "GGAL": "Financiero", "BMA": "Financiero", "PAMP": "Energía", "CEPU": "Utilities"}
+    activos_usa = {"SPY": "S&P 500", "QQQ": "Nasdaq", "XLE": "Energía", "XLF": "Financiero", "XLK": "Tecnología", "XLV": "Salud"}
+    
+    valuaciones = {"ARG": [], "USA": []}
+    
+    for ticker, sector in {**activos_arg, **activos_usa}.items():
+        try:
+            tk = yf.Ticker(ticker)
+            info = tk.info
+            pe = info.get("trailingPE") or info.get("forwardPE")
+            pb = info.get("priceToBook")
+            roe = info.get("returnOnEquity")
+            dy = info.get("dividendYield") or info.get("trailingAnnualDividendYield")
+            
+            data = {
+                "Activo": ticker,
+                "Sector / Índice": sector,
+                "P/E": f"{pe:.2f}" if pe else "-",
+                "P/B": f"{pb:.2f}" if pb else "-",
+                "ROE (%)": f"{roe*100:.1f}%" if roe else "-",
+                "Div. Yield (%)": f"{dy*100:.2f}%" if dy else "-"
+            }
+            if ticker in activos_arg:
+                valuaciones["ARG"].append(data)
+            else:
+                valuaciones["USA"].append(data)
+        except:
+            pass
+    return valuaciones
+
 @st.cache_data(ttl=1800)
 def obtener_noticias_acciones(lista_tickers):
     noticias = {}
@@ -165,65 +210,29 @@ def obtener_noticias_acciones(lista_tickers):
 
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
+    # Se mantiene la versión estable global temporalmente hasta implementar el Nivel 4
     if "GEMINI_API_KEY" not in st.secrets:
-        return "⚠️ **Falta la clave API de Gemini.** Configura `GEMINI_API_KEY` en los Secrets de Streamlit."
-    
+        return "⚠️ **Falta la clave API de Gemini.**"
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
-        
         prompt = f"""
-        Eres un Asesor Financiero Institucional (Portfolio Manager).
-        Analiza el siguiente tablero macroeconómico global. 
-        
-        Tu respuesta debe tener EXACTAMENTE DOS partes en formato Markdown:
-        
-        ### 1. Visión Estratégica General
-        Redacta un análisis en 4 bullet points indicando oportunidades de inversión en renta variable (acciones), deduciendo en qué etapa del ciclo nos encontramos.
-        
-        ### 2. Perspectiva de los 11 Sectores (Clasificación GICS)
-        Basándote en los datos internacionales, dibuja una tabla Markdown de 3 columnas:
-        | Sector (GICS) | Veredicto (Atractivo / Neutral / Cautela) | Justificación (1 oración) |
-        
-        REGLA ESTRICTA: NO uses HTML. Solo Markdown.
-        
-        --- DATOS INTERNACIONALES ---
+        Eres un Asesor Financiero Institucional. Analiza el tablero macroeconómico global.
+        ### 1. Visión Estratégica General (4 bullet points).
+        ### 2. Perspectiva GICS (Tabla Markdown: Sector | Veredicto | Justificación).
+        --- DATOS INTERNACIONALES ---\n
         """
         for nombre, datos in macro_int.items():
-            v = datos.get('valor')
-            var_d = datos.get('var_diaria')
-            var_1y = datos.get('var_1y')
+            prompt += f"{nombre}: {datos.get('valor', 'N/D')}\n"
             
-            v_str = f"{v:.2f}" if v is not None else 'N/D'
-            str_d = f"Diaria: {var_d:.2f}%" if var_d is not None else "N/D"
-            str_1y = f" | 1Y: {var_1y:.2f}%" if var_1y is not None else ""
-            
-            prompt += f"{nombre}: {v_str} ({str_d}{str_1y})\n"
-            
-        modelos = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+        modelos = ["gemini-1.5-flash", "gemini-1.5-pro"]
         headers = {'Content-Type': 'application/json'}
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        
-        ultimo_error = ""
-        
         for modelo in modelos:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
             try:
-                res = requests.post(url, headers=headers, json=payload, timeout=25)
-                
+                res = requests.post(url, headers=headers, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=25)
                 if res.status_code == 200:
-                    texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
-                    return texto_ia.replace('</div>', '').replace('<div>', '').strip()
-                else:
-                    ultimo_error = f"Código {res.status_code}: {res.text}"
-                    if res.status_code == 429:
-                        time.sleep(2)
-                    continue
-                    
-            except Exception as e:
-                ultimo_error = f"Fallo en {modelo}: {str(e)}"
-                continue
-                
-        return f"❌ **Error del servidor de IA:** Ningún modelo respondió. Último fallo: {ultimo_error}"
-        
-    except Exception as e: 
-        return f"❌ **Error crítico de procesamiento:** Detalle: {e}"
+                    return res.json()['candidates'][0]['content']['parts'][0]['text'].replace('</div>', '').replace('<div>', '').strip()
+                if res.status_code == 429: time.sleep(2)
+            except: pass
+        return "❌ Error del servidor de IA."
+    except Exception as e: return f"❌ Error: {e}"
