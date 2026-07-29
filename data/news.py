@@ -181,7 +181,6 @@ def obtener_valuaciones_mercado():
         except: pass
     return valuaciones
 
-# MOTOR QUANTITATIVO MEJORADO (Solución de Fallos y Empates)
 @st.cache_data(ttl=3600)
 def obtener_datos_gics():
     etfs_sectores = {
@@ -195,7 +194,6 @@ def obtener_datos_gics():
     
     for sector, ticker in etfs_sectores.items():
         exito = False
-        # 1. Sistema de Reintentos (Protección contra micro-cortes)
         for intento in range(2):
             try:
                 tk = yf.Ticker(ticker)
@@ -203,7 +201,7 @@ def obtener_datos_gics():
                 hist = tk.history(period="6mo")
                 
                 if len(hist) < 20: 
-                    continue # Forzar reintento si Yahoo devuelve datos basura
+                    continue 
                 
                 precio_actual = hist['Close'].iloc[-1]
                 precio_1m = hist['Close'].iloc[-21] if len(hist) >= 21 else precio_actual
@@ -215,18 +213,16 @@ def obtener_datos_gics():
                 pe = info.get("trailingPE") or info.get("forwardPE")
                 pe_val = float(pe) if pe else None
                 
-                # 2. Algoritmo Continuo (Sin empates)
                 score = 50.0 
-                score += (var_6m * 1.5) # Suma o resta granular basada en el rendimiento exacto
+                score += (var_6m * 1.5) 
                 
-                # 3. Suavizado de Valuación (Menos castigo al Growth)
                 if pe_val:
                     if pe_val < 15: score += 15
                     elif 15 <= pe_val <= 22: score += 5
                     elif 22 < pe_val <= 28: score -= 5
-                    elif pe_val > 28: score -= 10 # Se redujo el castigo de -20 a -10
+                    elif pe_val > 28: score -= 10 
                 
-                score = max(0, min(100, int(score))) # Limitar entre 0 y 100
+                score = max(0, min(100, int(score))) 
                 
                 datos_sectores.append({
                     "Sector": sector,
@@ -237,11 +233,10 @@ def obtener_datos_gics():
                     "Score": score
                 })
                 exito = True
-                break # Rompe el ciclo de intentos si fue exitoso
+                break 
             except:
-                time.sleep(1) # Esperar 1 seg antes de reintentar
+                time.sleep(1) 
                 
-        # 4. Fallback Seguro: Nunca desaparecer un sector
         if not exito:
             datos_sectores.append({
                 "Sector": sector, "ETF": ticker, "P/E": None,
@@ -264,10 +259,12 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
+# --- MOTOR DE IA MEJORADO CON DEPURACIÓN DE ERRORES VISIBLES ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     if "GEMINI_API_KEY" not in st.secrets:
-        return "⚠️ **Falta la clave API de Gemini.**"
+        return "⚠️ **Falta la clave API de Gemini.** Configura `GEMINI_API_KEY` en los Secrets de Streamlit."
+    
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         
@@ -305,19 +302,50 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         
         --- SCORES SECTORES GICS ---
         """
+        
         for g in datos_gics:
             pe_str = g['P/E'] if g['P/E'] else "N/D"
             prompt += f"Sector: {g['Sector']} | P/E: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
             
-        modelos = ["gemini-1.5-flash", "gemini-1.5-pro"]
+        # Lista restaurada con los modelos de mayor compatibilidad para tu API Key
+        modelos = ["gemini-2.0-flash-001", "gemini-1.5-flash", "gemini-pro"]
         headers = {'Content-Type': 'application/json'}
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        
+        ultimo_error = ""
+        max_reintentos = 2
+        
         for modelo in modelos:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
-            try:
-                res = requests.post(url, headers=headers, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=25)
-                if res.status_code == 200:
-                    return res.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-                if res.status_code == 429: time.sleep(2)
-            except: pass
-        return "❌ Error del servidor de IA."
-    except Exception as e: return f"❌ Error: {e}"
+            for intento in range(max_reintentos):
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
+                try:
+                    res = requests.post(url, headers=headers, json=payload, timeout=30)
+                    
+                    if res.status_code == 200:
+                        texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
+                        return texto_ia.replace('</div>', '').replace('<div>', '').strip()
+                    
+                    elif res.status_code == 429:
+                        if intento < max_reintentos - 1:
+                            time.sleep(3)
+                            continue
+                        else:
+                            ultimo_error = "429 - Límite de consultas (Saturación de API)"
+                            break # Sale del reintento, prueba otro modelo
+                    
+                    elif res.status_code == 404:
+                        ultimo_error = f"404 - Modelo {modelo} no autorizado."
+                        break # No reintenta un 404, salta al siguiente modelo
+                    
+                    else:
+                        ultimo_error = f"Código {res.status_code}: {res.text}"
+                        break
+                        
+                except requests.exceptions.RequestException as e:
+                    ultimo_error = f"Excepción de red ({modelo}): {e}"
+                    break
+                    
+        return f"❌ **Error del servidor de IA.** Detalle para soporte: {ultimo_error}"
+        
+    except Exception as e: 
+        return f"❌ **Error crítico de procesamiento:** Detalle: {e}"
