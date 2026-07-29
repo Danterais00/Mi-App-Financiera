@@ -181,7 +181,7 @@ def obtener_valuaciones_mercado():
         except: pass
     return valuaciones
 
-# NUEVO MOTOR: Sectores GICS e Investment Score
+# MOTOR QUANTITATIVO MEJORADO (Solución de Fallos y Empates)
 @st.cache_data(ttl=3600)
 def obtener_datos_gics():
     etfs_sectores = {
@@ -194,14 +194,17 @@ def obtener_datos_gics():
     datos_sectores = []
     
     for sector, ticker in etfs_sectores.items():
-        try:
-            tk = yf.Ticker(ticker)
-            info = tk.info
-            hist = tk.history(period="6mo")
-            
-            pe = info.get("trailingPE") or info.get("forwardPE") or 0
-            
-            if len(hist) >= 120:
+        exito = False
+        # 1. Sistema de Reintentos (Protección contra micro-cortes)
+        for intento in range(2):
+            try:
+                tk = yf.Ticker(ticker)
+                info = tk.info
+                hist = tk.history(period="6mo")
+                
+                if len(hist) < 20: 
+                    continue # Forzar reintento si Yahoo devuelve datos basura
+                
                 precio_actual = hist['Close'].iloc[-1]
                 precio_1m = hist['Close'].iloc[-21] if len(hist) >= 21 else precio_actual
                 precio_6m = hist['Close'].iloc[0]
@@ -209,30 +212,41 @@ def obtener_datos_gics():
                 var_1m = ((precio_actual / precio_1m) - 1) * 100
                 var_6m = ((precio_actual / precio_6m) - 1) * 100
                 
-                # Algoritmo Base del Investment Score (0-100)
-                score = 50 
-                # Ponderación Momentum (6M)
-                if var_6m > 15: score += 25
-                elif var_6m > 5: score += 15
-                elif var_6m < -5: score -= 15
-                elif var_6m < -15: score -= 25
+                pe = info.get("trailingPE") or info.get("forwardPE")
+                pe_val = float(pe) if pe else None
                 
-                # Ponderación Valuación (P/E)
-                if 0 < pe <= 15: score += 25
-                elif 15 < pe <= 22: score += 10
-                elif pe > 28: score -= 20
+                # 2. Algoritmo Continuo (Sin empates)
+                score = 50.0 
+                score += (var_6m * 1.5) # Suma o resta granular basada en el rendimiento exacto
                 
-                score = max(0, min(100, score)) # Forzar límites
+                # 3. Suavizado de Valuación (Menos castigo al Growth)
+                if pe_val:
+                    if pe_val < 15: score += 15
+                    elif 15 <= pe_val <= 22: score += 5
+                    elif 22 < pe_val <= 28: score -= 5
+                    elif pe_val > 28: score -= 10 # Se redujo el castigo de -20 a -10
+                
+                score = max(0, min(100, int(score))) # Limitar entre 0 y 100
                 
                 datos_sectores.append({
                     "Sector": sector,
                     "ETF": ticker,
-                    "P/E": pe if pe > 0 else None,
+                    "P/E": pe_val,
                     "1M (%)": var_1m,
                     "6M (%)": var_6m,
-                    "Score": int(score)
+                    "Score": score
                 })
-        except: pass
+                exito = True
+                break # Rompe el ciclo de intentos si fue exitoso
+            except:
+                time.sleep(1) # Esperar 1 seg antes de reintentar
+                
+        # 4. Fallback Seguro: Nunca desaparecer un sector
+        if not exito:
+            datos_sectores.append({
+                "Sector": sector, "ETF": ticker, "P/E": None,
+                "1M (%)": 0.0, "6M (%)": 0.0, "Score": 50
+            })
         
     return sorted(datos_sectores, key=lambda x: x["Score"], reverse=True)
 
@@ -250,7 +264,6 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# IA MODIFICADA: Motor de Recomendación Cuantitativa
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -293,7 +306,8 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         --- SCORES SECTORES GICS ---
         """
         for g in datos_gics:
-            prompt += f"Sector: {g['Sector']} | P/E: {g['P/E']} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
+            pe_str = g['P/E'] if g['P/E'] else "N/D"
+            prompt += f"Sector: {g['Sector']} | P/E: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
             
         modelos = ["gemini-1.5-flash", "gemini-1.5-pro"]
         headers = {'Content-Type': 'application/json'}
