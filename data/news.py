@@ -4,15 +4,13 @@ import yfinance as yf
 import pandas as pd
 import streamlit as st
 import time
-import os
-import json
-from datetime import datetime
 
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-ARCHIVO_REPORTE = "reporte_diario.json"
 
 @st.cache_data(ttl=1800)
 def obtener_macro_argentina():
+    # Se mantiene la extracción de datos para que la interfaz visual (app.py) no se rompa,
+    # aunque la IA ya no utilizará esta información para su análisis.
     datos = {
         "dolares": [], "riesgo_pais": None, 
         "merval": {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None},
@@ -129,69 +127,31 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA BLINDADO CON CACHÉ LOCAL DIARIO ---
+# --- MOTOR DE IA REVERTIDO A VERSIÓN CLÁSICA Y ESTABLE ---
+@st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
         return "⚠️ **Falta la clave API de Gemini.** Configura `GEMINI_API_KEY` en los Secrets de Streamlit."
     
-    hoy = datetime.now().strftime("%Y-%m-%d")
-    
-    # 1. INTENTAR LEER EL REPORTE GUARDADO HOY (Velocidad instantánea, 0 API)
-    if os.path.exists(ARCHIVO_REPORTE):
-        try:
-            with open(ARCHIVO_REPORTE, "r", encoding="utf-8") as f:
-                datos_guardados = json.load(f)
-                if datos_guardados.get("fecha") == hoy:
-                    mensaje_memoria = "*(💡 Reporte estratégico del día cargado desde la memoria local)*\n\n"
-                    return mensaje_memoria + datos_guardados.get("contenido", "")
-        except:
-            pass # Si el archivo está corrupto o no se puede leer, seguimos de largo y generamos uno nuevo.
-
-    # 2. SI NO HAY REPORTE HOY, CONECTAMOS CON GOOGLE
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         
-        rp = macro_arg.get('riesgo_pais') or {}
-        rp_val = rp.get('valor')
-        rp_str = str(rp_val) if rp_val is not None else 'N/D'
-        
-        merv = macro_arg.get('merval', {})
-        merv_val = merv.get('valor')
-        merv_str = f"{merv_val:.0f}" if merv_val is not None else 'N/D'
-        
-        inf_val = macro_arg.get('inflacion')
-        inf_arg = f"{inf_val:.1f}%" if inf_val is not None else 'N/D'
-        
-        tasa_val = macro_arg.get('tasa_bcra')
-        tasa_arg = f"{tasa_val:.1f}%" if tasa_val is not None else 'N/D'
-        
-        brecha_str = f"{brecha:.2f}%" if brecha is not None else 'N/D'
-        
+        # PROMPT REDUCIDO: Solo pide 2 partes (Visión General y Sectores GICS),
+        # ignorando completamente los bonos argentinos y el carry trade.
         prompt = f"""
         Eres un Asesor Financiero Institucional (Portfolio Manager).
-        Analiza el siguiente tablero macroeconómico global y local. 
+        Analiza el siguiente tablero macroeconómico global. 
         
-        Tu respuesta debe tener EXACTAMENTE TRES partes en formato Markdown:
+        Tu respuesta debe tener EXACTAMENTE DOS partes en formato Markdown:
         
         ### 1. Visión Estratégica General
         Redacta un análisis en 4 bullet points indicando oportunidades de inversión en renta variable (acciones), deduciendo en qué etapa del ciclo nos encontramos.
         
-        ### 2. Estrategia de Renta Fija y Cobertura (Argentina)
-        Evalúa el Riesgo País, Brecha, Inflación local y Tasas de interés. 
-        Recomienda de forma clara en bullet points cómo armar la cartera de bonos. Justifica matemáticamente.
-        
-        ### 3. Perspectiva de los 11 Sectores (Clasificación GICS)
+        ### 2. Perspectiva de los 11 Sectores (Clasificación GICS)
         Basándote en los datos internacionales, dibuja una tabla Markdown de 3 columnas:
         | Sector (GICS) | Veredicto (Atractivo / Neutral / Cautela) | Justificación (1 oración) |
         
         REGLA ESTRICTA: NO uses HTML. Solo Markdown.
-        
-        --- DATOS ARGENTINA ---
-        Riesgo País: {rp_str}
-        Merval: {merv_str}
-        Brecha Cambiaria (CCL vs Oficial): {brecha_str}
-        Inflación Mensual: {inf_arg}
-        Tasa Referencia (TNA): {tasa_arg}
         
         --- DATOS INTERNACIONALES ---
         """
@@ -206,53 +166,34 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             
             prompt += f"{nombre}: {v_str} ({str_d}{str_1y})\n"
             
-        modelos = ["gemini-1.5-flash", "gemini-2.0-flash-001"]
+        # Lista simple y directa de los modelos más estables
+        modelos = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
         ultimo_error = ""
-        tiempos_espera = [5, 15] # 2 intentos máximos para no trabar la app
-        max_reintentos = len(tiempos_espera)
         
         for modelo in modelos:
-            for intento in range(max_reintentos):
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
-                try:
-                    res = requests.post(url, headers=headers, json=payload, timeout=45)
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
+            try:
+                # Timeout reducido para evitar que Streamlit se cuelgue
+                res = requests.post(url, headers=headers, json=payload, timeout=25)
+                
+                if res.status_code == 200:
+                    texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
+                    return texto_ia.replace('</div>', '').replace('<div>', '').strip()
+                else:
+                    ultimo_error = f"Código {res.status_code}: {res.text}"
+                    # Pequeño respiro si nos topamos con un límite, antes de intentar el siguiente modelo
+                    if res.status_code == 429:
+                        time.sleep(2)
+                    continue
                     
-                    if res.status_code == 200:
-                        texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
-                        texto_limpio = texto_ia.replace('</div>', '').replace('<div>', '').strip()
-                        
-                        # 3. GUARDAMOS EL REPORTE EN LA MEMORIA LOCAL PARA EL RESTO DEL DÍA
-                        try:
-                            with open(ARCHIVO_REPORTE, "w", encoding="utf-8") as f:
-                                json.dump({"fecha": hoy, "contenido": texto_limpio}, f, ensure_ascii=False, indent=4)
-                        except:
-                            pass # Fallback silencioso si el entorno no permite crear el archivo
-                            
-                        return texto_limpio
-                    
-                    elif res.status_code == 429:
-                        if intento < max_reintentos - 1:
-                            time.sleep(tiempos_espera[intento])
-                            continue
-                        else:
-                            return "⚠️ **Penalización Temporal de Google (429):** La API gratuita ha bloqueado tu acceso por exceso de peticiones. Por favor, espera entre 5 y 10 minutos."
-                    
-                    elif res.status_code == 404:
-                        ultimo_error = f"{modelo} (No soportado)"
-                        break 
-                        
-                    else:
-                        ultimo_error = f"Código {res.status_code}. Detalle: {res.text}"
-                        break
-                        
-                except requests.exceptions.RequestException as e:
-                    ultimo_error = f"Fallo de conexión ({modelo}): {e}"
-                    break
-                    
-        return f"❌ **Error de configuración:** Ningún modelo autorizado respondió. Detalles: {ultimo_error}"
+            except Exception as e:
+                ultimo_error = f"Fallo en {modelo}: {str(e)}"
+                continue
+                
+        return f"❌ **Error del servidor de IA:** Ningún modelo respondió. Último fallo: {ultimo_error}"
         
     except Exception as e: 
         return f"❌ **Error crítico de procesamiento:** Detalle: {e}"
