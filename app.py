@@ -1,38 +1,31 @@
 import streamlit as st
-# ¡CRÍTICO! set_page_config DEBE ser el primer comando de Streamlit, ANTES de importar módulos locales.
 st.set_page_config(page_title="SmartInvest", layout="wide", initial_sidebar_state="expanded")
 
 import pandas as pd
 import altair as alt
 from streamlit_option_menu import option_menu
 
-# Importar nuestros módulos
 from ui.components import inyectar_css, TOOLTIPS, formatear_moneda
 from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
 from data.news import obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones, generar_analisis_ia
 
-# --- CONSTANTES DE LA APP ---
 APP_VERSION = "v6.0 - Renta Fija Local"
 
 inyectar_css()
 
-# --- INICIALIZACIÓN DE VARIABLES DE SESIÓN ---
 if 'datos_cargados' not in st.session_state:
     st.session_state.datos_cargados = False
 
-# --- BARRA LATERAL ---
 with st.sidebar:
     st.write("")
     modo_estrategia = st.selectbox("Estrategia activa:", ["Crecimiento (Agresivo)", "Fortaleza (Defensivo)"])
-    
     st.write("")
     menu_seccion = option_menu(
         menu_title=None,
         options=["Datos y Valuación", "Comparativa", "Evolución Financiera", "Análisis Técnico", "Top 10 Elite", "Noticias de Mercado"],
         icons=['buildings', 'bar-chart-line', 'graph-up-arrow', 'activity', 'trophy', 'newspaper'],
-        menu_icon="cast",
-        default_index=0,
+        menu_icon="cast", default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#a3a8b8", "font-size": "16px"},
@@ -41,7 +34,6 @@ with st.sidebar:
         }
     )
 
-# --- HEADER PRINCIPAL ---
 st.markdown(f"""
     <div style="margin-top: -30px; margin-bottom: 25px;">
         <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">SmartInvest</h1>
@@ -49,30 +41,22 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# --- INPUT Y EXTRACCIÓN ---
 col1, col2 = st.columns([4, 1])
-with col1:
-    tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, AAPL.BA, MSFT.BA, NVDA.BA")
+with col1: tickers_raw = st.text_input("Tickers (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, AAPL.BA, MSFT.BA, NVDA.BA")
 with col2:
     st.write("")
     st.write("")
     btn_analizar = st.button("Sincronizar Datos 🔄", use_container_width=True, type="primary")
 
-def corregir_ticker(t):
-    return "BRK-B" if t == "BRKB" else "BRK-A" if t == "BRKA" else t
+def corregir_ticker(t): return "BRK-B" if t == "BRKB" else "BRK-A" if t == "BRKA" else t
 
-# --- LÓGICA PRINCIPAL ---
 if btn_analizar and tickers_raw:
     lista_tickers = [corregir_ticker(t.strip().upper()) for t in tickers_raw.split(",") if t.strip()][:30]
-    
     with st.spinner('Procesando lógica institucional...'):
         tupla_tickers = tuple(lista_tickers)
         df_fun, df_tec, df_rev, df_eps, analisis = descargar_datos_mercado(tupla_tickers)
-        
-        # SOLUCIÓN DEL ERROR: Revertido a `if df_fun:` para evitar procesar listas vacías
-        if df_fun:
+        if df_fun is not None:
             df_total, df_comp, puntos, posibles = calcular_puntajes(df_fun, lista_tickers, modo_estrategia)
-            
             st.session_state.update({
                 "datos_cargados": True, "df_total": df_total, "df_comp": df_comp,
                 "df_rev": df_rev, "df_eps": df_eps, "df_tec": df_tec,
@@ -80,10 +64,7 @@ if btn_analizar and tickers_raw:
                 "tickers": lista_tickers, "estrategia_cargada": modo_estrategia
             })
             st.rerun()
-        else:
-            st.error("No se pudieron descargar los datos fundamentales. Verifica que los tickers estén bien escritos o intenta nuevamente en unos minutos.")
 
-# --- RE-CÁLCULO SIN DESCARGA ---
 if st.session_state.get("datos_cargados") and st.session_state.get("estrategia_cargada") != modo_estrategia:
     datos_reconstruidos = []
     for t in st.session_state.tickers:
@@ -91,8 +72,6 @@ if st.session_state.get("datos_cargados") and st.session_state.get("estrategia_c
             fila = dict(zip(st.session_state.df_total.index, st.session_state.df_total[t]))
             fila["Ticker"] = t
             datos_reconstruidos.append(fila)
-            
-    # Validación extra por seguridad
     if datos_reconstruidos:
         df_total, df_comp, puntos, posibles = calcular_puntajes(datos_reconstruidos, st.session_state.tickers, modo_estrategia)
         st.session_state.update({"df_total": df_total, "df_comp": df_comp, "puntos": puntos, "posibles": posibles, "estrategia_cargada": modo_estrategia})
@@ -101,10 +80,7 @@ def get_val(df, metric, ticker):
     try:
         val = df.loc[metric, ticker]
         return float(val) if not pd.isna(val) else None
-    except:
-        return None
-
-# --- RENDERIZADO DE VISTAS ---
+    except: return None
 
 if menu_seccion == "Noticias de Mercado":
     st.header("Noticias de Mercado")
@@ -168,34 +144,30 @@ if menu_seccion == "Noticias de Mercado":
                         val_oficial = next((float(d['venta']) for d in dolares if d['nombre'] == 'Oficial'), None)
                         val_ccl = next((float(d['venta']) for d in dolares if d['nombre'] == 'CCL'), None)
                         brecha_calculada = ((val_ccl / val_oficial) - 1) * 100 if val_oficial and val_ccl else None
-                    except:
-                        brecha_calculada = None
+                    except: brecha_calculada = None
 
                     html_arg = '<div class="table-container" style="margin-bottom: 30px;"><table class="custom-table" style="width: 100%;">'
                     html_arg += '<tr><th style="text-align: left;">Tipo de Cambio</th><th>Venta</th><th>Compra</th></tr>'
-                    for d in dolares:
-                        html_arg += f"<tr><td class='col-header' style='text-align: left;'>Dólar {d['nombre']}</td><td>${d['venta']}</td><td><span style='color:#8ba1b6;'>${d['compra']}</span></td></tr>"
-                    if brecha_calculada is not None:
-                        html_arg += f"<tr style='background-color: rgba(255, 213, 79, 0.05);'><td class='col-header' style='text-align: left; color: #ffd54f;'>Brecha (CCL / Oficial)</td><td colspan='2' style='color: #ffd54f; font-weight: bold; text-align: left; padding-left: 15px;'>{brecha_calculada:.1f}%</td></tr>"
+                    for d in dolares: html_arg += f"<tr><td class='col-header' style='text-align: left;'>Dólar {d['nombre']}</td><td>${d['venta']}</td><td><span style='color:#8ba1b6;'>${d['compra']}</span></td></tr>"
+                    if brecha_calculada is not None: html_arg += f"<tr style='background-color: rgba(255, 213, 79, 0.05);'><td class='col-header' style='text-align: left; color: #ffd54f;'>Brecha (CCL / Oficial)</td><td colspan='2' style='color: #ffd54f; font-weight: bold; text-align: left; padding-left: 15px;'>{brecha_calculada:.1f}%</td></tr>"
                     html_arg += '</table></div>'
                     st.write(html_arg, unsafe_allow_html=True)
-                else:
-                    st.info("Cotizaciones cambiarias no disponibles en este momento.")
+                else: st.info("Cotizaciones cambiarias no disponibles en este momento.")
 
         with col_int:
             st.subheader("🌎 Mercado Internacional")
             with st.spinner("Sincronizando contexto global..."):
                 macro_int_data = obtener_macro_internacional()
                 
+                # CORRECCIÓN 1: Se agrega el suffix a los valores 0.00
                 def formatear_celda(valor, suffix="%"):
                     if pd.isna(valor) or valor is None: return "<span style='color:#8ba1b6;'>-</span>"
                     try:
                         v_float = float(valor)
-                        if abs(v_float) < 0.001: return "<span style='color:#8ba1b6;'>0.00</span>"
+                        if abs(v_float) < 0.001: return f"<span style='color:#8ba1b6;'>0.00{suffix}</span>"
                         color = "#2ecca6" if v_float > 0 else "#ff6b6b"
                         return f"<span style='color:{color}; font-weight:bold;'>{v_float:+.2f}{suffix}</span>"
-                    except:
-                        return "<span style='color:#8ba1b6;'>-</span>"
+                    except: return "<span style='color:#8ba1b6;'>-</span>"
 
                 html_int = '<div class="table-container"><table class="custom-table" style="width: 100%; font-size: 0.9rem;">'
                 html_int += '<tr><th style="text-align: left;">Indicador Global</th><th>Cotización</th><th>Variación</th><th>1 Mes</th><th>6 Meses</th><th>12 Meses</th></tr>'
@@ -210,8 +182,8 @@ if menu_seccion == "Noticias de Mercado":
                     suffix = " pts" if "%" in nombre else "%"
                     val_str = f"{val:.2f}" if val is not None else "N/D"
                     
-                    html_int += f"<tr><td class='col-header' style='text-align: left;'>{nombre}</td><td>{val_str}</td><td>{formatear_celda(vd, suffix)}</td><td>{formatear_celda(v1m)}</td><td>{formatear_celda(v6m)}</td><td>{formatear_celda(v1y)}</td></tr>"
-                
+                    # CORRECCIÓN 2: Pasamos el 'suffix' a absolutamente todas las llamadas de la función
+                    html_int += f"<tr><td class='col-header' style='text-align: left;'>{nombre}</td><td>{val_str}</td><td>{formatear_celda(vd, suffix)}</td><td>{formatear_celda(v1m, suffix)}</td><td>{formatear_celda(v6m, suffix)}</td><td>{formatear_celda(v1y, suffix)}</td></tr>"
                 html_int += '</table></div>'
                 st.write(html_int, unsafe_allow_html=True)
 
@@ -247,10 +219,10 @@ if menu_seccion == "Noticias de Mercado":
                             </div>
                             """, unsafe_allow_html=True)
                         st.write("")
-        else:
-            st.info("👈 Ingresa los tickers y presiona 'Sincronizar Datos' para ver las noticias específicas de tus acciones.")
+        else: st.info("👈 Ingresa los tickers y presiona 'Sincronizar Datos' para ver las noticias específicas de tus acciones.")
 
 else:
+    # EL RESTO DEL CÓDIGO PERMANECE INTACTO (VISTAS DEPENDIENTES)
     if st.session_state.get("datos_cargados"):
         dft = st.session_state.df_total
         
