@@ -25,21 +25,23 @@ def obtener_macro_argentina():
                     datos["dolares"].append({"nombre": nombre, "compra": d["compra"], "venta": d["venta"]})
     except: pass
     
-    # 2. Riesgo País (CON SISTEMA DE RESPALDO)
+    # 2. Riesgo País (NUEVO PROVEEDOR PRINCIPAL: ArgentinaDatos)
     try:
-        # Intento 1: Ámbito Financiero (URL Limpia y timeout ampliado)
-        res_rp = requests.get("https://mercados.ambito.com/riesgopais/info", headers=HEADERS, timeout=10)
-        if res_rp.status_code == 200 and "valor" in res_rp.json():
-            rp_json = res_rp.json()
-            datos["riesgo_pais"] = {"valor": rp_json.get("valor"), "variacion": rp_json.get("variacion")}
+        res_rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", timeout=10)
+        if res_rp.status_code == 200:
+            data_rp = res_rp.json()
+            if data_rp:
+                # La API devuelve una lista histórica, tomamos el último valor válido
+                datos["riesgo_pais"] = {"valor": data_rp[-1]["valor"], "variacion": ""}
         else:
-            raise Exception("Forzando salto al respaldo")
+            raise Exception("Saltar al respaldo")
     except:
         try:
-            # Intento 2: Respaldo vía DolarAPI
-            res_rp_alt = requests.get("https://dolarapi.com/v1/riesgopais", timeout=10)
-            if res_rp_alt.status_code == 200:
-                datos["riesgo_pais"] = {"valor": res_rp_alt.json().get("valor"), "variacion": ""}
+            # Respaldo: Ámbito Financiero
+            res_rp_alt = requests.get("https://mercados.ambito.com/riesgopais/info", headers=HEADERS, timeout=10)
+            if res_rp_alt.status_code == 200 and "valor" in res_rp_alt.json():
+                rp_json = res_rp_alt.json()
+                datos["riesgo_pais"] = {"valor": rp_json.get("valor"), "variacion": rp_json.get("variacion")}
         except: pass
 
     # 3. Inflación Argentina (IPC) 
@@ -51,22 +53,28 @@ def obtener_macro_argentina():
                 datos["inflacion"] = float(data_inf[-1]["valor"]) 
     except: pass
 
-    # 4. Tasa de Referencia (CON SISTEMA DE RESPALDO)
+    # 4. Tasa de Referencia (CORRECCIÓN DE DICCIONARIO: "valor")
     try:
-        # Intento 1: Tasa Plazo Fijo
         res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=10)
-        if res_tasa.status_code == 200 and res_tasa.json():
+        if res_tasa.status_code == 200:
             data_tasa = res_tasa.json()
-            datos["tasa_bcra"] = float(data_tasa[-1]["tasa"]) 
+            if data_tasa:
+                # Corregimos la clave "tasa" por "valor" y usamos .get() de forma segura
+                val = data_tasa[-1].get("valor") or data_tasa[-1].get("tasa")
+                if val is not None:
+                    # Algunas veces la API lo devuelve como decimal (0.40) y otras como entero (40.0)
+                    datos["tasa_bcra"] = float(val) * 100 if float(val) < 2 else float(val)
         else:
-            raise Exception("Forzando salto al respaldo")
+            raise Exception("Saltar al respaldo")
     except:
         try:
-            # Intento 2: Tasa Política Monetaria
             res_tasa_alt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=10)
-            if res_tasa_alt.status_code == 200 and res_tasa_alt.json():
+            if res_tasa_alt.status_code == 200:
                 data_tasa_alt = res_tasa_alt.json()
-                datos["tasa_bcra"] = float(data_tasa_alt[-1]["tasa"])
+                if data_tasa_alt:
+                    val_alt = data_tasa_alt[-1].get("valor") or data_tasa_alt[-1].get("tasa")
+                    if val_alt is not None:
+                        datos["tasa_bcra"] = float(val_alt) * 100 if float(val_alt) < 2 else float(val_alt)
         except: pass
 
     # 5. Merval
@@ -148,7 +156,6 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA REVERTIDO (ESTABLE Y LIGERO) ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, brecha):
     if "GEMINI_API_KEY" not in st.secrets:
