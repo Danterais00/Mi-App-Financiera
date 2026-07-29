@@ -15,7 +15,6 @@ def obtener_macro_argentina():
         "inflacion": None, "tasa_bcra": None, "reservas": None
     }
     
-    # 1. Dólares
     try:
         res = requests.get("https://dolarapi.com/v1/dolares", timeout=10)
         if res.status_code == 200:
@@ -25,7 +24,6 @@ def obtener_macro_argentina():
                     datos["dolares"].append({"nombre": nombre, "compra": d["compra"], "venta": d["venta"]})
     except: pass
     
-    # 2. Riesgo País 
     try:
         res_rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", timeout=10)
         if res_rp.status_code == 200:
@@ -40,7 +38,6 @@ def obtener_macro_argentina():
                 datos["riesgo_pais"] = {"valor": res_rp_alt.json().get("valor"), "variacion": res_rp_alt.json().get("variacion")}
         except: pass
 
-    # 3. Inflación Argentina (IPC) 
     try:
         res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", timeout=10)
         if res_inf.status_code == 200:
@@ -49,7 +46,6 @@ def obtener_macro_argentina():
                 datos["inflacion"] = float(data_inf[-1]["valor"]) 
     except: pass
 
-    # 4. Tasa de Referencia 
     try:
         res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=10)
         if res_tasa.status_code == 200:
@@ -76,7 +72,6 @@ def obtener_macro_argentina():
                             break
         except: pass
 
-    # 4.5. Reservas BCRA (Nuevo)
     try:
         res_bcra = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", timeout=10)
         if res_bcra.status_code == 200:
@@ -88,7 +83,6 @@ def obtener_macro_argentina():
                         break
     except: pass
 
-    # 5. Merval
     try:
         merv = yf.Ticker("^MERV").history(period="1y")
         if len(merv) >= 2:
@@ -105,7 +99,6 @@ def obtener_macro_argentina():
 @st.cache_data(ttl=3600)
 def obtener_macro_internacional():
     datos = {}
-    # EXPANDIDO: Nivel 1 Macro
     tickers_macro = {
         "S&P 500 (Global)": "^GSPC",
         "Nasdaq (Tech)": "^IXIC",
@@ -133,7 +126,6 @@ def obtener_macro_internacional():
     try:
         if "FRED_API_KEY" in st.secrets:
             api_key = st.secrets["FRED_API_KEY"]
-            # EXPANDIDO: Curva de rendimientos 2Y-10Y
             fred_series = {
                 "Tasa FED (%)": {"id": "FEDFUNDS", "units": "lin"},
                 "Inflación EE.UU YoY (%)": {"id": "CPIAUCSL", "units": "pc1"},
@@ -160,10 +152,8 @@ def obtener_macro_internacional():
     except: pass 
     return datos
 
-# NUEVO: MOTOR DE VALUACIONES (NIVEL 2)
 @st.cache_data(ttl=3600)
 def obtener_valuaciones_mercado():
-    # ADRs Argentinos y ETFs de Sectores USA
     activos_arg = {"YPF": "Energía", "GGAL": "Financiero", "BMA": "Financiero", "PAMP": "Energía", "CEPU": "Utilities"}
     activos_usa = {"SPY": "S&P 500", "QQQ": "Nasdaq", "XLE": "Energía", "XLF": "Financiero", "XLK": "Tecnología", "XLV": "Salud"}
     
@@ -186,13 +176,65 @@ def obtener_valuaciones_mercado():
                 "ROE (%)": f"{roe*100:.1f}%" if roe else "-",
                 "Div. Yield (%)": f"{dy*100:.2f}%" if dy else "-"
             }
-            if ticker in activos_arg:
-                valuaciones["ARG"].append(data)
-            else:
-                valuaciones["USA"].append(data)
-        except:
-            pass
+            if ticker in activos_arg: valuaciones["ARG"].append(data)
+            else: valuaciones["USA"].append(data)
+        except: pass
     return valuaciones
+
+# NUEVO MOTOR: Sectores GICS e Investment Score
+@st.cache_data(ttl=3600)
+def obtener_datos_gics():
+    etfs_sectores = {
+        "Tecnología": "XLK", "Financiero": "XLF", "Energía": "XLE", 
+        "Salud": "XLV", "Industriales": "XLI", "Cons. Discrecional": "XLY", 
+        "Cons. Básico": "XLP", "Utilities": "XLU", "Materiales": "XLB", 
+        "Real Estate": "XLRE", "Comunicaciones": "XLC"
+    }
+    
+    datos_sectores = []
+    
+    for sector, ticker in etfs_sectores.items():
+        try:
+            tk = yf.Ticker(ticker)
+            info = tk.info
+            hist = tk.history(period="6mo")
+            
+            pe = info.get("trailingPE") or info.get("forwardPE") or 0
+            
+            if len(hist) >= 120:
+                precio_actual = hist['Close'].iloc[-1]
+                precio_1m = hist['Close'].iloc[-21] if len(hist) >= 21 else precio_actual
+                precio_6m = hist['Close'].iloc[0]
+                
+                var_1m = ((precio_actual / precio_1m) - 1) * 100
+                var_6m = ((precio_actual / precio_6m) - 1) * 100
+                
+                # Algoritmo Base del Investment Score (0-100)
+                score = 50 
+                # Ponderación Momentum (6M)
+                if var_6m > 15: score += 25
+                elif var_6m > 5: score += 15
+                elif var_6m < -5: score -= 15
+                elif var_6m < -15: score -= 25
+                
+                # Ponderación Valuación (P/E)
+                if 0 < pe <= 15: score += 25
+                elif 15 < pe <= 22: score += 10
+                elif pe > 28: score -= 20
+                
+                score = max(0, min(100, score)) # Forzar límites
+                
+                datos_sectores.append({
+                    "Sector": sector,
+                    "ETF": ticker,
+                    "P/E": pe if pe > 0 else None,
+                    "1M (%)": var_1m,
+                    "6M (%)": var_6m,
+                    "Score": int(score)
+                })
+        except: pass
+        
+    return sorted(datos_sectores, key=lambda x: x["Score"], reverse=True)
 
 @st.cache_data(ttl=1800)
 def obtener_noticias_acciones(lista_tickers):
@@ -208,21 +250,50 @@ def obtener_noticias_acciones(lista_tickers):
         except: noticias[ticker] = []
     return noticias
 
+# IA MODIFICADA: Motor de Recomendación Cuantitativa
 @st.cache_data(ttl=3600)
-def generar_analisis_ia(macro_arg, macro_int, brecha):
-    # Se mantiene la versión estable global temporalmente hasta implementar el Nivel 4
+def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     if "GEMINI_API_KEY" not in st.secrets:
         return "⚠️ **Falta la clave API de Gemini.**"
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
+        
+        rp = macro_arg.get('riesgo_pais') or {}
+        rp_val = rp.get('valor') or 'N/D'
+        inf = macro_arg.get('inflacion') or 'N/D'
+        tasa = macro_arg.get('tasa_bcra') or 'N/D'
+        
         prompt = f"""
-        Eres un Asesor Financiero Institucional. Analiza el tablero macroeconómico global.
-        ### 1. Visión Estratégica General (4 bullet points).
-        ### 2. Perspectiva GICS (Tabla Markdown: Sector | Veredicto | Justificación).
-        --- DATOS INTERNACIONALES ---\n
+        Eres un Modelo Cuantitativo de Inversión Institucional. 
+        Analiza el tablero global y los scores sectoriales. 
+        
+        Devuelve tu respuesta ESTRICTAMENTE usando el formato de SEMÁFOROS, sin texto introductorio, estructurado de la siguiente forma usando listas:
+        
+        ### 1. Entorno Macro y Renta Fija
+        [Emoji] **Contexto Global:** [Breve justificación]
+        [Emoji] **Bonos del Tesoro (USA):** [Comprar/Mantener/Vender] - [Justificación]
+        [Emoji] **Renta Fija Argentina (Carry/Bonos):** [Comprar/Mantener/Vender] - [Justificación]
+        
+        ### 2. Semáforo Sectores GICS (Acciones)
+        Asigna el color según el 'Score' provisto y la macro:
+        [Emoji] **[Nombre del Sector]:** [Comprar/Mantener/Vender] - [Una línea de por qué]
+        (Repetir para los 5 mejores sectores)
+        
+        Reglas de Emojis: 🟢 (Comprar/Positivo), 🟡 (Mantener/Neutral), 🔴 (Vender/Cautela).
+        NO uses HTML. Solo formato Markdown puro.
+        
+        --- DATOS MACRO ---
+        Bono 10Y EE.UU: {macro_int.get('Bono 10Y EE.UU (%)', {}).get('valor', 'N/D')}
+        Inflación EE.UU: {macro_int.get('Inflación EE.UU YoY (%)', {}).get('valor', 'N/D')}
+        Curva 2Y-10Y EE.UU: {macro_int.get('Yield Curve 2Y-10Y (pts)', {}).get('valor', 'N/D')}
+        Riesgo País ARG: {rp_val}
+        Tasa ARG: {tasa}%
+        Inflación ARG: {inf}%
+        
+        --- SCORES SECTORES GICS ---
         """
-        for nombre, datos in macro_int.items():
-            prompt += f"{nombre}: {datos.get('valor', 'N/D')}\n"
+        for g in datos_gics:
+            prompt += f"Sector: {g['Sector']} | P/E: {g['P/E']} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
             
         modelos = ["gemini-1.5-flash", "gemini-1.5-pro"]
         headers = {'Content-Type': 'application/json'}
@@ -231,7 +302,7 @@ def generar_analisis_ia(macro_arg, macro_int, brecha):
             try:
                 res = requests.post(url, headers=headers, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=25)
                 if res.status_code == 200:
-                    return res.json()['candidates'][0]['content']['parts'][0]['text'].replace('</div>', '').replace('<div>', '').strip()
+                    return res.json()['candidates'][0]['content']['parts'][0]['text'].strip()
                 if res.status_code == 429: time.sleep(2)
             except: pass
         return "❌ Error del servidor de IA."
