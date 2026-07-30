@@ -6,7 +6,7 @@ import streamlit as st
 import time
 import logging
 
-# --- CONFIGURACIÓN DE LOGS (Fin de la ceguera de errores) ---
+# --- CONFIGURACIÓN DE LOGS ---
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,6 @@ def obtener_macro_internacional():
     for nombre in tickers_macro.keys():
         datos[nombre] = {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}
     
-    # NUEVO: BATCH DOWNLOAD (Alta velocidad y protección de IP)
     lista_tickers = list(tickers_macro.values())
     try:
         hist_data = yf.download(lista_tickers, period="1y", progress=False)
@@ -195,6 +194,7 @@ def obtener_valuaciones_mercado():
         except Exception as e: logger.warning(f"Error valuación {ticker}: {e}")
     return valuaciones
 
+# --- FASE 1: VALUACIÓN RELATIVA IMPLEMENTADA ---
 @st.cache_data(ttl=3600)
 def obtener_datos_gics():
     etfs_sectores = {
@@ -204,10 +204,17 @@ def obtener_datos_gics():
         "Real Estate": "XLRE", "Comunicaciones": "XLC"
     }
     
+    # MATRIZ DE BENCHMARK: P/E Histórico Promedio por sector (~10 años)
+    pe_historico = {
+        "Tecnología": 23.0, "Financiero": 13.5, "Energía": 14.5, 
+        "Salud": 17.5, "Industriales": 18.0, "Cons. Discrecional": 24.0, 
+        "Cons. Básico": 20.0, "Utilities": 17.5, "Materiales": 16.5, 
+        "Real Estate": 35.0, "Comunicaciones": 19.0
+    }
+    
     datos_sectores = []
     tickers = list(etfs_sectores.values())
     
-    # NUEVO: BATCH DOWNLOAD GICS
     try:
         hist_data = yf.download(tickers, period="6mo", progress=False)
         df_close = hist_data['Close'] if 'Close' in hist_data else pd.DataFrame()
@@ -233,13 +240,17 @@ def obtener_datos_gics():
                     var_6m = ((precio_actual / precio_6m) - 1) * 100
             
             score = 50.0 
-            score += (var_6m * 1.5) 
+            score += (var_6m * 1.5) # Factor Momentum
             
+            # VALUACIÓN RELATIVA
             if pe_val:
-                if pe_val < 15: score += 15
-                elif 15 <= pe_val <= 22: score += 5
-                elif 22 < pe_val <= 28: score -= 5
-                elif pe_val > 28: score -= 10 
+                benchmark = pe_historico.get(sector, 18.0)
+                desviacion = (pe_val / benchmark) - 1 # Desviación porcentual de su media
+                
+                if desviacion < -0.15: score += 15       # Muy Barato (Descuento > 15%)
+                elif -0.15 <= desviacion <= 0.05: score += 5  # Precio Justo a Ligeramente Barato
+                elif 0.05 < desviacion <= 0.20: score -= 5    # Ligeramente Caro (Premium hasta 20%)
+                elif desviacion > 0.20: score -= 10      # Muy Caro (Premium > 20%)
             
             score = max(0, min(100, int(score))) 
             
@@ -282,12 +293,15 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         
-        rp = macro_arg.get('riesgo_pais') or {}
-        rp_val = rp.get('valor') or 'N/D'
-        inf = macro_arg.get('inflacion') or 'N/D'
-        tasa = macro_arg.get('tasa_bcra') or 'N/D'
+        # Extracción segura PREVIA al f-string (A prueba de balas)
+        rp_val = macro_arg.get('riesgo_pais', {}).get('valor', 'N/D') if macro_arg.get('riesgo_pais') else 'N/D'
+        inf = macro_arg.get('inflacion', 'N/D')
+        tasa = macro_arg.get('tasa_bcra', 'N/D')
         
-        # Corchetes simples corregidos {} para evitar el error de Diccionario en el Set
+        bono_val = macro_int.get('Bono 10Y EE.UU (%)', {}).get('valor', 'N/D') if 'Bono 10Y EE.UU (%)' in macro_int else 'N/D'
+        inf_us_val = macro_int.get('Inflación EE.UU YoY (%)', {}).get('valor', 'N/D') if 'Inflación EE.UU YoY (%)' in macro_int else 'N/D'
+        curva_val = macro_int.get('Yield Curve 2Y-10Y (pts)', {}).get('valor', 'N/D') if 'Yield Curve 2Y-10Y (pts)' in macro_int else 'N/D'
+        
         prompt = f"""
         Eres un Modelo Cuantitativo de Inversión Institucional. 
         Analiza el tablero global y los scores sectoriales. 
@@ -308,9 +322,9 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         NO uses HTML. Solo formato Markdown puro.
         
         --- DATOS MACRO ---
-        Bono 10Y EE.UU: {macro_int.get('Bono 10Y EE.UU (%)', {{}}).get('valor', 'N/D')}
-        Inflación EE.UU: {macro_int.get('Inflación EE.UU YoY (%)', {{}}).get('valor', 'N/D')}
-        Curva 2Y-10Y EE.UU: {macro_int.get('Yield Curve 2Y-10Y (pts)', {{}}).get('valor', 'N/D')}
+        Bono 10Y EE.UU: {bono_val}
+        Inflación EE.UU: {inf_us_val}
+        Curva 2Y-10Y EE.UU: {curva_val}
         Riesgo País ARG: {rp_val}
         Tasa ARG: {tasa}%
         Inflación ARG: {inf}%
@@ -319,8 +333,8 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         """
         
         for g in datos_gics:
-            pe_str = g['P/E'] if g['P/E'] else "N/D"
-            prompt += f"Sector: {g['Sector']} | P/E: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
+            pe_str = f"{g['P/E']:.2f}" if g['P/E'] else "N/D"
+            prompt += f"Sector: {g['Sector']} | P/E actual: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
             
         modelos = ["gemini-1.5-flash", "gemini-1.5-flash-8b"]
         headers = {'Content-Type': 'application/json'}
