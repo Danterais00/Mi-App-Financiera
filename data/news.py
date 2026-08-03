@@ -165,6 +165,7 @@ def obtener_macro_internacional():
     
     return datos
 
+# --- TABLA DE VALUACIONES CORREGIDA (Fechas y Matemáticas) ---
 @st.cache_data(ttl=3600)
 def obtener_valuaciones_mercado():
     activos_arg = {"YPF": "Energía", "GGAL": "Financiero", "BMA": "Financiero", "PAMP": "Energía", "CEPU": "Utilities"}
@@ -181,20 +182,27 @@ def obtener_valuaciones_mercado():
             roe = info.get("returnOnEquity")
             dy = info.get("dividendYield") or info.get("trailingAnnualDividendYield")
             
+            # Filtro Matemático para arreglar el bug de Yahoo Finance en Dividendos
+            dy_str = "N/D"
+            if dy is not None:
+                # Si Yahoo devuelve 0.015 (es 1.5%), lo multiplicamos. Si devuelve > 0.20 (20%), asumimos que ya viene porcentual o es ruido nominal.
+                dy_val = dy * 100 if dy < 0.20 else dy
+                dy_str = f"{dy_val:.2f}%"
+            
             data = {
                 "Activo": ticker,
-                "Sector / Índice": sector,
-                "P/E": f"{pe:.2f}" if pe else "-",
-                "P/B": f"{pb:.2f}" if pb else "-",
-                "ROE (%)": f"{roe*100:.1f}%" if roe else "-",
-                "Div. Yield (%)": f"{dy*100:.2f}%" if dy else "-"
+                "Sector": sector,
+                "Período": "Actual (TTM)", # SELLO TEMPORAL AGREGADO
+                "P/E": f"{pe:.2f}" if pe else "N/D",
+                "P/B": f"{pb:.2f}" if pb else "N/D",
+                "ROE (%)": f"{roe*100:.1f}%" if roe else "N/D",
+                "Div. Yield (%)": dy_str
             }
             if ticker in activos_arg: valuaciones["ARG"].append(data)
             else: valuaciones["USA"].append(data)
         except Exception as e: logger.warning(f"Error valuación {ticker}: {e}")
     return valuaciones
 
-# --- FASE 1: VALUACIÓN RELATIVA IMPLEMENTADA ---
 @st.cache_data(ttl=3600)
 def obtener_datos_gics():
     etfs_sectores = {
@@ -204,7 +212,6 @@ def obtener_datos_gics():
         "Real Estate": "XLRE", "Comunicaciones": "XLC"
     }
     
-    # MATRIZ DE BENCHMARK: P/E Histórico Promedio por sector (~10 años)
     pe_historico = {
         "Tecnología": 23.0, "Financiero": 13.5, "Energía": 14.5, 
         "Salud": 17.5, "Industriales": 18.0, "Cons. Discrecional": 24.0, 
@@ -240,17 +247,16 @@ def obtener_datos_gics():
                     var_6m = ((precio_actual / precio_6m) - 1) * 100
             
             score = 50.0 
-            score += (var_6m * 1.5) # Factor Momentum
+            score += (var_6m * 1.5) 
             
-            # VALUACIÓN RELATIVA
             if pe_val:
                 benchmark = pe_historico.get(sector, 18.0)
-                desviacion = (pe_val / benchmark) - 1 # Desviación porcentual de su media
+                desviacion = (pe_val / benchmark) - 1 
                 
-                if desviacion < -0.15: score += 15       # Muy Barato (Descuento > 15%)
-                elif -0.15 <= desviacion <= 0.05: score += 5  # Precio Justo a Ligeramente Barato
-                elif 0.05 < desviacion <= 0.20: score -= 5    # Ligeramente Caro (Premium hasta 20%)
-                elif desviacion > 0.20: score -= 10      # Muy Caro (Premium > 20%)
+                if desviacion < -0.15: score += 15       
+                elif -0.15 <= desviacion <= 0.05: score += 5  
+                elif 0.05 < desviacion <= 0.20: score -= 5    
+                elif desviacion > 0.20: score -= 10      
             
             score = max(0, min(100, int(score))) 
             
@@ -293,7 +299,6 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         
-        # Extracción segura PREVIA al f-string (A prueba de balas)
         rp_val = macro_arg.get('riesgo_pais', {}).get('valor', 'N/D') if macro_arg.get('riesgo_pais') else 'N/D'
         inf = macro_arg.get('inflacion', 'N/D')
         tasa = macro_arg.get('tasa_bcra', 'N/D')
