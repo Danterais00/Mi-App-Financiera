@@ -288,6 +288,7 @@ def obtener_noticias_acciones(lista_tickers):
         except Exception as e: logger.warning(f"Error noticias {ticker}: {e}"); noticias[ticker] = []
     return noticias
 
+# --- MOTOR DE IA RECONSTRUIDO: LECTURA DEL JSON DE GOOGLE ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -338,12 +339,9 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             pe_str = f"{g['P/E']:.2f}" if g['P/E'] else "N/D"
             prompt += f"Sector: {g['Sector']} | P/E actual: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
             
-        # CASCADA DE MODELOS MEJORADA (WATERFALL)
-        # Cubre desde el estándar actual hasta los alias legados más seguros
         modelos = [
-            "gemini-1.5-flash", 
-            "gemini-1.5-flash-latest", 
-            "gemini-1.0-pro", 
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
             "gemini-pro"
         ]
         
@@ -363,24 +361,27 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
                         texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
                         return texto_ia.replace('</div>', '').replace('<div>', '').strip()
                     
-                    elif res.status_code == 429:
-                        if intento < max_reintentos - 1:
-                            time.sleep(3)
-                            continue
-                        else:
-                            errores_detallados.append(f"{modelo}: 429 (Saturado)")
-                            break
-                    
-                    elif res.status_code == 404:
-                        errores_detallados.append(f"{modelo}: 404 (No autorizado/No existe)")
-                        break
-                    
                     else:
-                        errores_detallados.append(f"{modelo}: Error {res.status_code}")
-                        break
+                        # Extraer el error nativo exacto de Google
+                        try:
+                            error_detalle = res.json().get('error', {}).get('message', 'Error desconocido en JSON')
+                        except:
+                            error_detalle = res.text[:80] # Extraer primeros caracteres si no es JSON
+                            
+                        if res.status_code == 429:
+                            if intento < max_reintentos - 1:
+                                time.sleep(3)
+                                continue
+                            else:
+                                errores_detallados.append(f"{modelo}: 429 (Saturado)")
+                                break
+                        else:
+                            # Imprimir el código de error y las palabras exactas de Google
+                            errores_detallados.append(f"{modelo}: {res.status_code} ({error_detalle})")
+                            break
                         
-                except requests.exceptions.RequestException:
-                    errores_detallados.append(f"{modelo}: Fallo de red")
+                except requests.exceptions.RequestException as e:
+                    errores_detallados.append(f"{modelo}: Error de Red ({e})")
                     break
                     
         return f"❌ **Error del servidor de IA.** Detalle: { ' | '.join(errores_detallados) }"
