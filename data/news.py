@@ -165,7 +165,6 @@ def obtener_macro_internacional():
     
     return datos
 
-# --- TABLA DE VALUACIONES CORREGIDA (Fechas y Matemáticas) ---
 @st.cache_data(ttl=3600)
 def obtener_valuaciones_mercado():
     activos_arg = {"YPF": "Energía", "GGAL": "Financiero", "BMA": "Financiero", "PAMP": "Energía", "CEPU": "Utilities"}
@@ -182,17 +181,15 @@ def obtener_valuaciones_mercado():
             roe = info.get("returnOnEquity")
             dy = info.get("dividendYield") or info.get("trailingAnnualDividendYield")
             
-            # Filtro Matemático para arreglar el bug de Yahoo Finance en Dividendos
             dy_str = "N/D"
             if dy is not None:
-                # Si Yahoo devuelve 0.015 (es 1.5%), lo multiplicamos. Si devuelve > 0.20 (20%), asumimos que ya viene porcentual o es ruido nominal.
                 dy_val = dy * 100 if dy < 0.20 else dy
                 dy_str = f"{dy_val:.2f}%"
             
             data = {
                 "Activo": ticker,
                 "Sector": sector,
-                "Período": "Actual (TTM)", # SELLO TEMPORAL AGREGADO
+                "Período": "Actual (TTM)",
                 "P/E": f"{pe:.2f}" if pe else "N/D",
                 "P/B": f"{pb:.2f}" if pb else "N/D",
                 "ROE (%)": f"{roe*100:.1f}%" if roe else "N/D",
@@ -341,7 +338,15 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             pe_str = f"{g['P/E']:.2f}" if g['P/E'] else "N/D"
             prompt += f"Sector: {g['Sector']} | P/E actual: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
             
-        modelos = ["gemini-1.5-flash", "gemini-1.5-flash-8b"]
+        # CASCADA DE MODELOS MEJORADA (WATERFALL)
+        # Cubre desde el estándar actual hasta los alias legados más seguros
+        modelos = [
+            "gemini-1.5-flash", 
+            "gemini-1.5-flash-latest", 
+            "gemini-1.0-pro", 
+            "gemini-pro"
+        ]
+        
         headers = {'Content-Type': 'application/json'}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
@@ -367,7 +372,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
                             break
                     
                     elif res.status_code == 404:
-                        errores_detallados.append(f"{modelo}: 404 (No autorizado)")
+                        errores_detallados.append(f"{modelo}: 404 (No autorizado/No existe)")
                         break
                     
                     else:
