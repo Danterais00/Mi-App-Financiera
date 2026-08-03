@@ -288,7 +288,7 @@ def obtener_noticias_acciones(lista_tickers):
         except Exception as e: logger.warning(f"Error noticias {ticker}: {e}"); noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA RECONSTRUIDO: LECTURA DEL JSON DE GOOGLE ---
+# --- MOTOR DE IA: MANEJO INTELIGENTE DE CUOTA Y UX ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     if "GEMINI_API_KEY" not in st.secrets:
@@ -339,10 +339,11 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             pe_str = f"{g['P/E']:.2f}" if g['P/E'] else "N/D"
             prompt += f"Sector: {g['Sector']} | P/E actual: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
             
+        # Lista de modelos con alias modernos dinámicos para evitar 404
         modelos = [
             "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-pro"
+            "gemini-1.5-flash-latest",
+            "gemini-1.0-pro-latest"
         ]
         
         headers = {'Content-Type': 'application/json'}
@@ -361,30 +362,35 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
                         texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
                         return texto_ia.replace('</div>', '').replace('<div>', '').strip()
                     
+                    elif res.status_code == 429:
+                        if intento < max_reintentos - 1:
+                            time.sleep(5) # Espera mayor para que Google recupere la cuota
+                            continue
+                        else:
+                            # CORTE DEFINITIVO: Si saturamos la cuota, no saltamos a otro modelo.
+                            return "⏳ **Límite de API gratuito alcanzado.** \n\nHas hecho muchas peticiones rápidas seguidas. Por favor, **espera exactamente 1 minuto** y vuelve a presionar el botón."
+                    
                     else:
-                        # Extraer el error nativo exacto de Google
                         try:
                             error_detalle = res.json().get('error', {}).get('message', 'Error desconocido en JSON')
                         except:
-                            error_detalle = res.text[:80] # Extraer primeros caracteres si no es JSON
+                            error_detalle = res.text[:80]
                             
-                        if res.status_code == 429:
-                            if intento < max_reintentos - 1:
-                                time.sleep(3)
-                                continue
-                            else:
-                                errores_detallados.append(f"{modelo}: 429 (Saturado)")
-                                break
+                        if res.status_code == 404:
+                            errores_detallados.append(f"{modelo}: 404 (No autorizado/No existe)")
+                            break # Probar el siguiente modelo de respaldo
                         else:
-                            # Imprimir el código de error y las palabras exactas de Google
                             errores_detallados.append(f"{modelo}: {res.status_code} ({error_detalle})")
-                            break
+                            break # Probar el siguiente modelo de respaldo
                         
                 except requests.exceptions.RequestException as e:
                     errores_detallados.append(f"{modelo}: Error de Red ({e})")
                     break
                     
-        return f"❌ **Error del servidor de IA.** Detalle: { ' | '.join(errores_detallados) }"
+        if errores_detallados:
+            return f"❌ **Error del servidor de IA.** Detalle: { ' | '.join(errores_detallados) }"
+        
+        return "❌ **Error desconocido en el motor de IA.**"
         
     except Exception as e: 
         return f"❌ **Error crítico de procesamiento:** Detalle: {e}"
