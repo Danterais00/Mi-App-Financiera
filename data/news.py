@@ -5,6 +5,12 @@ import pandas as pd
 import streamlit as st
 import time
 import logging
+import json
+import os
+from datetime import date
+
+# Importación del SDK Oficial de Google
+import google.generativeai as genai
 
 # --- CONFIGURACIÓN DE LOGS ---
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -288,12 +294,27 @@ def obtener_noticias_acciones(lista_tickers):
         except Exception as e: logger.warning(f"Error noticias {ticker}: {e}"); noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA: MANEJO INTELIGENTE DE CUOTA Y UX ---
-@st.cache_data(ttl=3600)
+# --- MOTOR DE IA DEFINTIVO: SDK OFICIAL + CACHÉ DIARIO EN DISCO ---
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     if "GEMINI_API_KEY" not in st.secrets:
         return "⚠️ **Falta la clave API de Gemini.** Configura `GEMINI_API_KEY` en los Secrets de Streamlit."
     
+    # 1. Definir archivo de caché local y fecha actual
+    CACHE_FILE = "ai_report_cache.json"
+    hoy = date.today().isoformat()
+    
+    # 2. Intentar recuperar el reporte del día si ya existe
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                cache_data = json.load(f)
+                # Si la fecha del archivo coincide con hoy, no llamamos a la API
+                if cache_data.get("fecha") == hoy and cache_data.get("reporte"):
+                    return cache_data["reporte"] + "\n\n*(💡 Reporte recuperado instantáneamente de la memoria caché de hoy)*"
+        except Exception as e:
+            logger.warning(f"Error leyendo caché JSON (se generará uno nuevo): {e}")
+
+    # 3. Si no hay caché válido para hoy, extraemos variables y preparamos el Prompt
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         
@@ -339,58 +360,22 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             pe_str = f"{g['P/E']:.2f}" if g['P/E'] else "N/D"
             prompt += f"Sector: {g['Sector']} | P/E actual: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
             
-        # Lista de modelos con alias modernos dinámicos para evitar 404
-        modelos = [
-            "gemini-2.0-flash",
-            "gemini-1.5-flash-latest",
-            "gemini-1.0-pro-latest"
-        ]
+        # 4. Configurar el SDK de Google y hacer la llamada segura
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        headers = {'Content-Type': 'application/json'}
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        # Ejecución
+        respuesta = model.generate_content(prompt)
+        texto_ia = respuesta.text.strip()
         
-        errores_detallados = []
-        max_reintentos = 2
-        
-        for modelo in modelos:
-            for intento in range(max_reintentos):
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={api_key}"
-                try:
-                    res = requests.post(url, headers=headers, json=payload, timeout=30)
-                    
-                    if res.status_code == 200:
-                        texto_ia = res.json()['candidates'][0]['content']['parts'][0]['text']
-                        return texto_ia.replace('</div>', '').replace('<div>', '').strip()
-                    
-                    elif res.status_code == 429:
-                        if intento < max_reintentos - 1:
-                            time.sleep(5) # Espera mayor para que Google recupere la cuota
-                            continue
-                        else:
-                            # CORTE DEFINITIVO: Si saturamos la cuota, no saltamos a otro modelo.
-                            return "⏳ **Límite de API gratuito alcanzado.** \n\nHas hecho muchas peticiones rápidas seguidas. Por favor, **espera exactamente 1 minuto** y vuelve a presionar el botón."
-                    
-                    else:
-                        try:
-                            error_detalle = res.json().get('error', {}).get('message', 'Error desconocido en JSON')
-                        except:
-                            error_detalle = res.text[:80]
-                            
-                        if res.status_code == 404:
-                            errores_detallados.append(f"{modelo}: 404 (No autorizado/No existe)")
-                            break # Probar el siguiente modelo de respaldo
-                        else:
-                            errores_detallados.append(f"{modelo}: {res.status_code} ({error_detalle})")
-                            break # Probar el siguiente modelo de respaldo
-                        
-                except requests.exceptions.RequestException as e:
-                    errores_detallados.append(f"{modelo}: Error de Red ({e})")
-                    break
-                    
-        if errores_detallados:
-            return f"❌ **Error del servidor de IA.** Detalle: { ' | '.join(errores_detallados) }"
-        
-        return "❌ **Error desconocido en el motor de IA.**"
+        # 5. Guardado físico en disco (Persistencia diaria)
+        try:
+            with open(CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump({"fecha": hoy, "reporte": texto_ia}, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            logger.warning(f"Error guardando caché JSON: {e}")
+            
+        return texto_ia
         
     except Exception as e: 
-        return f"❌ **Error crítico de procesamiento:** Detalle: {e}"
+        return f"❌ **Error al generar el análisis con el SDK de Google:** Detalle técnico: {e}"
