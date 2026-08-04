@@ -20,8 +20,9 @@ def obtener_macro_argentina():
         "inflacion": None, "tasa_bcra": None, "reservas": None
     }
     
+    # Tolerancia aumentada a 15 segundos para evitar que la tabla desaparezca por lag
     try:
-        res = requests.get("[https://dolarapi.com/v1/dolares](https://dolarapi.com/v1/dolares)", timeout=10)
+        res = requests.get("https://dolarapi.com/v1/dolares", timeout=15)
         if res.status_code == 200:
             for d in res.json():
                 if d["casa"] in ["oficial", "blue", "bolsa", "contadoconliqui", "tarjeta"]:
@@ -30,7 +31,7 @@ def obtener_macro_argentina():
     except Exception as e: logger.warning(f"Error DolarAPI: {e}")
     
     try:
-        res_rp = requests.get("[https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais](https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais)", timeout=10)
+        res_rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", timeout=15)
         if res_rp.status_code == 200:
             data_rp = res_rp.json()
             if isinstance(data_rp, list) and len(data_rp) > 0:
@@ -38,13 +39,13 @@ def obtener_macro_argentina():
         else: raise Exception("Saltar al respaldo")
     except Exception as e:
         try:
-            res_rp_alt = requests.get("[https://mercados.ambito.com/riesgopais/info](https://mercados.ambito.com/riesgopais/info)", headers=HEADERS, timeout=10)
+            res_rp_alt = requests.get("https://mercados.ambito.com/riesgopais/info", headers=HEADERS, timeout=15)
             if res_rp_alt.status_code == 200 and "valor" in res_rp_alt.json():
                 datos["riesgo_pais"] = {"valor": res_rp_alt.json().get("valor"), "variacion": res_rp_alt.json().get("variacion")}
         except Exception as e2: logger.warning(f"Error Riesgo País (ambos): {e2}")
 
     try:
-        res_inf = requests.get("[https://api.argentinadatos.com/v1/finanzas/indices/inflacion](https://api.argentinadatos.com/v1/finanzas/indices/inflacion)", timeout=10)
+        res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", timeout=15)
         if res_inf.status_code == 200:
             data_inf = res_inf.json()
             if isinstance(data_inf, list) and len(data_inf) > 0:
@@ -52,7 +53,7 @@ def obtener_macro_argentina():
     except Exception as e: logger.warning(f"Error Inflación: {e}")
 
     try:
-        res_tasa = requests.get("[https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria](https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria)", timeout=10)
+        res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=15)
         if res_tasa.status_code == 200:
             data_tasa = res_tasa.json()
             if isinstance(data_tasa, list):
@@ -65,7 +66,7 @@ def obtener_macro_argentina():
         if datos["tasa_bcra"] is None: raise Exception("Saltar a Plazo Fijo")
     except Exception as e:
         try:
-            res_tasa_alt = requests.get("[https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo](https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo)", timeout=10)
+            res_tasa_alt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=15)
             if res_tasa_alt.status_code == 200:
                 data_tasa_alt = res_tasa_alt.json()
                 if isinstance(data_tasa_alt, list):
@@ -78,7 +79,7 @@ def obtener_macro_argentina():
         except Exception as e2: logger.warning(f"Error Tasa BCRA: {e2}")
 
     try:
-        res_bcra = requests.get("[https://api.argentinadatos.com/v1/finanzas/bcra/reservas](https://api.argentinadatos.com/v1/finanzas/bcra/reservas)", timeout=10)
+        res_bcra = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", timeout=15)
         if res_bcra.status_code == 200:
             data_bcra = res_bcra.json()
             if isinstance(data_bcra, list):
@@ -146,9 +147,9 @@ def obtener_macro_internacional():
             }
             for nombre, config in fred_series.items():
                 datos[nombre] = {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}
-                url = f"[https://api.stlouisfed.org/fred/series/observations?series_id=](https://api.stlouisfed.org/fred/series/observations?series_id=){config['id']}&api_key={api_key}&file_type=json&units={config['units']}&sort_order=desc&limit=15"
+                url = f"https://api.stlouisfed.org/fred/series/observations?series_id={config['id']}&api_key={api_key}&file_type=json&units={config['units']}&sort_order=desc&limit=15"
                 try:
-                    res = requests.get(url, timeout=5)
+                    res = requests.get(url, timeout=10)
                     if res.status_code == 200:
                         obs = res.json().get("observations", [])
                         valid_obs = [float(o["value"]) for o in obs if o["value"] != "."]
@@ -279,7 +280,7 @@ def obtener_noticias_acciones(lista_tickers):
     noticias = {}
     for ticker in lista_tickers[:6]:
         try:
-            url = f"[https://feeds.finance.yahoo.com/rss/2.0/headline?s=](https://feeds.finance.yahoo.com/rss/2.0/headline?s=){ticker}&region=US&lang=en-US"
+            url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
             feed = feedparser.parse(url)
             entradas = []
             for entry in feed.entries[:3]:
@@ -293,10 +294,22 @@ def obtener_noticias_acciones(lista_tickers):
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     try:
-        # Extraer variables con seguridad
+        # Extraer variables Macro con seguridad
         rp_val = macro_arg.get('riesgo_pais', {}).get('valor', 'N/D') if macro_arg.get('riesgo_pais') else 'N/D'
         inf = macro_arg.get('inflacion', 'N/D')
         tasa = macro_arg.get('tasa_bcra', 'N/D')
+        
+        # Calcular Brecha Cambiaria si están disponibles los dólares (Mejora)
+        dolares = macro_arg.get("dolares", [])
+        brecha_str = "N/D"
+        if dolares:
+            try:
+                val_oficial = next((float(d['venta']) for d in dolares if d['nombre'] == 'Oficial'), None)
+                val_ccl = next((float(d['venta']) for d in dolares if d['nombre'] == 'CCL'), None)
+                if val_oficial and val_ccl:
+                    brecha = ((val_ccl / val_oficial) - 1) * 100
+                    brecha_str = f"{brecha:.1f}%"
+            except: pass
         
         bono_val = macro_int.get('Bono 10Y EE.UU (%)', {}).get('valor', 'N/D') if 'Bono 10Y EE.UU (%)' in macro_int else 'N/D'
         inf_us_val = macro_int.get('Inflación EE.UU YoY (%)', {}).get('valor', 'N/D') if 'Inflación EE.UU YoY (%)' in macro_int else 'N/D'
@@ -322,8 +335,9 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             f"Inflación EE.UU: {inf_us_val}\n"
             f"Curva 2Y-10Y EE.UU: {curva_val}\n"
             f"Riesgo País ARG: {rp_val}\n"
-            f"Tasa ARG: {tasa}%\n"
-            f"Inflación ARG: {inf}%\n\n"
+            f"Tasa BCRA ARG: {tasa}%\n"
+            f"Inflación ARG: {inf}%\n"
+            f"Brecha Cambiaria (CCL/Oficial): {brecha_str}\n\n"
             "--- SCORES SECTORES GICS ---\n"
         )
         
@@ -339,7 +353,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             '<b>Copia el texto del recuadro a continuación y pégalo en tu ChatGPT, Claude o Gemini web.</b>'
             '</div>'
             '<div style="background-color: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; overflow-x: auto;">'
-            f'<pre style="color: #c9d1d9; font-family: monospace; font-size: 0.9rem; margin: 0;">{prompt}</pre>'
+            f'<pre style="color: #c9d1d9; font-family: monospace; font-size: 0.9rem; margin: 0; white-space: pre-wrap;">{prompt}</pre>'
             '</div>'
         )
         return mensaje_ui
