@@ -21,7 +21,7 @@ def obtener_macro_argentina():
     }
     
     try:
-        res = requests.get("https://dolarapi.com/v1/dolares", timeout=10)
+        res = requests.get("[https://dolarapi.com/v1/dolares](https://dolarapi.com/v1/dolares)", timeout=10)
         if res.status_code == 200:
             for d in res.json():
                 if d["casa"] in ["oficial", "blue", "bolsa", "contadoconliqui", "tarjeta"]:
@@ -30,7 +30,7 @@ def obtener_macro_argentina():
     except Exception as e: logger.warning(f"Error DolarAPI: {e}")
     
     try:
-        res_rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", timeout=10)
+        res_rp = requests.get("[https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais](https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais)", timeout=10)
         if res_rp.status_code == 200:
             data_rp = res_rp.json()
             if isinstance(data_rp, list) and len(data_rp) > 0:
@@ -38,13 +38,13 @@ def obtener_macro_argentina():
         else: raise Exception("Saltar al respaldo")
     except Exception as e:
         try:
-            res_rp_alt = requests.get("https://mercados.ambito.com/riesgopais/info", headers=HEADERS, timeout=10)
+            res_rp_alt = requests.get("[https://mercados.ambito.com/riesgopais/info](https://mercados.ambito.com/riesgopais/info)", headers=HEADERS, timeout=10)
             if res_rp_alt.status_code == 200 and "valor" in res_rp_alt.json():
                 datos["riesgo_pais"] = {"valor": res_rp_alt.json().get("valor"), "variacion": res_rp_alt.json().get("variacion")}
         except Exception as e2: logger.warning(f"Error Riesgo País (ambos): {e2}")
 
     try:
-        res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", timeout=10)
+        res_inf = requests.get("[https://api.argentinadatos.com/v1/finanzas/indices/inflacion](https://api.argentinadatos.com/v1/finanzas/indices/inflacion)", timeout=10)
         if res_inf.status_code == 200:
             data_inf = res_inf.json()
             if isinstance(data_inf, list) and len(data_inf) > 0:
@@ -52,7 +52,7 @@ def obtener_macro_argentina():
     except Exception as e: logger.warning(f"Error Inflación: {e}")
 
     try:
-        res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=10)
+        res_tasa = requests.get("[https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria](https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria)", timeout=10)
         if res_tasa.status_code == 200:
             data_tasa = res_tasa.json()
             if isinstance(data_tasa, list):
@@ -65,7 +65,7 @@ def obtener_macro_argentina():
         if datos["tasa_bcra"] is None: raise Exception("Saltar a Plazo Fijo")
     except Exception as e:
         try:
-            res_tasa_alt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=10)
+            res_tasa_alt = requests.get("[https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo](https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo)", timeout=10)
             if res_tasa_alt.status_code == 200:
                 data_tasa_alt = res_tasa_alt.json()
                 if isinstance(data_tasa_alt, list):
@@ -78,7 +78,7 @@ def obtener_macro_argentina():
         except Exception as e2: logger.warning(f"Error Tasa BCRA: {e2}")
 
     try:
-        res_bcra = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", timeout=10)
+        res_bcra = requests.get("[https://api.argentinadatos.com/v1/finanzas/bcra/reservas](https://api.argentinadatos.com/v1/finanzas/bcra/reservas)", timeout=10)
         if res_bcra.status_code == 200:
             data_bcra = res_bcra.json()
             if isinstance(data_bcra, list):
@@ -146,7 +146,7 @@ def obtener_macro_internacional():
             }
             for nombre, config in fred_series.items():
                 datos[nombre] = {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}
-                url = f"https://api.stlouisfed.org/fred/series/observations?series_id={config['id']}&api_key={api_key}&file_type=json&units={config['units']}&sort_order=desc&limit=15"
+                url = f"[https://api.stlouisfed.org/fred/series/observations?series_id=](https://api.stlouisfed.org/fred/series/observations?series_id=){config['id']}&api_key={api_key}&file_type=json&units={config['units']}&sort_order=desc&limit=15"
                 try:
                     res = requests.get(url, timeout=5)
                     if res.status_code == 200:
@@ -279,7 +279,7 @@ def obtener_noticias_acciones(lista_tickers):
     noticias = {}
     for ticker in lista_tickers[:6]:
         try:
-            url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
+            url = f"[https://feeds.finance.yahoo.com/rss/2.0/headline?s=](https://feeds.finance.yahoo.com/rss/2.0/headline?s=){ticker}&region=US&lang=en-US"
             feed = feedparser.parse(url)
             entradas = []
             for entry in feed.entries[:3]:
@@ -302,46 +302,47 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         inf_us_val = macro_int.get('Inflación EE.UU YoY (%)', {}).get('valor', 'N/D') if 'Inflación EE.UU YoY (%)' in macro_int else 'N/D'
         curva_val = macro_int.get('Yield Curve 2Y-10Y (pts)', {}).get('valor', 'N/D') if 'Yield Curve 2Y-10Y (pts)' in macro_int else 'N/D'
         
-        # Redactar el Prompt maestro
-        prompt = f"""Eres un Modelo Cuantitativo de Inversión Institucional. 
-Analiza el tablero global y los scores sectoriales. 
-
-Devuelve tu respuesta ESTRICTAMENTE usando el formato de SEMÁFOROS, sin texto introductorio, estructurado de la siguiente forma usando listas:
-
-### 1. Entorno Macro y Renta Fija
-[Emoji] **Contexto Global:** [Breve justificación]
-[Emoji] **Bonos del Tesoro (USA):** [Comprar/Mantener/Vender] - [Justificación]
-[Emoji] **Renta Fija Argentina (Carry/Bonos):** [Comprar/Mantener/Vender] - [Justificación]
-
-### 2. Semáforo Sectores GICS (Acciones)
-Asigna el color según el 'Score' provisto y la macro:
-[Emoji] **[Nombre del Sector]:** [Comprar/Mantener/Vender] - [Una línea de por qué]
-(Repetir para los 5 mejores sectores)
-
-Reglas de Emojis: 🟢 (Comprar/Positivo), 🟡 (Mantener/Neutral), 🔴 (Vender/Cautela).
-NO uses HTML. Solo formato Markdown puro.
-
---- DATOS MACRO ---
-Bono 10Y EE.UU: {bono_val}
-Inflación EE.UU: {inf_us_val}
-Curva 2Y-10Y EE.UU: {curva_val}
-Riesgo País ARG: {rp_val}
-Tasa ARG: {tasa}%
-Inflación ARG: {inf}%
-
---- SCORES SECTORES GICS ---
-"""
+        # Redactar el Prompt maestro de forma puramente lineal
+        prompt = (
+            "Eres un Modelo Cuantitativo de Inversión Institucional.\n"
+            "Analiza el tablero global y los scores sectoriales.\n\n"
+            "Devuelve tu respuesta ESTRICTAMENTE usando el formato de SEMÁFOROS, sin texto introductorio, estructurado de la siguiente forma usando listas:\n\n"
+            "### 1. Entorno Macro y Renta Fija\n"
+            "[Emoji] **Contexto Global:** [Breve justificación]\n"
+            "[Emoji] **Bonos del Tesoro (USA):** [Comprar/Mantener/Vender] - [Justificación]\n"
+            "[Emoji] **Renta Fija Argentina (Carry/Bonos):** [Comprar/Mantener/Vender] - [Justificación]\n\n"
+            "### 2. Semáforo Sectores GICS (Acciones)\n"
+            "Asigna el color según el 'Score' provisto y la macro:\n"
+            "[Emoji] **[Nombre del Sector]:** [Comprar/Mantener/Vender] - [Una línea de por qué]\n"
+            "(Repetir para los 5 mejores sectores)\n\n"
+            "Reglas de Emojis: 🟢 (Comprar/Positivo), 🟡 (Mantener/Neutral), 🔴 (Vender/Cautela).\n"
+            "NO uses HTML. Solo formato Markdown puro.\n\n"
+            "--- DATOS MACRO ---\n"
+            f"Bono 10Y EE.UU: {bono_val}\n"
+            f"Inflación EE.UU: {inf_us_val}\n"
+            f"Curva 2Y-10Y EE.UU: {curva_val}\n"
+            f"Riesgo País ARG: {rp_val}\n"
+            f"Tasa ARG: {tasa}%\n"
+            f"Inflación ARG: {inf}%\n\n"
+            "--- SCORES SECTORES GICS ---\n"
+        )
         
         for g in datos_gics:
             pe_str = f"{g['P/E']:.2f}" if g['P/E'] else "N/D"
             prompt += f"Sector: {g['Sector']} | P/E actual: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
 
-        # La respuesta ahora es una interfaz visual con instrucciones claras y el prompt listo para copiar
-        mensaje_ui = f"""
-<div style="margin-bottom: 15px; font-size: 1.05rem; color: #e2e8f0;">
-    💡 <b>¡Tus datos están listos!</b><br>
-    Para evitar problemas de conexión o límites de API, hemos redactado el reporte con todos tus datos en tiempo real. 
-    <b>Copia el texto del recuadro a continuación y pégalo en tu ChatGPT, Claude o Gemini web.</b>
-</div>
-```text
-{prompt}
+        # Construir la interfaz HTML segura para Streamlit
+        mensaje_ui = (
+            '<div style="margin-bottom: 15px; font-size: 1.05rem; color: #e2e8f0;">'
+            '💡 <b>¡Tus datos están listos!</b><br><br>'
+            'Para evitar problemas de conexión o límites de API, hemos redactado el reporte con todos tus datos en tiempo real. '
+            '<b>Copia el texto del recuadro a continuación y pégalo en tu ChatGPT, Claude o Gemini web.</b>'
+            '</div>'
+            '<div style="background-color: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; overflow-x: auto;">'
+            f'<pre style="color: #c9d1d9; font-family: monospace; font-size: 0.9rem; margin: 0;">{prompt}</pre>'
+            '</div>'
+        )
+        return mensaje_ui
+
+    except Exception as e: 
+        return f"❌ **Error al generar el compilado de datos:** Detalle: {e}"
