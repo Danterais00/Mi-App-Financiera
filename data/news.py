@@ -5,12 +5,6 @@ import pandas as pd
 import streamlit as st
 import time
 import logging
-import json
-import os
-from datetime import date
-
-# Importación del SDK Oficial de Google
-import google.generativeai as genai
 
 # --- CONFIGURACIÓN DE LOGS ---
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -294,30 +288,12 @@ def obtener_noticias_acciones(lista_tickers):
         except Exception as e: logger.warning(f"Error noticias {ticker}: {e}"); noticias[ticker] = []
     return noticias
 
-# --- MOTOR DE IA DEFINTIVO: SDK OFICIAL + CACHÉ DIARIO EN DISCO ---
-def generar_analisis_ia(macro_arg, macro_int, datos_gics):
-    if "GEMINI_API_KEY" not in st.secrets:
-        return "⚠️ **Falta la clave API de Gemini.** Configura `GEMINI_API_KEY` en los Secrets de Streamlit."
-    
-    # 1. Definir archivo de caché local y fecha actual
-    CACHE_FILE = "ai_report_cache.json"
-    hoy = date.today().isoformat()
-    
-    # 2. Intentar recuperar el reporte del día si ya existe
-    if os.path.exists(CACHE_FILE):
-        try:
-            with open(CACHE_FILE, "r", encoding="utf-8") as f:
-                cache_data = json.load(f)
-                # Si la fecha del archivo coincide con hoy, no llamamos a la API
-                if cache_data.get("fecha") == hoy and cache_data.get("reporte"):
-                    return cache_data["reporte"] + "\n\n*(💡 Reporte recuperado instantáneamente de la memoria caché de hoy)*"
-        except Exception as e:
-            logger.warning(f"Error leyendo caché JSON (se generará uno nuevo): {e}")
 
-    # 3. Si no hay caché válido para hoy, extraemos variables y preparamos el Prompt
+# --- LA SOLUCIÓN 100% INFALIBLE: EL COPILOT PROMPT GENERATOR ---
+@st.cache_data(ttl=3600)
+def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        
+        # Extraer variables con seguridad
         rp_val = macro_arg.get('riesgo_pais', {}).get('valor', 'N/D') if macro_arg.get('riesgo_pais') else 'N/D'
         inf = macro_arg.get('inflacion', 'N/D')
         tasa = macro_arg.get('tasa_bcra', 'N/D')
@@ -326,56 +302,46 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         inf_us_val = macro_int.get('Inflación EE.UU YoY (%)', {}).get('valor', 'N/D') if 'Inflación EE.UU YoY (%)' in macro_int else 'N/D'
         curva_val = macro_int.get('Yield Curve 2Y-10Y (pts)', {}).get('valor', 'N/D') if 'Yield Curve 2Y-10Y (pts)' in macro_int else 'N/D'
         
-        prompt = f"""
-        Eres un Modelo Cuantitativo de Inversión Institucional. 
-        Analiza el tablero global y los scores sectoriales. 
-        
-        Devuelve tu respuesta ESTRICTAMENTE usando el formato de SEMÁFOROS, sin texto introductorio, estructurado de la siguiente forma usando listas:
-        
-        ### 1. Entorno Macro y Renta Fija
-        [Emoji] **Contexto Global:** [Breve justificación]
-        [Emoji] **Bonos del Tesoro (USA):** [Comprar/Mantener/Vender] - [Justificación]
-        [Emoji] **Renta Fija Argentina (Carry/Bonos):** [Comprar/Mantener/Vender] - [Justificación]
-        
-        ### 2. Semáforo Sectores GICS (Acciones)
-        Asigna el color según el 'Score' provisto y la macro:
-        [Emoji] **[Nombre del Sector]:** [Comprar/Mantener/Vender] - [Una línea de por qué]
-        (Repetir para los 5 mejores sectores)
-        
-        Reglas de Emojis: 🟢 (Comprar/Positivo), 🟡 (Mantener/Neutral), 🔴 (Vender/Cautela).
-        NO uses HTML. Solo formato Markdown puro.
-        
-        --- DATOS MACRO ---
-        Bono 10Y EE.UU: {bono_val}
-        Inflación EE.UU: {inf_us_val}
-        Curva 2Y-10Y EE.UU: {curva_val}
-        Riesgo País ARG: {rp_val}
-        Tasa ARG: {tasa}%
-        Inflación ARG: {inf}%
-        
-        --- SCORES SECTORES GICS ---
-        """
+        # Redactar el Prompt maestro
+        prompt = f"""Eres un Modelo Cuantitativo de Inversión Institucional. 
+Analiza el tablero global y los scores sectoriales. 
+
+Devuelve tu respuesta ESTRICTAMENTE usando el formato de SEMÁFOROS, sin texto introductorio, estructurado de la siguiente forma usando listas:
+
+### 1. Entorno Macro y Renta Fija
+[Emoji] **Contexto Global:** [Breve justificación]
+[Emoji] **Bonos del Tesoro (USA):** [Comprar/Mantener/Vender] - [Justificación]
+[Emoji] **Renta Fija Argentina (Carry/Bonos):** [Comprar/Mantener/Vender] - [Justificación]
+
+### 2. Semáforo Sectores GICS (Acciones)
+Asigna el color según el 'Score' provisto y la macro:
+[Emoji] **[Nombre del Sector]:** [Comprar/Mantener/Vender] - [Una línea de por qué]
+(Repetir para los 5 mejores sectores)
+
+Reglas de Emojis: 🟢 (Comprar/Positivo), 🟡 (Mantener/Neutral), 🔴 (Vender/Cautela).
+NO uses HTML. Solo formato Markdown puro.
+
+--- DATOS MACRO ---
+Bono 10Y EE.UU: {bono_val}
+Inflación EE.UU: {inf_us_val}
+Curva 2Y-10Y EE.UU: {curva_val}
+Riesgo País ARG: {rp_val}
+Tasa ARG: {tasa}%
+Inflación ARG: {inf}%
+
+--- SCORES SECTORES GICS ---
+"""
         
         for g in datos_gics:
             pe_str = f"{g['P/E']:.2f}" if g['P/E'] else "N/D"
             prompt += f"Sector: {g['Sector']} | P/E actual: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
-            
-        # 4. Configurar el SDK de Google y hacer la llamada segura
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Ejecución
-        respuesta = model.generate_content(prompt)
-        texto_ia = respuesta.text.strip()
-        
-        # 5. Guardado físico en disco (Persistencia diaria)
-        try:
-            with open(CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump({"fecha": hoy, "reporte": texto_ia}, f, ensure_ascii=False, indent=4)
-        except Exception as e:
-            logger.warning(f"Error guardando caché JSON: {e}")
-            
-        return texto_ia
-        
-    except Exception as e: 
-        return f"❌ **Error al generar el análisis con el SDK de Google:** Detalle técnico: {e}"
+
+        # La respuesta ahora es una interfaz visual con instrucciones claras y el prompt listo para copiar
+        mensaje_ui = f"""
+<div style="margin-bottom: 15px; font-size: 1.05rem; color: #e2e8f0;">
+    💡 <b>¡Tus datos están listos!</b><br>
+    Para evitar problemas de conexión o límites de API, hemos redactado el reporte con todos tus datos en tiempo real. 
+    <b>Copia el texto del recuadro a continuación y pégalo en tu ChatGPT, Claude o Gemini web.</b>
+</div>
+```text
+{prompt}
