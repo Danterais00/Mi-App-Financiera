@@ -220,34 +220,43 @@ def render_nivel3_gics():
 @st.fragment
 def render_nivel4_merval():
     st.markdown("### 📈 Nivel 4: Screener Dinámico (Merval y Panel General)")
-    st.write("Datos extraídos en vivo. Filtra el mercado para encontrar oportunidades ocultas.")
+    st.write("Datos extraídos en vivo. Filtra el mercado para encontrar oportunidades ocultas respetando el volumen y los dividendos.")
     
-    with st.spinner("Extrayendo datos de mercado de ~45 acciones (esto tomará unos segundos la primera vez)..."):
+    with st.spinner("Analizando mercado con hilos paralelos (Cargando ~45 acciones en instantes)..."):
         merval_data = obtener_datos_merval()
         df_completo = pd.DataFrame(merval_data)
         
     if not df_completo.empty:
-        # Sistema de Filtros Rápidos
-        filtro_rapido = st.radio(
-            "Filtros de Oportunidad Rápida:", 
-            ["Mostrar Todas", "🔥 Sobrevendidas (RSI < 35)", "💎 Infravaloradas (P/BV < 1)", "⚠️ Peligro / Euforia (RSI > 70)"],
-            horizontal=True
-        )
+        # UX Mejorada: Filtros Acumulativos y Flexibles
+        st.write("🎯 **Filtros Inteligentes (Puedes marcar varios a la vez):**")
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1: chk_sobreventa = st.checkbox("🔥 Sobrevendidas (RSI < 35)")
+        with col_f2: chk_valor = st.checkbox("💎 Valor / Baratas (P/BV < 1)")
+        with col_f3: chk_peligro = st.checkbox("⚠️ Peligro / Euforia (RSI > 70)")
         
-        # Aplicamos el filtro al DataFrame
-        if "Sobrevendidas" in filtro_rapido:
-            df_mostrar = df_completo[df_completo["RSI"] < 35]
-        elif "Infravaloradas" in filtro_rapido:
-            df_mostrar = df_completo[df_completo["P/BV"] < 1.0]
-        elif "Peligro" in filtro_rapido:
-            df_mostrar = df_completo[df_completo["RSI"] > 70]
-        else:
-            df_mostrar = df_completo
+        # Aplicamos la lógica combinada
+        df_mostrar = df_completo.copy()
+        
+        # Usamos máscaras booleanas
+        mask = pd.Series(True, index=df_mostrar.index)
+        filtro_aplicado = False
+        
+        if chk_sobreventa: 
+            mask = mask & (df_mostrar["RSI"] < 35)
+            filtro_aplicado = True
+        if chk_valor: 
+            mask = mask & (df_mostrar["P/BV"] < 1.0)
+            filtro_aplicado = True
+        if chk_peligro: 
+            mask = mask & (df_mostrar["RSI"] > 70)
+            filtro_aplicado = True
             
-        # Separación en Pestañas por Panel
+        if filtro_aplicado:
+            df_mostrar = df_mostrar[mask]
+
         tab_lider, tab_general = st.tabs(["🏛️ Panel Principal (Alta Liquidez)", "🏢 Panel General (Mayor Riesgo/Retorno)"])
         
-        # Motor de estilos
+        # Motor de estilos extendido
         def aplicar_estilos_merval(df):
             def color_rsi(val):
                 try:
@@ -262,36 +271,41 @@ def render_nivel4_merval():
                     if v < 1: return 'color: #00ff00; font-weight: bold'
                     return ''
                 except: return ''
-            return df.style.map(color_rsi, subset=['RSI']).map(color_pbv, subset=['P/BV'])
+            def alert_vol(val):
+                try:
+                    v = float(val)
+                    if v < 0.1: return 'color: #ff9900; font-style: italic' # Riesgo de iliquidez
+                    return ''
+                except: return ''
+            
+            return df.style.map(color_rsi, subset=['RSI']).map(color_pbv, subset=['P/BV']).map(alert_vol, subset=['Vol. (M)'])
 
         with tab_lider:
             df_l = df_mostrar[df_mostrar["Panel"] == "Principal"]
             if not df_l.empty:
                 st.dataframe(aplicar_estilos_merval(df_l), hide_index=True, use_container_width=True)
-            else: st.info("No hay acciones del Panel Principal que cumplan con este filtro.")
+            else: st.info("Ninguna acción del Panel Principal cumple con tu combinación de filtros.")
             
         with tab_general:
             df_g = df_mostrar[df_mostrar["Panel"] == "General"]
             if not df_g.empty:
                 st.dataframe(aplicar_estilos_merval(df_g), hide_index=True, use_container_width=True)
-            else: st.info("No hay acciones del Panel General que cumplan con este filtro.")
+            else: st.info("Ninguna acción del Panel General cumple con tu combinación de filtros.")
 
-    with st.expander("💡 ¿Cómo leer esta tabla para tomar decisiones? (El Método Práctico)", expanded=False):
+    with st.expander("💡 ¿Cómo leer esta tabla para tomar decisiones? (Manual del Asesor)", expanded=False):
         st.markdown("""
-        ### 1. Buscar "Valor" (Filtro Fundamental)
-        Busca empresas donde el mercado esté siendo pesimista pero la empresa gane dinero.
-        *   **La regla:** Mira la columna `P/BV`.
-        *   Los valores marcados en **verde** (< 1.0x) significan que estás comprando la empresa por menos de lo que valen sus edificios y maquinarias contables.
+        ### 1. El Riesgo Invisible: El Volumen (Nuevo Filtro)
+        *   **La regla:** Mira la columna `Vol. (M)`. Representa la cantidad de acciones negociadas en promedio diario (en millones).
+        *   Si entras al Panel General y ves volúmenes menores a **0.10M (100.000 acciones)**, entrar con mucho dinero es una trampa mortal. Te costará meses vender sin derrumbar el precio de tu propia acción. La aplicación colorea estos números en naranja.
 
-        ### 2. Buscar el "Momento de Entrada" (Filtro Técnico)
-        *   **La regla:** Mira la columna `RSI`.
-            *   🔴 **RSI > 70:** ¡No compres! Ya subió demasiado. Considera vender una parte.
-            *   🟢 **RSI < 35:** Oportunidad. La acción cayó mucho y los vendedores están agotados.
-            *   ⚪ **RSI entre 35 y 70:** Zona neutral.
+        ### 2. Buscar "Valor" y "Renta" (Filtro Fundamental)
+        *   **La regla:** Mira la columna `P/BV` y `Div Yield (%)`.
+        *   Los `P/BV` marcados en **verde** (< 1.0x) son gangas contables.
+        *   Un `Div Yield` mayor a 3% significa que la empresa te paga un alquiler anual muy competitivo solo por sostener la acción.
 
-        ### 3. Asignar el Riesgo (Filtro de Liquidez)
-        *   Si vas a invertir mucho dinero o vas a necesitar sacarlo rápido, solo opera el **Panel Principal**.
-        *   Si tienes un dinero que no vas a tocar por meses, busca "joyas ocultas" en el **Panel General**.
+        ### 3. Cuidado con el RSI Argentino (Filtro Técnico)
+        *   **🔴 RSI > 70:** Acción saturada de compradores. **Cuidado:** En Argentina, un salto fuerte del Dólar CCL arrastra el precio de la acción en pesos, disparando el RSI sin que la empresa mejore. Toma esto como señal para cobrar ganancias, no para comprar.
+        *   **🟢 RSI < 35:** Pánico de vendedores. Excelente momento para armar posición inicial si el `P/BV` también está en verde.
         """)
 
 @st.fragment
