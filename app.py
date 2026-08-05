@@ -91,7 +91,7 @@ def get_val(df, metric, ticker):
     except: return None
 
 
-# --- DEFINICIÓN DE FRAGMENTOS UX ---
+# --- DEFINICIÓN DE FRAGMENTOS UX CON LAZY LOADING ---
 
 @st.fragment
 def render_nivel1_macro():
@@ -222,22 +222,18 @@ def render_nivel4_merval():
     st.markdown("### 📈 Nivel 4: Screener Dinámico (Merval y Panel General)")
     st.write("Datos extraídos en vivo. Filtra el mercado para encontrar oportunidades ocultas respetando el volumen y los dividendos.")
     
-    with st.spinner("Analizando mercado con hilos paralelos (Cargando ~45 acciones en instantes)..."):
+    with st.spinner("Analizando mercado y calculando RSI en vivo... (Esto toma ~10s solo la primera vez del día)"):
         merval_data = obtener_datos_merval()
         df_completo = pd.DataFrame(merval_data)
         
     if not df_completo.empty:
-        # UX Mejorada: Filtros Acumulativos y Flexibles
         st.write("🎯 **Filtros Inteligentes (Puedes marcar varios a la vez):**")
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1: chk_sobreventa = st.checkbox("🔥 Sobrevendidas (RSI < 35)")
         with col_f2: chk_valor = st.checkbox("💎 Valor / Baratas (P/BV < 1)")
         with col_f3: chk_peligro = st.checkbox("⚠️ Peligro / Euforia (RSI > 70)")
         
-        # Aplicamos la lógica combinada
         df_mostrar = df_completo.copy()
-        
-        # Usamos máscaras booleanas
         mask = pd.Series(True, index=df_mostrar.index)
         filtro_aplicado = False
         
@@ -256,7 +252,6 @@ def render_nivel4_merval():
 
         tab_lider, tab_general = st.tabs(["🏛️ Panel Principal (Alta Liquidez)", "🏢 Panel General (Mayor Riesgo/Retorno)"])
         
-        # Motor de estilos extendido
         def aplicar_estilos_merval(df):
             def color_rsi(val):
                 try:
@@ -274,7 +269,7 @@ def render_nivel4_merval():
             def alert_vol(val):
                 try:
                     v = float(val)
-                    if v < 0.1: return 'color: #ff9900; font-style: italic' # Riesgo de iliquidez
+                    if v < 0.1: return 'color: #ff9900; font-style: italic'
                     return ''
                 except: return ''
             
