@@ -3,7 +3,6 @@ import feedparser
 import yfinance as yf
 import pandas as pd
 import streamlit as st
-import time
 import logging
 
 # --- CONFIGURACIÓN DE LOGS ---
@@ -20,7 +19,6 @@ def obtener_macro_argentina():
         "inflacion": None, "tasa_bcra": None, "reservas": None
     }
     
-    # Tolerancia aumentada a 15 segundos para evitar que la tabla desaparezca por lag
     try:
         res = requests.get("https://dolarapi.com/v1/dolares", timeout=15)
         if res.status_code == 200:
@@ -290,16 +288,20 @@ def obtener_noticias_acciones(lista_tickers):
     return noticias
 
 
-# --- LA SOLUCIÓN 100% INFALIBLE: EL COPILOT PROMPT GENERATOR ---
+# --- LA SOLUCIÓN 100% INFALIBLE Y COMPLETA ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     try:
-        # Extraer variables Macro con seguridad
-        rp_val = macro_arg.get('riesgo_pais', {}).get('valor', 'N/D') if macro_arg.get('riesgo_pais') else 'N/D'
-        inf = macro_arg.get('inflacion', 'N/D')
-        tasa = macro_arg.get('tasa_bcra', 'N/D')
+        # LLAMADA INTERNA para obtener la tabla que faltaba (Nivel 2)
+        valuaciones = obtener_valuaciones_mercado()
         
-        # Calcular Brecha Cambiaria si están disponibles los dólares (Mejora)
+        # Extracción Macro ARG
+        rp_val = macro_arg.get('riesgo_pais', {}).get('valor', 'N/D') if macro_arg.get('riesgo_pais') else 'N/D'
+        inf_arg = macro_arg.get('inflacion', 'N/D')
+        tasa_arg = macro_arg.get('tasa_bcra', 'N/D')
+        merval_val = macro_arg.get('merval', {}).get('valor', 'N/D')
+        reservas_val = macro_arg.get('reservas', 'N/D')
+        
         dolares = macro_arg.get("dolares", [])
         brecha_str = "N/D"
         if dolares:
@@ -310,46 +312,84 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
                     brecha = ((val_ccl / val_oficial) - 1) * 100
                     brecha_str = f"{brecha:.1f}%"
             except: pass
+            
+        # Extracción Macro INT
+        def get_m(key): 
+            return macro_int.get(key, {}).get('valor', 'N/D') if key in macro_int else 'N/D'
+            
+        bono_val = get_m('Bono 10Y EE.UU (%)')
+        inf_us_val = get_m('Inflación EE.UU YoY (%)')
+        curva_val = get_m('Yield Curve 2Y-10Y (pts)')
+        oro_val = get_m('Oro (Refugio)')
+        petroleo_val = get_m('Petróleo Crudo (WTI)')
+        sp500_val = get_m('S&P 500 (Global)')
+        nasdaq_val = get_m('Nasdaq (Tech)')
         
-        bono_val = macro_int.get('Bono 10Y EE.UU (%)', {}).get('valor', 'N/D') if 'Bono 10Y EE.UU (%)' in macro_int else 'N/D'
-        inf_us_val = macro_int.get('Inflación EE.UU YoY (%)', {}).get('valor', 'N/D') if 'Inflación EE.UU YoY (%)' in macro_int else 'N/D'
-        curva_val = macro_int.get('Yield Curve 2Y-10Y (pts)', {}).get('valor', 'N/D') if 'Yield Curve 2Y-10Y (pts)' in macro_int else 'N/D'
-        
-        # Redactar el Prompt maestro de forma puramente lineal
+        # REDACCIÓN DEL NUEVO PROMPT (Rol: Asesor Práctico)
         prompt = (
-            "Eres un Modelo Cuantitativo de Inversión Institucional.\n"
-            "Analiza el tablero global y los scores sectoriales.\n\n"
-            "Devuelve tu respuesta ESTRICTAMENTE usando el formato de SEMÁFOROS, sin texto introductorio, estructurado de la siguiente forma usando listas:\n\n"
-            "### 1. Entorno Macro y Renta Fija\n"
-            "[Emoji] **Contexto Global:** [Breve justificación]\n"
-            "[Emoji] **Bonos del Tesoro (USA):** [Comprar/Mantener/Vender] - [Justificación]\n"
-            "[Emoji] **Renta Fija Argentina (Carry/Bonos):** [Comprar/Mantener/Vender] - [Justificación]\n\n"
-            "### 2. Semáforo Sectores GICS (Acciones)\n"
-            "Asigna el color según el 'Score' provisto y la macro:\n"
-            "[Emoji] **[Nombre del Sector]:** [Comprar/Mantener/Vender] - [Una línea de por qué]\n"
-            "(Repetir para los 5 mejores sectores)\n\n"
-            "Reglas de Emojis: 🟢 (Comprar/Positivo), 🟡 (Mantener/Neutral), 🔴 (Vender/Cautela).\n"
-            "NO uses HTML. Solo formato Markdown puro.\n\n"
-            "--- DATOS MACRO ---\n"
-            f"Bono 10Y EE.UU: {bono_val}\n"
-            f"Inflación EE.UU: {inf_us_val}\n"
-            f"Curva 2Y-10Y EE.UU: {curva_val}\n"
-            f"Riesgo País ARG: {rp_val}\n"
-            f"Tasa BCRA ARG: {tasa}%\n"
-            f"Inflación ARG: {inf}%\n"
-            f"Brecha Cambiaria (CCL/Oficial): {brecha_str}\n\n"
-            "--- SCORES SECTORES GICS ---\n"
+            "Actúa como un Asesor Financiero experto y práctico para un inversor individual residente en Argentina.\n"
+            "Tu objetivo es traducir los datos de mercado en decisiones de inversión claras, directas y sin jerga abstracta. "
+            "Si mencionas un dato técnico, explica inmediatamente en qué afecta al bolsillo o a la decisión de comprar/vender.\n\n"
+            
+            "REGLAS ESTRICTAS DE RESPUESTA:\n"
+            "1. NO hables en lenguaje teórico de Wall Street. Usa lenguaje sencillo.\n"
+            "2. Provee EJEMPLOS CONCRETOS. Si sugieres Renta Fija Argentina, di si conviene comprar 'Lecaps' (Letras), 'Obligaciones Negociables (ONs)' o 'Bonos Soberanos (AL30/GD30)' basándote en la inflación, la brecha y el riesgo país actuales.\n"
+            "3. Si sugieres invertir en acciones internacionales, menciona los tickers de los CEDEARs o ETFs (ej. SPY, QQQ, AAPL) justificando con los datos de las tablas.\n"
+            "4. Utiliza el formato de Semáforo: 🟢 (Comprar), 🟡 (Mantener/Neutro), 🔴 (Vender/Evitar).\n\n"
+            
+            "ESTRUCTURA DE TU RESPUESTA (Usa Markdown):\n"
+            "### 1. Resumen Macro (Traducido al Inversor)\n"
+            "[Explicación breve de si el mundo y Argentina están para tomar riesgo o ser conservadores]\n\n"
+            "### 2. Oportunidades en Argentina (Pesos y Dólares)\n"
+            "[Emoji] **Instrumentos Recomendados:** [Por qué elegirlos y tickers/tipos concretos]\n\n"
+            "### 3. Oportunidades Globales (CEDEARs)\n"
+            "[Emoji] **Sectores y Acciones a mirar:** [Explicación basada en los scores y las valuaciones. Tickers concretos]\n\n"
+            
+            "--- INICIO DE LOS DATOS RECOPILADOS (HOY) ---\n\n"
+            
+            "**MACROECONOMÍA ARGENTINA:**\n"
+            f"- S&P Merval: {merval_val}\n"
+            f"- Riesgo País: {rp_val} puntos\n"
+            f"- Inflación Mensual: {inf_arg}%\n"
+            f"- Tasa de Interés BCRA: {tasa_arg}%\n"
+            f"- Brecha Cambiaria (CCL vs Oficial): {brecha_str}\n"
+            f"- Reservas BCRA: USD {reservas_val} millones\n\n"
+            
+            "**MACROECONOMÍA INTERNACIONAL:**\n"
+            f"- S&P 500: {sp500_val}\n"
+            f"- Nasdaq: {nasdaq_val}\n"
+            f"- Oro: {oro_val}\n"
+            f"- Petróleo WTI: {petroleo_val}\n"
+            f"- Bono del Tesoro 10 Años (Rendimiento): {bono_val}%\n"
+            f"- Inflación Anual EE.UU: {inf_us_val}%\n"
+            f"- Curva Inversión (2Y-10Y): {curva_val} puntos\n\n"
+            
+            "**VALUACIONES ACTUALES (NIVEL 2):**\n"
         )
         
+        # Volcar Valuaciones USA
+        prompt += "- Mercado USA (ETFs e Índices):\n"
+        for v in valuaciones.get("USA", []):
+            prompt += f"  * {v['Activo']} ({v['Sector']}) -> P/E: {v['P/E']} | ROE: {v['ROE (%)']}\n"
+            
+        # Volcar Valuaciones ARG
+        prompt += "- ADRs Argentinos:\n"
+        for v in valuaciones.get("ARG", []):
+            prompt += f"  * {v['Activo']} ({v['Sector']}) -> P/E: {v['P/E']} | ROE: {v['ROE (%)']}\n"
+            
+        # Volcar Sectores GICS
+        prompt += "\n**PUNTAJES SECTORIALES GICS (0 a 100, mayor es mejor):**\n"
         for g in datos_gics:
             pe_str = f"{g['P/E']:.2f}" if g['P/E'] else "N/D"
-            prompt += f"Sector: {g['Sector']} | P/E actual: {pe_str} | Retorno 6M: {g['6M (%)']:.1f}% | SCORE QUANT: {g['Score']}/100\n"
+            prompt += f"- Sector {g['Sector']} (ETF: {g['ETF']}) -> Score Quant: {g['Score']}/100 | Rendimiento 6M: {g['6M (%)']:.1f}% | P/E Actual: {pe_str}\n"
 
-        # Construir la interfaz HTML segura para Streamlit
+        prompt += "\n--- FIN DE LOS DATOS ---\n¡Redacta tu análisis ahora!"
+
+        # Construir la interfaz HTML
         mensaje_ui = (
             '<div style="margin-bottom: 15px; font-size: 1.05rem; color: #e2e8f0;">'
-            '💡 <b>¡Tus datos están listos!</b><br><br>'
-            'Para evitar problemas de conexión o límites de API, hemos redactado el reporte con todos tus datos en tiempo real. '
+            '💡 <b>¡Tu Compilado Integral está listo!</b><br><br>'
+            'Hemos actualizado las instrucciones. Ahora la IA analizará <b>todas las tablas</b> (Macro, Valuaciones y Sectores) y te dará recomendaciones prácticas con <b>instrumentos reales y tickers operables en Argentina.</b><br><br>'
             '<b>Copia el texto del recuadro a continuación y pégalo en tu ChatGPT, Claude o Gemini web.</b>'
             '</div>'
             '<div style="background-color: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; overflow-x: auto;">'
