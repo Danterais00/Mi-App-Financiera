@@ -273,21 +273,103 @@ def obtener_datos_gics():
         
     return sorted(datos_sectores, key=lambda x: x["Score"], reverse=True)
 
+
+def calcular_rsi_serie(serie, period=14):
+    """Calcula el RSI (Relative Strength Index) de una serie de pandas"""
+    delta = serie.diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.ewm(com=period-1, min_periods=period).mean()
+    avg_loss = loss.ewm(com=period-1, min_periods=period).mean()
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
+
 @st.cache_data(ttl=3600)
 def obtener_datos_merval():
-    """Retorna la tabla local del Merval y Panel General con filtros cuantitativos"""
-    return [
-        {"Ticker": "GGAL", "Empresa": "Grupo Galicia", "Sector": "Financiero", "Panel": "Principal", "P/E": 7.5, "P/BV": 1.8, "RSI": 65, "Tendencia": "Alcista", "Lectura": "Fuerte liquidez. RSI alto indica que está cerca de sobrecompra. Ideal mantener, no comprar ahora."},
-        {"Ticker": "BMA", "Empresa": "Banco Macro", "Sector": "Financiero", "Panel": "Principal", "P/E": 6.8, "P/BV": 1.5, "RSI": 45, "Tendencia": "Alcista", "Lectura": "Más barata que GGAL (menor P/E). Buen punto técnico (RSI neutral). Interesante para acumular."},
-        {"Ticker": "BPAT", "Empresa": "Banco Patagonia", "Sector": "Financiero", "Panel": "General", "P/E": 5.2, "P/BV": 1.1, "RSI": 35, "Tendencia": "Lateral", "Lectura": "Muy barata, pero con poca liquidez. Cuesta salir rápido. Solo para inversores pacientes."},
-        {"Ticker": "YPFD", "Empresa": "YPF", "Sector": "Energía / Oil&Gas", "Panel": "Principal", "P/E": 4.1, "P/BV": 0.9, "RSI": 72, "Tendencia": "Alcista", "Lectura": "Cotiza por debajo de su valor contable (P/BV < 1). RSI en 72 marca sobrecompra. Esperar corrección para entrar."},
-        {"Ticker": "PAMP", "Empresa": "Pampa Energía", "Sector": "Energía / Utilities", "Panel": "Principal", "P/E": 6.5, "P/BV": 1.2, "RSI": 50, "Tendencia": "Alcista", "Lectura": "Sólida financieramente. RSI en zona media. Una acción defensiva ideal para estabilizar la cartera."},
-        {"Ticker": "CAPX", "Empresa": "Capex S.A.", "Sector": "Energía / Oil&Gas", "Panel": "General", "P/E": 3.8, "P/BV": 0.8, "RSI": 40, "Tendencia": "Alcista", "Lectura": "Joya del panel general. Excelentes ratios, pero spread amplio al operar. Comprar de a poco con órdenes límite."},
-        {"Ticker": "TXAR", "Empresa": "Ternium Arg.", "Sector": "Materiales / Industria", "Panel": "Principal", "P/E": 8.0, "P/BV": 0.7, "RSI": 30, "Tendencia": "Bajista/Lateral", "Lectura": "RSI en 30 indica sobreventa (castigada). P/BV de 0.7 indica que está barata frente a sus fierros. Oportunidad de rebote."},
-        {"Ticker": "ALUA", "Empresa": "Aluar", "Sector": "Materiales / Industria", "Panel": "Principal", "P/E": 9.5, "P/BV": 1.4, "RSI": 55, "Tendencia": "Alcista", "Lectura": "Gran cobertura contra el salto del dólar oficial (exportadora). Valuación justa, ni muy cara ni muy barata."},
-        {"Ticker": "TGSU2", "Empresa": "Transp. Gas del Sur", "Sector": "Servicios Públicos", "Panel": "Principal", "P/E": 11.2, "P/BV": 2.1, "RSI": 80, "Tendencia": "Alcista", "Lectura": "Peligro de corrección. RSI en 80 (muy sobrecomprada) y ratios caros. Tomar ganancias si ya la tienes."},
-        {"Ticker": "METR", "Empresa": "Metrogas", "Sector": "Servicios Públicos", "Panel": "General", "P/E": 15.0, "P/BV": 1.8, "RSI": 60, "Tendencia": "Lateral", "Lectura": "Muy atada a decisiones tarifarias del gobierno. Riesgo alto y poca liquidez."}
-    ]
+    """Descarga e itera sobre todas las acciones del Merval y Panel General para el Screener"""
+    # Panel Líder completo (22 Tickers)
+    lider = ["ALUA.BA", "BBAR.BA", "BMA.BA", "BYMA.BA", "CEPU.BA", "COME.BA", "CRES.BA", 
+             "CVH.BA", "EDN.BA", "GGAL.BA", "IRSA.BA", "LOMA.BA", "MIRG.BA", "PAMP.BA", 
+             "SUPV.BA", "TECO2.BA", "TGNO4.BA", "TGSU2.BA", "TRAN.BA", "TXAR.BA", "VALO.BA", "YPFD.BA"]
+    
+    # Selección de los más líquidos del Panel General (~22 Tickers)
+    general = ["AGRO.BA", "AUSO.BA", "BHIP.BA", "BOLT.BA", "BPAT.BA", "CAPX.BA", "CECO2.BA", 
+               "CELU.BA", "CGPA2.BA", "CTIO.BA", "DGCU2.BA", "FERR.BA", "GBAN.BA", "GCLA.BA", 
+               "HAVA.BA", "INVJ.BA", "LEDE.BA", "METR.BA", "MOLI.BA", "MORI.BA", "OEST.BA", "SAMI.BA"]
+    
+    todos_los_tickers = lider + general
+    resultados = []
+    
+    try:
+        # Descarga masiva para hacer el cálculo del RSI (últimos 3 meses)
+        hist_data = yf.download(todos_los_tickers, period="3mo", progress=False)
+        df_close = hist_data['Close'] if 'Close' in hist_data else pd.DataFrame()
+    except Exception as e:
+        logger.warning(f"Error en descarga masiva Merval: {e}")
+        df_close = pd.DataFrame()
+
+    for ticker in todos_los_tickers:
+        try:
+            panel = "Principal" if ticker in lider else "General"
+            tk = yf.Ticker(ticker)
+            info = tk.info
+            
+            # Limpiar el ticker para visualización
+            ticker_limpio = ticker.replace(".BA", "")
+            empresa = info.get("shortName", ticker_limpio)
+            
+            # Extraer ratios fundamentales
+            pe = info.get("trailingPE", info.get("forwardPE"))
+            pbv = info.get("priceToBook")
+            
+            pe_val = round(pe, 2) if isinstance(pe, (int, float)) else None
+            pbv_val = round(pbv, 2) if isinstance(pbv, (int, float)) else None
+            
+            # Calcular RSI y Tendencia
+            rsi_val, tendencia = None, "N/D"
+            if not df_close.empty and ticker in df_close.columns:
+                serie = df_close[ticker].dropna()
+                if len(serie) >= 15:
+                    rsi_serie = calcular_rsi_serie(serie)
+                    if not rsi_serie.empty and not pd.isna(rsi_serie.iloc[-1]):
+                        rsi_val = round(float(rsi_serie.iloc[-1]), 2)
+                        
+                        # Tendencia básica por SMA de 20 días
+                        sma20 = serie.rolling(window=20).mean().iloc[-1]
+                        precio_actual = serie.iloc[-1]
+                        tendencia = "Alcista" if precio_actual > sma20 else "Bajista"
+
+            # Redacción Dinámica de la Lectura del Asesor
+            lectura = "Evaluando activo..."
+            if rsi_val is not None:
+                if rsi_val > 70:
+                    lectura = "¡Precaución! Indicador RSI de euforia. Posible toma de ganancias inminente."
+                elif rsi_val < 35:
+                    lectura = "Oportunidad Técnica: Acción castigada (Sobreventa). Posible rebote."
+                else:
+                    if pbv_val and pbv_val < 1:
+                        lectura = "Zona neutral, pero cotiza muy barata (P/BV < 1). Buena para acumular."
+                    else:
+                        lectura = "Lateralizando en zona de equilibrio. Sin urgencia técnica."
+                        
+                if panel == "General":
+                    lectura += " (Atención: Liquidez limitada en Panel General)."
+
+            resultados.append({
+                "Ticker": ticker_limpio,
+                "Empresa": empresa,
+                "Panel": panel,
+                "P/E": pe_val,
+                "P/BV": pbv_val,
+                "RSI": rsi_val,
+                "Tendencia": tendencia,
+                "Lectura": lectura
+            })
+        except Exception as e:
+            logger.warning(f"No se pudieron cargar datos para {ticker}: {e}")
+            
+    # Ordenamos por defecto: Las más sobrevendidas (menor RSI) primero
+    return sorted(resultados, key=lambda x: x["RSI"] if x["RSI"] is not None else 999)
 
 @st.cache_data(ttl=1800)
 def obtener_noticias_acciones(lista_tickers):
@@ -311,7 +393,6 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         valuaciones = obtener_valuaciones_mercado()
         datos_merval = obtener_datos_merval()
         
-        # Extracción Macro ARG
         rp_val = macro_arg.get('riesgo_pais', {}).get('valor', 'N/D') if macro_arg.get('riesgo_pais') else 'N/D'
         inf_arg = macro_arg.get('inflacion', 'N/D')
         tasa_arg = macro_arg.get('tasa_bcra', 'N/D')
@@ -329,7 +410,6 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
                     brecha_str = f"{brecha:.1f}%"
             except: pass
             
-        # Extracción Macro INT
         def get_m(key): 
             return macro_int.get(key, {}).get('valor', 'N/D') if key in macro_int else 'N/D'
             
@@ -341,7 +421,6 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         sp500_val = get_m('S&P 500 (Global)')
         nasdaq_val = get_m('Nasdaq (Tech)')
         
-        # REDACCIÓN DEL NUEVO PROMPT MAESTRO
         prompt = (
             "Actúa como un Asesor Financiero experto y práctico para un inversor individual residente en Argentina.\n"
             "Tu objetivo es traducir los datos de mercado en decisiones de inversión claras, directas y sin jerga abstracta. "
@@ -352,7 +431,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             "2. Provee EJEMPLOS CONCRETOS. Si sugieres Renta Fija Argentina, di si conviene comprar 'Lecaps' (Letras), 'Obligaciones Negociables (ONs)' o 'Bonos Soberanos (AL30/GD30)'.\n"
             "3. Si sugieres CEDEARs, menciona los tickers exactos (ej. SPY, QQQ, AAPL).\n"
             "4. Utiliza el formato de Semáforo: 🟢 (Comprar), 🟡 (Mantener/Neutro), 🔴 (Vender/Evitar).\n"
-            "5. APLICA LA METODOLOGÍA DEL ASESOR PARA EL MERVAL: Busca Valor (P/BV bajo o P/E bajo), Momento de Entrada (NO comprar si RSI > 70, sugerir compra si RSI < 30, neutral 40-60), y evalúa el Riesgo de Liquidez (advierte si la sugerencia es del Panel General).\n\n"
+            "5. APLICA LA METODOLOGÍA DEL ASESOR PARA EL MERVAL: Busca Valor (P/BV bajo o P/E bajo), Momento de Entrada (NO comprar si RSI > 70, sugerir compra si RSI < 35, neutral 40-60), y evalúa el Riesgo de Liquidez (advierte si la sugerencia es del Panel General).\n\n"
             
             "ESTRUCTURA OBLIGATORIA DE TU RESPUESTA:\n"
             "### 1. Resumen Macro (Traducido al Inversor)\n"
@@ -387,20 +466,20 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         )
         
         prompt += "- Mercado USA (ETFs e Índices):\n"
-        for v in valuaciones.get("USA", []):
-            prompt += f"  * {v['Activo']} ({v['Sector']}) -> P/E: {v['P/E']} | ROE: {v['ROE (%)']}\n"
+        for v in valuaciones.get("USA", []): prompt += f"  * {v['Activo']} ({v['Sector']}) -> P/E: {v['P/E']} | ROE: {v['ROE (%)']}\n"
             
         prompt += "- ADRs Argentinos:\n"
-        for v in valuaciones.get("ARG", []):
-            prompt += f"  * {v['Activo']} ({v['Sector']}) -> P/E: {v['P/E']} | ROE: {v['ROE (%)']}\n"
+        for v in valuaciones.get("ARG", []): prompt += f"  * {v['Activo']} ({v['Sector']}) -> P/E: {v['P/E']} | ROE: {v['ROE (%)']}\n"
             
         prompt += "\n**PUNTAJES SECTORIALES GICS:**\n"
         for g in datos_gics:
             pe_str = f"{g['P/E']:.2f}" if g['P/E'] else "N/D"
             prompt += f"- Sector {g['Sector']} (ETF: {g['ETF']}) -> Score Quant: {g['Score']}/100 | Rendimiento 6M: {g['6M (%)']:.1f}% | P/E Actual: {pe_str}\n"
 
-        prompt += "\n**TABLERO MERVAL Y PANEL GENERAL (NIVEL 4):**\n"
-        for m in datos_merval:
+        # Filtramos un poco para la IA para no sobrecargar el prompt con 45 acciones
+        top_interesantes = [m for m in datos_merval if (m['RSI'] and m['RSI'] < 40) or (m['RSI'] and m['RSI'] > 70) or (m['P/BV'] and m['P/BV'] < 1)][:15]
+        prompt += "\n**TABLERO MERVAL (DESTACADOS DEL SCREENER):**\n"
+        for m in top_interesantes:
             prompt += f"- {m['Ticker']} ({m['Empresa']}): P/E: {m['P/E']}x | P/BV: {m['P/BV']}x | RSI: {m['RSI']} | Panel: {m['Panel']} | Lectura: {m['Lectura']}\n"
 
         prompt += "\n--- FIN DE LOS DATOS ---\n¡Redacta tu análisis ahora aplicando estrictamente tus nuevas reglas!"
