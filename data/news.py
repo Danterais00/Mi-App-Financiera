@@ -4,6 +4,7 @@ import yfinance as yf
 import pandas as pd
 import streamlit as st
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURACIÓN DE LOGS ---
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -284,91 +285,98 @@ def calcular_rsi_serie(serie, period=14):
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
+# Motor Multihilo para extraer datos de un ticker individual rápido
+def extraer_info_ticker(ticker, lider_list, df_close):
+    try:
+        panel = "Principal" if ticker in lider_list else "General"
+        tk = yf.Ticker(ticker)
+        info = tk.info
+        
+        ticker_limpio = ticker.replace(".BA", "")
+        empresa = info.get("shortName", ticker_limpio)
+        
+        # Ratios y nuevos datos (Dividendo y Volumen)
+        pe = info.get("trailingPE", info.get("forwardPE"))
+        pbv = info.get("priceToBook")
+        volumen = info.get("averageVolume", 0)
+        dy = info.get("dividendYield", 0)
+        
+        pe_val = round(pe, 2) if isinstance(pe, (int, float)) else None
+        pbv_val = round(pbv, 2) if isinstance(pbv, (int, float)) else None
+        dy_val = round(dy * 100, 2) if isinstance(dy, (int, float)) and dy > 0 else None
+        
+        rsi_val, tendencia = None, "N/D"
+        if not df_close.empty and ticker in df_close.columns:
+            serie = df_close[ticker].dropna()
+            if len(serie) >= 15:
+                rsi_serie = calcular_rsi_serie(serie)
+                if not rsi_serie.empty and not pd.isna(rsi_serie.iloc[-1]):
+                    rsi_val = round(float(rsi_serie.iloc[-1]), 2)
+                    sma20 = serie.rolling(window=20).mean().iloc[-1]
+                    precio_actual = serie.iloc[-1]
+                    tendencia = "Alcista" if precio_actual > sma20 else "Bajista"
+
+        # Lógica inteligente del Asesor
+        lectura = "Evaluando activo..."
+        if volumen < 20000 and panel == "General":
+            lectura = "🔴 RIESGO DE ILIQUIDEZ EXTREMO. Difícil salir de la posición sin perder precio."
+        elif rsi_val is not None:
+            if rsi_val > 70:
+                lectura = "¡Precaución! Indicador RSI de euforia. Posible toma de ganancias inminente."
+            elif rsi_val < 35:
+                lectura = "Oportunidad Técnica: Acción castigada (Sobreventa). Posible rebote."
+            else:
+                if pbv_val and pbv_val < 1:
+                    lectura = "Zona neutral, pero cotiza muy barata por fundamentales (P/BV < 1)."
+                else:
+                    lectura = "Lateralizando en zona de equilibrio. Riesgo/Beneficio neutro."
+                    
+            if panel == "General" and volumen < 100000:
+                lectura += " (Atención: Operar con límite por spread y liquidez baja)."
+
+        return {
+            "Ticker": ticker_limpio,
+            "Empresa": empresa,
+            "Panel": panel,
+            "P/E": pe_val,
+            "P/BV": pbv_val,
+            "Div Yield (%)": dy_val,
+            "Vol. (M)": round(volumen / 1_000_000, 2) if volumen else None,
+            "RSI": rsi_val,
+            "Tendencia": tendencia,
+            "Lectura": lectura
+        }
+    except Exception as e:
+        logger.warning(f"Fallo extrayendo {ticker}: {e}")
+        return None
+
 @st.cache_data(ttl=3600)
 def obtener_datos_merval():
-    """Descarga e itera sobre todas las acciones del Merval y Panel General para el Screener"""
-    # Panel Líder completo (22 Tickers)
+    """Descarga veloz (Multithreading) de acciones del Merval y Panel General"""
     lider = ["ALUA.BA", "BBAR.BA", "BMA.BA", "BYMA.BA", "CEPU.BA", "COME.BA", "CRES.BA", 
              "CVH.BA", "EDN.BA", "GGAL.BA", "IRSA.BA", "LOMA.BA", "MIRG.BA", "PAMP.BA", 
              "SUPV.BA", "TECO2.BA", "TGNO4.BA", "TGSU2.BA", "TRAN.BA", "TXAR.BA", "VALO.BA", "YPFD.BA"]
     
-    # Selección de los más líquidos del Panel General (~22 Tickers)
     general = ["AGRO.BA", "AUSO.BA", "BHIP.BA", "BOLT.BA", "BPAT.BA", "CAPX.BA", "CECO2.BA", 
                "CELU.BA", "CGPA2.BA", "CTIO.BA", "DGCU2.BA", "FERR.BA", "GBAN.BA", "GCLA.BA", 
                "HAVA.BA", "INVJ.BA", "LEDE.BA", "METR.BA", "MOLI.BA", "MORI.BA", "OEST.BA", "SAMI.BA"]
     
     todos_los_tickers = lider + general
-    resultados = []
     
     try:
-        # Descarga masiva para hacer el cálculo del RSI (últimos 3 meses)
         hist_data = yf.download(todos_los_tickers, period="3mo", progress=False)
         df_close = hist_data['Close'] if 'Close' in hist_data else pd.DataFrame()
-    except Exception as e:
-        logger.warning(f"Error en descarga masiva Merval: {e}")
+    except:
         df_close = pd.DataFrame()
 
-    for ticker in todos_los_tickers:
-        try:
-            panel = "Principal" if ticker in lider else "General"
-            tk = yf.Ticker(ticker)
-            info = tk.info
+    resultados = []
+    # Usamos 10 hilos para reducir el tiempo de carga drásticamente
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(extraer_info_ticker, t, lider, df_close): t for t in todos_los_tickers}
+        for future in as_completed(futures):
+            res = future.result()
+            if res: resultados.append(res)
             
-            # Limpiar el ticker para visualización
-            ticker_limpio = ticker.replace(".BA", "")
-            empresa = info.get("shortName", ticker_limpio)
-            
-            # Extraer ratios fundamentales
-            pe = info.get("trailingPE", info.get("forwardPE"))
-            pbv = info.get("priceToBook")
-            
-            pe_val = round(pe, 2) if isinstance(pe, (int, float)) else None
-            pbv_val = round(pbv, 2) if isinstance(pbv, (int, float)) else None
-            
-            # Calcular RSI y Tendencia
-            rsi_val, tendencia = None, "N/D"
-            if not df_close.empty and ticker in df_close.columns:
-                serie = df_close[ticker].dropna()
-                if len(serie) >= 15:
-                    rsi_serie = calcular_rsi_serie(serie)
-                    if not rsi_serie.empty and not pd.isna(rsi_serie.iloc[-1]):
-                        rsi_val = round(float(rsi_serie.iloc[-1]), 2)
-                        
-                        # Tendencia básica por SMA de 20 días
-                        sma20 = serie.rolling(window=20).mean().iloc[-1]
-                        precio_actual = serie.iloc[-1]
-                        tendencia = "Alcista" if precio_actual > sma20 else "Bajista"
-
-            # Redacción Dinámica de la Lectura del Asesor
-            lectura = "Evaluando activo..."
-            if rsi_val is not None:
-                if rsi_val > 70:
-                    lectura = "¡Precaución! Indicador RSI de euforia. Posible toma de ganancias inminente."
-                elif rsi_val < 35:
-                    lectura = "Oportunidad Técnica: Acción castigada (Sobreventa). Posible rebote."
-                else:
-                    if pbv_val and pbv_val < 1:
-                        lectura = "Zona neutral, pero cotiza muy barata (P/BV < 1). Buena para acumular."
-                    else:
-                        lectura = "Lateralizando en zona de equilibrio. Sin urgencia técnica."
-                        
-                if panel == "General":
-                    lectura += " (Atención: Liquidez limitada en Panel General)."
-
-            resultados.append({
-                "Ticker": ticker_limpio,
-                "Empresa": empresa,
-                "Panel": panel,
-                "P/E": pe_val,
-                "P/BV": pbv_val,
-                "RSI": rsi_val,
-                "Tendencia": tendencia,
-                "Lectura": lectura
-            })
-        except Exception as e:
-            logger.warning(f"No se pudieron cargar datos para {ticker}: {e}")
-            
-    # Ordenamos por defecto: Las más sobrevendidas (menor RSI) primero
     return sorted(resultados, key=lambda x: x["RSI"] if x["RSI"] is not None else 999)
 
 @st.cache_data(ttl=1800)
@@ -431,7 +439,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             "2. Provee EJEMPLOS CONCRETOS. Si sugieres Renta Fija Argentina, di si conviene comprar 'Lecaps' (Letras), 'Obligaciones Negociables (ONs)' o 'Bonos Soberanos (AL30/GD30)'.\n"
             "3. Si sugieres CEDEARs, menciona los tickers exactos (ej. SPY, QQQ, AAPL).\n"
             "4. Utiliza el formato de Semáforo: 🟢 (Comprar), 🟡 (Mantener/Neutro), 🔴 (Vender/Evitar).\n"
-            "5. APLICA LA METODOLOGÍA DEL ASESOR PARA EL MERVAL: Busca Valor (P/BV bajo o P/E bajo), Momento de Entrada (NO comprar si RSI > 70, sugerir compra si RSI < 35, neutral 40-60), y evalúa el Riesgo de Liquidez (advierte si la sugerencia es del Panel General).\n\n"
+            "5. APLICA LA METODOLOGÍA DEL ASESOR PARA EL MERVAL: Busca Valor (P/BV bajo), Dividendos altos, Momento de Entrada (NO comprar si RSI > 70, sugerir compra si RSI < 35), y evalúa el Riesgo de Liquidez alertando si el volumen es muy bajo.\n\n"
             
             "ESTRUCTURA OBLIGATORIA DE TU RESPUESTA:\n"
             "### 1. Resumen Macro (Traducido al Inversor)\n"
@@ -441,7 +449,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             "### 3. Oportunidades Globales (CEDEARs)\n"
             "[Emoji] **Sectores y Acciones a mirar:** [Explicación basada en los scores y las valuaciones. Tickers concretos]\n\n"
             "### 4. Oportunidades en el Merval Local (Pesos)\n"
-            "[Emoji] **Acciones Argentinas:** [Analiza la tabla del Merval aplicando las reglas de P/BV y RSI]\n\n"
+            "[Emoji] **Acciones Argentinas:** [Analiza la tabla del Merval aplicando las reglas de P/BV, RSI y Volumen]\n\n"
             
             "--- INICIO DE LOS DATOS RECOPILADOS (HOY) ---\n\n"
             
@@ -476,11 +484,10 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             pe_str = f"{g['P/E']:.2f}" if g['P/E'] else "N/D"
             prompt += f"- Sector {g['Sector']} (ETF: {g['ETF']}) -> Score Quant: {g['Score']}/100 | Rendimiento 6M: {g['6M (%)']:.1f}% | P/E Actual: {pe_str}\n"
 
-        # Filtramos un poco para la IA para no sobrecargar el prompt con 45 acciones
         top_interesantes = [m for m in datos_merval if (m['RSI'] and m['RSI'] < 40) or (m['RSI'] and m['RSI'] > 70) or (m['P/BV'] and m['P/BV'] < 1)][:15]
         prompt += "\n**TABLERO MERVAL (DESTACADOS DEL SCREENER):**\n"
         for m in top_interesantes:
-            prompt += f"- {m['Ticker']} ({m['Empresa']}): P/E: {m['P/E']}x | P/BV: {m['P/BV']}x | RSI: {m['RSI']} | Panel: {m['Panel']} | Lectura: {m['Lectura']}\n"
+            prompt += f"- {m['Ticker']} ({m['Empresa']}): P/E: {m['P/E']}x | P/BV: {m['P/BV']}x | RSI: {m['RSI']} | Vol(M): {m['Vol. (M)']} | Div.Yield: {m['Div Yield (%)']}% | Panel: {m['Panel']} | Lectura: {m['Lectura']}\n"
 
         prompt += "\n--- FIN DE LOS DATOS ---\n¡Redacta tu análisis ahora aplicando estrictamente tus nuevas reglas!"
 
