@@ -15,7 +15,7 @@ from data.news import (
     generar_analisis_ia, 
     obtener_valuaciones_mercado, 
     obtener_datos_gics,
-    obtener_datos_merval  # <-- NUEVA FUNCIÓN INCORPORADA
+    obtener_datos_merval 
 )
 
 APP_VERSION = "v9.0 - Quant Engine (Lazy Loading)"
@@ -91,22 +91,18 @@ def get_val(df, metric, ticker):
     except: return None
 
 
-# --- DEFINICIÓN DE FRAGMENTOS UX (Carga Independiente) ---
+# --- DEFINICIÓN DE FRAGMENTOS UX ---
 
 @st.fragment
 def render_nivel1_macro():
     st.markdown("### Contexto Macroeconómico")
     brecha_calculada = None
-    
     with st.spinner("Sincronizando datos macroeconómicos..."):
         macro_arg_data = obtener_macro_argentina()
         macro_int_data = obtener_macro_internacional()
-
     col_arg, col_int = st.columns(2)
-    
     with col_arg:
         st.subheader("🇦🇷 Mercado Argentino")
-        
         rp = macro_arg_data.get("riesgo_pais") or {}
         merv = macro_arg_data.get("merval") or {}
         inf = macro_arg_data.get("inflacion")
@@ -143,12 +139,10 @@ def render_nivel1_macro():
             </div>
         </div>"""
         st.markdown(html_caja, unsafe_allow_html=True)
-        
         if dolares:
             val_oficial = next((float(d['venta']) for d in dolares if d['nombre'] == 'Oficial'), None)
             val_ccl = next((float(d['venta']) for d in dolares if d['nombre'] == 'CCL'), None)
             brecha_calculada = ((val_ccl / val_oficial) - 1) * 100 if val_oficial and val_ccl else None
-
             html_arg = '<div class="table-container" style="margin-bottom: 30px;"><table class="custom-table" style="width: 100%;">'
             html_arg += '<tr><th style="text-align: left;">Tipo de Cambio</th><th>Venta</th><th>Compra</th></tr>'
             for d in dolares: html_arg += f"<tr><td class='col-header' style='text-align: left;'>Dólar {d['nombre']}</td><td>${d['venta']}</td><td><span style='color:#8ba1b6;'>${d['compra']}</span></td></tr>"
@@ -195,29 +189,22 @@ def render_nivel2_valuaciones():
 def render_nivel3_gics():
     st.markdown("### Sectores GICS (Estados Unidos)")
     st.write("Análisis cuantitativo de los 11 sectores oficiales de la economía para identificar oportunidades de capital.")
-    
     with st.spinner("Calculando Momentum e Investment Score por Sector..."):
         datos_sectores = obtener_datos_gics()
-        
         if datos_sectores:
             html_gics = '<div class="table-container"><table class="custom-table" style="width: 100%;">'
             html_gics += '<tr><th style="text-align: left;">Sector (ETF)</th><th>P/E Ratio</th><th>Rend. 1 Mes</th><th>Rend. 6 Meses</th><th>Investment Score</th></tr>'
-            
             for s in datos_sectores:
                 pe_str = f"{s['P/E']:.2f}" if s['P/E'] is not None else "N/D"
                 v1m_c = "#2ecca6" if s['1M (%)'] > 0 else "#ff6b6b"
                 v6m_c = "#2ecca6" if s['6M (%)'] > 0 else "#ff6b6b"
-                
                 sc = s['Score']
                 if sc >= 75: sc_color = "#2ecca6" 
                 elif sc >= 50: sc_color = "#ffd54f" 
                 else: sc_color = "#ff6b6b"
-                
                 html_gics += f"<tr><td class='col-header' style='text-align: left;'>{s['Sector']} ({s['ETF']})</td><td>{pe_str}</td><td style='color:{v1m_c}; font-weight:bold;'>{s['1M (%)']:+.2f}%</td><td style='color:{v6m_c}; font-weight:bold;'>{s['6M (%)']:+.2f}%</td><td><span style='background-color: {sc_color}20; color: {sc_color}; padding: 4px 10px; border-radius: 12px; font-weight: bold;'>{sc} / 100</span></td></tr>"
-                
             html_gics += '</table></div>'
             st.markdown(html_gics, unsafe_allow_html=True)
-            
             st.write("")
             st.markdown("#### 🔍 Composición Principal de Sectores")
             col_exp1, col_exp2 = st.columns(2)
@@ -229,60 +216,84 @@ def render_nivel3_gics():
                 with st.expander("⚕️ Salud (XLV)"): st.write("Eli Lilly (LLY), UnitedHealth (UNH), Johnson & Johnson (JNJ)")
                 with st.expander("🛒 Consumo Básico (XLP)"): st.write("Procter & Gamble (PG), Costco (COST), Walmart (WMT)")
                 with st.expander("🏭 Industriales (XLI)"): st.write("Caterpillar (CAT), Union Pacific (UNP), Boeing (BA)")
-        else:
-            st.error("Error al descargar los datos sectoriales desde Yahoo Finance.")
 
-# --- NUEVO FRAGMENTO: NIVEL 4 MERVAL ---
 @st.fragment
 def render_nivel4_merval():
-    st.markdown("### 📈 Nivel 4: Tablero de Control Merval y Panel General")
-    with st.spinner("Cargando datos locales..."):
-        merval_data = obtener_datos_merval()
-        df_merval = pd.DataFrame(merval_data)
-        
-    def aplicar_estilos_merval(df):
-        def color_rsi(val):
-            try:
-                v = float(val)
-                if v > 70: return 'color: #ff4b4b; font-weight: bold'
-                elif v < 30: return 'color: #00ff00; font-weight: bold'
-                return ''
-            except: return ''
-            
-        def color_pbv(val):
-            try:
-                v = float(val)
-                if v < 1: return 'color: #00ff00; font-weight: bold'
-                return ''
-            except: return ''
-
-        return df.style.map(color_rsi, subset=['RSI']).map(color_pbv, subset=['P/BV'])
-
-    st.dataframe(aplicar_estilos_merval(df_merval), hide_index=True, use_container_width=True)
+    st.markdown("### 📈 Nivel 4: Screener Dinámico (Merval y Panel General)")
+    st.write("Datos extraídos en vivo. Filtra el mercado para encontrar oportunidades ocultas.")
     
-    with st.expander("💡 ¿Cómo leer esta tabla para tomar decisiones? (El Método Práctico)", expanded=True):
-        st.markdown("""
-        Cuando mires un tablero como este en tu broker, aplica estos **3 filtros mentales** para decidir dónde poner tu dinero:
+    with st.spinner("Extrayendo datos de mercado de ~45 acciones (esto tomará unos segundos la primera vez)..."):
+        merval_data = obtener_datos_merval()
+        df_completo = pd.DataFrame(merval_data)
+        
+    if not df_completo.empty:
+        # Sistema de Filtros Rápidos
+        filtro_rapido = st.radio(
+            "Filtros de Oportunidad Rápida:", 
+            ["Mostrar Todas", "🔥 Sobrevendidas (RSI < 35)", "💎 Infravaloradas (P/BV < 1)", "⚠️ Peligro / Euforia (RSI > 70)"],
+            horizontal=True
+        )
+        
+        # Aplicamos el filtro al DataFrame
+        if "Sobrevendidas" in filtro_rapido:
+            df_mostrar = df_completo[df_completo["RSI"] < 35]
+        elif "Infravaloradas" in filtro_rapido:
+            df_mostrar = df_completo[df_completo["P/BV"] < 1.0]
+        elif "Peligro" in filtro_rapido:
+            df_mostrar = df_completo[df_completo["RSI"] > 70]
+        else:
+            df_mostrar = df_completo
+            
+        # Separación en Pestañas por Panel
+        tab_lider, tab_general = st.tabs(["🏛️ Panel Principal (Alta Liquidez)", "🏢 Panel General (Mayor Riesgo/Retorno)"])
+        
+        # Motor de estilos
+        def aplicar_estilos_merval(df):
+            def color_rsi(val):
+                try:
+                    v = float(val)
+                    if v > 70: return 'color: #ff4b4b; font-weight: bold'
+                    elif v < 35: return 'color: #00ff00; font-weight: bold'
+                    return ''
+                except: return ''
+            def color_pbv(val):
+                try:
+                    v = float(val)
+                    if v < 1: return 'color: #00ff00; font-weight: bold'
+                    return ''
+                except: return ''
+            return df.style.map(color_rsi, subset=['RSI']).map(color_pbv, subset=['P/BV'])
 
+        with tab_lider:
+            df_l = df_mostrar[df_mostrar["Panel"] == "Principal"]
+            if not df_l.empty:
+                st.dataframe(aplicar_estilos_merval(df_l), hide_index=True, use_container_width=True)
+            else: st.info("No hay acciones del Panel Principal que cumplan con este filtro.")
+            
+        with tab_general:
+            df_g = df_mostrar[df_mostrar["Panel"] == "General"]
+            if not df_g.empty:
+                st.dataframe(aplicar_estilos_merval(df_g), hide_index=True, use_container_width=True)
+            else: st.info("No hay acciones del Panel General que cumplan con este filtro.")
+
+    with st.expander("💡 ¿Cómo leer esta tabla para tomar decisiones? (El Método Práctico)", expanded=False):
+        st.markdown("""
         ### 1. Buscar "Valor" (Filtro Fundamental)
         Busca empresas donde el mercado esté siendo pesimista pero la empresa gane dinero.
-        *   **La regla:** Mira la columna `P/BV` y `P/E`.
-        *   **Ejemplo en la tabla:** **TXAR** tiene un P/BV de 0.7x. Significa que el mercado la está valorando por menos del valor de sus fábricas y activos (está resaltado en verde). **CAPX** tiene un P/E de 3.8x, recuperas tu inversión rápido en términos de ganancias corporativas.
+        *   **La regla:** Mira la columna `P/BV`.
+        *   Los valores marcados en **verde** (< 1.0x) significan que estás comprando la empresa por menos de lo que valen sus edificios y maquinarias contables.
 
         ### 2. Buscar el "Momento de Entrada" (Filtro Técnico)
-        Una empresa puede ser excelente (como YPF o TGSU2), pero si compras cuando todos están eufóricos, vas a perder plata en el corto plazo.
         *   **La regla:** Mira la columna `RSI`.
-            *   🔴 **RSI > 70:** ¡No compres! Ya subió demasiado. Si tienes, considera vender una parte.
-            *   🟢 **RSI < 30:** Oportunidad. La acción cayó mucho y los vendedores están agotados.
-            *   ⚪ **RSI entre 40 y 60:** Zona neutral. Se compra si los fundamentos (P/E) son buenos.
+            *   🔴 **RSI > 70:** ¡No compres! Ya subió demasiado. Considera vender una parte.
+            *   🟢 **RSI < 35:** Oportunidad. La acción cayó mucho y los vendedores están agotados.
+            *   ⚪ **RSI entre 35 y 70:** Zona neutral.
 
         ### 3. Asignar el Riesgo (Filtro de Liquidez)
-        *   **La regla:** Mira la columna `Panel`.
         *   Si vas a invertir mucho dinero o vas a necesitar sacarlo rápido, solo opera el **Panel Principal**.
-        *   Si tienes un dinero que no vas a tocar por 2 o 3 años, busca "joyas ocultas" en el **Panel General**.
+        *   Si tienes un dinero que no vas a tocar por meses, busca "joyas ocultas" en el **Panel General**.
         """)
 
-# --- MODIFICADO: AHORA ES NIVEL 5 ---
 @st.fragment
 def render_nivel5_ia():
     st.markdown("### 🤖 Nivel 5: Motor de Recomendación IA (Asesor Copilot)")
@@ -293,9 +304,7 @@ def render_nivel5_ia():
             macro_arg = obtener_macro_argentina()
             macro_int = obtener_macro_internacional()
             gics = obtener_datos_gics()
-            
             analisis_texto = generar_analisis_ia(macro_arg, macro_int, gics)
-            
             st.markdown(f"""
             <div style="background-color: #12161f; padding: 25px 30px; border-radius: 12px; border-left: 5px solid #2ecca6; border-top: 1px solid #2a2e39; border-right: 1px solid #2a2e39; border-bottom: 1px solid #2a2e39; box-shadow: 0px 4px 15px rgba(0,0,0,0.2);">
                 <div style="font-size: 1.05rem; line-height: 1.8; color: #e2e8f0;">
@@ -323,13 +332,9 @@ def render_noticias_cartera():
                     st.write("")
     else: st.info("👈 Ingresa los tickers y presiona 'Sincronizar Datos' en la barra lateral.")
 
-
-# --- RENDERIZADO PRINCIPAL (El flujo ya no se bloquea) ---
-
+# --- RENDERIZADO PRINCIPAL ---
 if menu_seccion == "Noticias de Mercado":
     st.header("Terminal de Decisiones de Inversión")
-    
-    # AGREGADOS LOS 5 NIVELES AQUÍ
     tab_n1, tab_n2, tab_n3, tab_n4, tab_n5, tab_noticias = st.tabs([
         "🌍 Nivel 1: Macro", 
         "📊 Nivel 2: Valuaciones", 
@@ -338,30 +343,16 @@ if menu_seccion == "Noticias de Mercado":
         "🤖 Nivel 5: IA Cuantitativa",
         "📰 Noticias Cartera"
     ])
-    
-    with tab_n1:
-        render_nivel1_macro()
-        
-    with tab_n2:
-        render_nivel2_valuaciones()
-        
-    with tab_n3:
-        render_nivel3_gics()
-        
-    with tab_n4:
-        render_nivel4_merval()
-        
-    with tab_n5:
-        render_nivel5_ia()
-        
-    with tab_noticias:
-        render_noticias_cartera()
-
+    with tab_n1: render_nivel1_macro()
+    with tab_n2: render_nivel2_valuaciones()
+    with tab_n3: render_nivel3_gics()
+    with tab_n4: render_nivel4_merval()
+    with tab_n5: render_nivel5_ia()
+    with tab_noticias: render_noticias_cartera()
 else:
-    # --- RESTO DEL DASHBOARD (Se mantiene igual) ---
+    # --- RESTO DEL DASHBOARD (Intacto y blindado) ---
     if st.session_state.get("datos_cargados"):
         dft = st.session_state.df_total
-        
         if menu_seccion == "Datos y Valuación":
             st.header("Valuación Futura y Perfil de Mercado")
             filas_mostrar = ["Empresa", "Precio", "Fair Value (Target)", "Upside (%)", "Beta", "Volumen Promedio", "Forward P/E", "PEG Ratio", "EV/EBITDA", "Consenso (1-5)"]
@@ -398,7 +389,6 @@ else:
                     h1 += f'<td class="{cls}">{v_sh}</td>'
                 h1 += '</tr>'
             st.markdown(h1 + '</table></div>', unsafe_allow_html=True)
-
         elif menu_seccion == "Comparativa":
             st.header(f"Ratios Contables (Evaluados como: {modo_estrategia})")
             df_comp = st.session_state.df_comp
@@ -415,8 +405,7 @@ else:
                 h2 += f'<tr><td class="col-header" title="{t_text}"><span style="{sty}">{idx}</span></td>'
                 for col in df_comp.columns:
                     val = df_comp.loc[idx, col]; cls = ""
-                    if col == "REFERENCIA":
-                        h2 += f'<td class="col-ref">{val}</td>'; continue
+                    if col == "REFERENCIA": h2 += f'<td class="col-ref">{val}</td>'; continue
                     elif pd.isna(val) or val is None: v_sh = "-"
                     elif idx == "Empresa": v_sh = f"<b>{val}</b>"
                     else:
@@ -429,7 +418,6 @@ else:
                     h2 += f'<td class="{cls}">{v_sh}</td>'
                 h2 += '</tr>'
             st.markdown(h2 + '</table></div>', unsafe_allow_html=True)
-
         elif menu_seccion == "Evolución Financiera":
             st.header("Evolución Financiera Histórica")
             df_r, df_e = st.session_state.df_rev, st.session_state.df_eps
@@ -448,7 +436,6 @@ else:
                         h3 += f'<td>{v_sh}</td>'
                     h3 += '</tr>'
                 st.markdown(h3 + '</table></div>', unsafe_allow_html=True)
-                
                 df_p = df_rev_pd.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
                 df_p['v_b'] = pd.to_numeric(df_p['value'], errors='coerce') / 1e9
                 df_p['Trimestre'] = df_p['variable'].str.split('<').str[0]
@@ -456,7 +443,6 @@ else:
                     x=alt.X('Trimestre', sort=None), y=alt.Y('v_b', title='Billions (USD)'), color='Ticker',
                     tooltip=['Ticker', 'Trimestre', 'v_b']
                 ).properties(height=250).configure_view(strokeOpacity=0), use_container_width=True)
-
             if df_e:
                 st.divider()
                 st.subheader("Beneficio por Acción (EPS)")
@@ -473,18 +459,12 @@ else:
                         h4 += f'<td>{v_sh}</td>'
                     h4 += '</tr>'
                 st.markdown(h4 + '</table></div>', unsafe_allow_html=True)
-                
                 df_p_eps = df_eps_pd.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
                 df_p_eps['value'] = pd.to_numeric(df_p_eps['value'], errors='coerce')
                 df_p_eps['Trimestre'] = df_p_eps['variable'].str.split('<').str[0]
-                
                 st.altair_chart(alt.Chart(df_p_eps).mark_line(point=True).encode(
-                    x=alt.X('Trimestre', sort=None), 
-                    y=alt.Y('value', title='EPS (USD)'), 
-                    color='Ticker',
-                    tooltip=['Ticker', 'Trimestre', 'value']
+                    x=alt.X('Trimestre', sort=None), y=alt.Y('value', title='EPS (USD)'), color='Ticker', tooltip=['Ticker', 'Trimestre', 'value']
                 ).properties(height=250).configure_view(strokeOpacity=0), use_container_width=True)
-
         elif menu_seccion == "Análisis Técnico":
             st.header("Osciladores y Tendencias")
             df_tec = pd.DataFrame(st.session_state.df_tec).set_index("Ticker").T
@@ -511,14 +491,12 @@ else:
                         h6 += f'<td class="{cls}">{v_sh}</td>'
                     h6 += '</tr>'
                 st.markdown(h6 + '</table></div>', unsafe_allow_html=True)
-
         elif menu_seccion == "Top 10 Elite":
             es_agresivo = "Agresivo" in modo_estrategia
             st.header(f"🏆 Selección Elite: {'Growth (Agresivo)' if es_agresivo else 'Value (Defensivo)'}")
             ana = st.session_state.analisis
             puntos = st.session_state.puntos
             posibles = st.session_state.posibles
-            
             scores = []
             for t in st.session_state.tickers:
                 if t in ana:
@@ -535,9 +513,7 @@ else:
                             "m": ana[t].get("net_margin"), "rsi": ana[t].get("rsi_val"), "dsma": ana[t].get("dist_sma"),
                             "ef": (p_f/posibles[t]*100) if posibles.get(t,0)>0 else 0
                         })
-            
             top10 = sorted(scores, key=lambda x: (x['total'], x['ef'], x['pc'], x['m'] if x['m'] else 0), reverse=True)[:10]
-            
             if not top10: st.warning(f"Ninguna acción cumple el filtro estricto de riesgo de esta estrategia (Beta < {1.5 if es_agresivo else 1.0}).")
             else:
                 st.write("---")
@@ -560,7 +536,6 @@ else:
                         evebitda = get_val(dft, "EV/EBITDA", ticker); div_yield = get_val(dft, "Div Yield (%)", ticker)
                         payout = get_val(dft, "Payout Ratio (%)", ticker); consenso = get_val(dft, "Consenso (1-5)", ticker)
                         short_int = get_val(dft, "Short Interest (%)", ticker); deuda = get_val(dft, "Debt/Equity", ticker)
-                        
                         if es_agresivo:
                             fun_parts = []
                             if roe and roe > 0.15: fun_parts.append(f"ROE sobresaliente del <strong>{roe*100:.1f}%</strong>")
@@ -575,9 +550,7 @@ else:
                                 fun_parts.append(dy_str)
                             if roe and roe > 0.10: fun_parts.append(f"sólida rentabilidad (ROE <strong>{roe*100:.1f}%</strong>)")
                             fun_str = "Destaca por su perfil de valor, ofreciendo " + " y ".join(fun_parts) + "." if fun_parts else f"Cumple con {s['pf']} métricas de solvencia defensiva."
-
                         mom_text = "Fuerte impulso alcista tanto en ingresos como en ganancias recientes." if s['pc'] == 2 else "Señales positivas en el crecimiento operativo reciente." if s['pc'] == 1 else "Estabilidad operativa sin un crecimiento expansivo en el corto plazo."
-                        
                         val_parts = [f"Beta: <strong>{s['b']:.2f}</strong>"]
                         if es_agresivo:
                             if fwd_pe: val_parts.append(f"Forward P/E: <strong>{fwd_pe:.1f}</strong>")
@@ -587,7 +560,6 @@ else:
                             elif fwd_pe and fwd_pe < 20: val_parts.append(f"Valoración razonable (Forward P/E: <strong>{fwd_pe:.1f}</strong>)")
                         if s['u'] and s['u'] > 0: val_parts.append(f"Upside analistas: <strong>{s['u']*100:.1f}%</strong>")
                         if consenso and consenso <= 2.5: val_parts.append(f"Consenso: <strong>Compra ({consenso:.1f}/5)</strong>")
-                        
                         riesgo_str = " | ".join(val_parts) + "."
                         r, d = s['rsi'], s['dsma']
                         tec_str = "Faltan datos históricos para emitir juicio técnico."
@@ -597,7 +569,6 @@ else:
                             elif r > 70: tec_str = f"🔴 <strong>PRECAUCIÓN:</strong> RSI en <strong>{r:.1f}</strong> (euforia); alto riesgo de recorte."
                             elif d < 0: tec_str = f"🟡 <strong>ALERTA BAJISTA:</strong> Cotizando un <strong>{abs(d):.1f}%</strong> por debajo de media móvil de 200."
                             else: tec_str = f"⚪ <strong>ZONA NEUTRAL:</strong> RSI en <strong>{r:.1f}</strong>, tendencia estable."
-                        
                         html_text = f"""
                         <div style="font-size: 0.88rem; line-height: 1.4; color: #cbd5e1; padding: 4px 0;">
                             <p style="margin: 0 0 6px 0; color:#ffffff; font-weight: 600; font-size: 0.95rem;">💡 Racional de Inversión:</p>
@@ -609,6 +580,5 @@ else:
                         """
                         st.markdown(html_text, unsafe_allow_html=True)
                     st.write("---")
-
     else:
         st.info("👈 Ingresa los tickers y presiona 'Sincronizar Datos' para comenzar el análisis.")
