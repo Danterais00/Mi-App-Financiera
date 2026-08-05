@@ -273,6 +273,22 @@ def obtener_datos_gics():
         
     return sorted(datos_sectores, key=lambda x: x["Score"], reverse=True)
 
+@st.cache_data(ttl=3600)
+def obtener_datos_merval():
+    """Retorna la tabla local del Merval y Panel General con filtros cuantitativos"""
+    return [
+        {"Ticker": "GGAL", "Empresa": "Grupo Galicia", "Sector": "Financiero", "Panel": "Principal", "P/E": 7.5, "P/BV": 1.8, "RSI": 65, "Tendencia": "Alcista", "Lectura": "Fuerte liquidez. RSI alto indica que está cerca de sobrecompra. Ideal mantener, no comprar ahora."},
+        {"Ticker": "BMA", "Empresa": "Banco Macro", "Sector": "Financiero", "Panel": "Principal", "P/E": 6.8, "P/BV": 1.5, "RSI": 45, "Tendencia": "Alcista", "Lectura": "Más barata que GGAL (menor P/E). Buen punto técnico (RSI neutral). Interesante para acumular."},
+        {"Ticker": "BPAT", "Empresa": "Banco Patagonia", "Sector": "Financiero", "Panel": "General", "P/E": 5.2, "P/BV": 1.1, "RSI": 35, "Tendencia": "Lateral", "Lectura": "Muy barata, pero con poca liquidez. Cuesta salir rápido. Solo para inversores pacientes."},
+        {"Ticker": "YPFD", "Empresa": "YPF", "Sector": "Energía / Oil&Gas", "Panel": "Principal", "P/E": 4.1, "P/BV": 0.9, "RSI": 72, "Tendencia": "Alcista", "Lectura": "Cotiza por debajo de su valor contable (P/BV < 1). RSI en 72 marca sobrecompra. Esperar corrección para entrar."},
+        {"Ticker": "PAMP", "Empresa": "Pampa Energía", "Sector": "Energía / Utilities", "Panel": "Principal", "P/E": 6.5, "P/BV": 1.2, "RSI": 50, "Tendencia": "Alcista", "Lectura": "Sólida financieramente. RSI en zona media. Una acción defensiva ideal para estabilizar la cartera."},
+        {"Ticker": "CAPX", "Empresa": "Capex S.A.", "Sector": "Energía / Oil&Gas", "Panel": "General", "P/E": 3.8, "P/BV": 0.8, "RSI": 40, "Tendencia": "Alcista", "Lectura": "Joya del panel general. Excelentes ratios, pero spread amplio al operar. Comprar de a poco con órdenes límite."},
+        {"Ticker": "TXAR", "Empresa": "Ternium Arg.", "Sector": "Materiales / Industria", "Panel": "Principal", "P/E": 8.0, "P/BV": 0.7, "RSI": 30, "Tendencia": "Bajista/Lateral", "Lectura": "RSI en 30 indica sobreventa (castigada). P/BV de 0.7 indica que está barata frente a sus fierros. Oportunidad de rebote."},
+        {"Ticker": "ALUA", "Empresa": "Aluar", "Sector": "Materiales / Industria", "Panel": "Principal", "P/E": 9.5, "P/BV": 1.4, "RSI": 55, "Tendencia": "Alcista", "Lectura": "Gran cobertura contra el salto del dólar oficial (exportadora). Valuación justa, ni muy cara ni muy barata."},
+        {"Ticker": "TGSU2", "Empresa": "Transp. Gas del Sur", "Sector": "Servicios Públicos", "Panel": "Principal", "P/E": 11.2, "P/BV": 2.1, "RSI": 80, "Tendencia": "Alcista", "Lectura": "Peligro de corrección. RSI en 80 (muy sobrecomprada) y ratios caros. Tomar ganancias si ya la tienes."},
+        {"Ticker": "METR", "Empresa": "Metrogas", "Sector": "Servicios Públicos", "Panel": "General", "P/E": 15.0, "P/BV": 1.8, "RSI": 60, "Tendencia": "Lateral", "Lectura": "Muy atada a decisiones tarifarias del gobierno. Riesgo alto y poca liquidez."}
+    ]
+
 @st.cache_data(ttl=1800)
 def obtener_noticias_acciones(lista_tickers):
     noticias = {}
@@ -292,8 +308,8 @@ def obtener_noticias_acciones(lista_tickers):
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     try:
-        # LLAMADA INTERNA para obtener la tabla que faltaba (Nivel 2)
         valuaciones = obtener_valuaciones_mercado()
+        datos_merval = obtener_datos_merval()
         
         # Extracción Macro ARG
         rp_val = macro_arg.get('riesgo_pais', {}).get('valor', 'N/D') if macro_arg.get('riesgo_pais') else 'N/D'
@@ -325,7 +341,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         sp500_val = get_m('S&P 500 (Global)')
         nasdaq_val = get_m('Nasdaq (Tech)')
         
-        # REDACCIÓN DEL NUEVO PROMPT (Rol: Asesor Práctico)
+        # REDACCIÓN DEL NUEVO PROMPT MAESTRO
         prompt = (
             "Actúa como un Asesor Financiero experto y práctico para un inversor individual residente en Argentina.\n"
             "Tu objetivo es traducir los datos de mercado en decisiones de inversión claras, directas y sin jerga abstracta. "
@@ -333,17 +349,20 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             
             "REGLAS ESTRICTAS DE RESPUESTA:\n"
             "1. NO hables en lenguaje teórico de Wall Street. Usa lenguaje sencillo.\n"
-            "2. Provee EJEMPLOS CONCRETOS. Si sugieres Renta Fija Argentina, di si conviene comprar 'Lecaps' (Letras), 'Obligaciones Negociables (ONs)' o 'Bonos Soberanos (AL30/GD30)' basándote en la inflación, la brecha y el riesgo país actuales.\n"
-            "3. Si sugieres invertir en acciones internacionales, menciona los tickers de los CEDEARs o ETFs (ej. SPY, QQQ, AAPL) justificando con los datos de las tablas.\n"
-            "4. Utiliza el formato de Semáforo: 🟢 (Comprar), 🟡 (Mantener/Neutro), 🔴 (Vender/Evitar).\n\n"
+            "2. Provee EJEMPLOS CONCRETOS. Si sugieres Renta Fija Argentina, di si conviene comprar 'Lecaps' (Letras), 'Obligaciones Negociables (ONs)' o 'Bonos Soberanos (AL30/GD30)'.\n"
+            "3. Si sugieres CEDEARs, menciona los tickers exactos (ej. SPY, QQQ, AAPL).\n"
+            "4. Utiliza el formato de Semáforo: 🟢 (Comprar), 🟡 (Mantener/Neutro), 🔴 (Vender/Evitar).\n"
+            "5. APLICA LA METODOLOGÍA DEL ASESOR PARA EL MERVAL: Busca Valor (P/BV bajo o P/E bajo), Momento de Entrada (NO comprar si RSI > 70, sugerir compra si RSI < 30, neutral 40-60), y evalúa el Riesgo de Liquidez (advierte si la sugerencia es del Panel General).\n\n"
             
-            "ESTRUCTURA DE TU RESPUESTA (Usa Markdown):\n"
+            "ESTRUCTURA OBLIGATORIA DE TU RESPUESTA:\n"
             "### 1. Resumen Macro (Traducido al Inversor)\n"
             "[Explicación breve de si el mundo y Argentina están para tomar riesgo o ser conservadores]\n\n"
-            "### 2. Oportunidades en Argentina (Pesos y Dólares)\n"
+            "### 2. Oportunidades en Renta Fija Local (Pesos y Dólares)\n"
             "[Emoji] **Instrumentos Recomendados:** [Por qué elegirlos y tickers/tipos concretos]\n\n"
             "### 3. Oportunidades Globales (CEDEARs)\n"
             "[Emoji] **Sectores y Acciones a mirar:** [Explicación basada en los scores y las valuaciones. Tickers concretos]\n\n"
+            "### 4. Oportunidades en el Merval Local (Pesos)\n"
+            "[Emoji] **Acciones Argentinas:** [Analiza la tabla del Merval aplicando las reglas de P/BV y RSI]\n\n"
             
             "--- INICIO DE LOS DATOS RECOPILADOS (HOY) ---\n\n"
             
@@ -367,29 +386,29 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             "**VALUACIONES ACTUALES (NIVEL 2):**\n"
         )
         
-        # Volcar Valuaciones USA
         prompt += "- Mercado USA (ETFs e Índices):\n"
         for v in valuaciones.get("USA", []):
             prompt += f"  * {v['Activo']} ({v['Sector']}) -> P/E: {v['P/E']} | ROE: {v['ROE (%)']}\n"
             
-        # Volcar Valuaciones ARG
         prompt += "- ADRs Argentinos:\n"
         for v in valuaciones.get("ARG", []):
             prompt += f"  * {v['Activo']} ({v['Sector']}) -> P/E: {v['P/E']} | ROE: {v['ROE (%)']}\n"
             
-        # Volcar Sectores GICS
-        prompt += "\n**PUNTAJES SECTORIALES GICS (0 a 100, mayor es mejor):**\n"
+        prompt += "\n**PUNTAJES SECTORIALES GICS:**\n"
         for g in datos_gics:
             pe_str = f"{g['P/E']:.2f}" if g['P/E'] else "N/D"
             prompt += f"- Sector {g['Sector']} (ETF: {g['ETF']}) -> Score Quant: {g['Score']}/100 | Rendimiento 6M: {g['6M (%)']:.1f}% | P/E Actual: {pe_str}\n"
 
-        prompt += "\n--- FIN DE LOS DATOS ---\n¡Redacta tu análisis ahora!"
+        prompt += "\n**TABLERO MERVAL Y PANEL GENERAL (NIVEL 4):**\n"
+        for m in datos_merval:
+            prompt += f"- {m['Ticker']} ({m['Empresa']}): P/E: {m['P/E']}x | P/BV: {m['P/BV']}x | RSI: {m['RSI']} | Panel: {m['Panel']} | Lectura: {m['Lectura']}\n"
 
-        # Construir la interfaz HTML
+        prompt += "\n--- FIN DE LOS DATOS ---\n¡Redacta tu análisis ahora aplicando estrictamente tus nuevas reglas!"
+
         mensaje_ui = (
             '<div style="margin-bottom: 15px; font-size: 1.05rem; color: #e2e8f0;">'
             '💡 <b>¡Tu Compilado Integral está listo!</b><br><br>'
-            'Hemos actualizado las instrucciones. Ahora la IA analizará <b>todas las tablas</b> (Macro, Valuaciones y Sectores) y te dará recomendaciones prácticas con <b>instrumentos reales y tickers operables en Argentina.</b><br><br>'
+            'Hemos actualizado las instrucciones. Ahora la IA analizará <b>todas las tablas</b> (Macro, Valuaciones, Sectores y <b>Merval Local</b>) y te dará recomendaciones prácticas con <b>instrumentos operables y aplicando tus propios filtros de análisis técnico y fundamental.</b><br><br>'
             '<b>Copia el texto del recuadro a continuación y pégalo en tu ChatGPT, Claude o Gemini web.</b>'
             '</div>'
             '<div style="background-color: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; overflow-x: auto;">'
