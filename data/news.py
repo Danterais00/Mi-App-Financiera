@@ -4,13 +4,26 @@ import yfinance as yf
 import pandas as pd
 import streamlit as st
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 # --- CONFIGURACIÓN DE LOGS ---
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+
+# --- LA DEFENSA CONTRA BLOQUEOS DE YAHOO FINANCE ---
+@st.cache_data(ttl=86400) # Caché de 24 horas para datos que no cambian en el día (Balances)
+def obtener_info_ticker_cached(ticker):
+    """Extrae métricas fundamentales con retraso (Throttling) para evitar baneo de IP."""
+    time.sleep(0.3) # Simula comportamiento humano
+    try:
+        info = yf.Ticker(ticker).info
+        return dict(info)
+    except Exception as e:
+        logger.warning(f"Error extrayendo info de {ticker}: {e}")
+        return {}
+
 
 @st.cache_data(ttl=1800)
 def obtener_macro_argentina():
@@ -167,15 +180,15 @@ def obtener_macro_internacional():
 
 @st.cache_data(ttl=3600)
 def obtener_valuaciones_mercado():
-    activos_arg = {"YPF": "Energía", "GGAL": "Financiero", "BMA": "Financiero", "PAMP": "Energía", "CEPU": "Utilities"}
+    # Ticker fantasma corregido: PAMP -> PAM (ADR en USA)
+    activos_arg = {"YPF": "Energía", "GGAL": "Financiero", "BMA": "Financiero", "PAM": "Energía", "CEPU": "Utilities"}
     activos_usa = {"SPY": "S&P 500", "QQQ": "Nasdaq", "XLE": "Energía", "XLF": "Financiero", "XLK": "Tecnología", "XLV": "Salud"}
     
     valuaciones = {"ARG": [], "USA": []}
     
     for ticker, sector in {**activos_arg, **activos_usa}.items():
         try:
-            tk = yf.Ticker(ticker)
-            info = tk.info
+            info = obtener_info_ticker_cached(ticker)
             pe = info.get("trailingPE") or info.get("forwardPE")
             pb = info.get("priceToBook")
             roe = info.get("returnOnEquity")
@@ -220,6 +233,7 @@ def obtener_datos_gics():
     tickers = list(etfs_sectores.values())
     
     try:
+        # Descarga de precios rápida
         hist_data = yf.download(tickers, period="6mo", progress=False)
         df_close = hist_data['Close'] if 'Close' in hist_data else pd.DataFrame()
     except Exception as e:
@@ -228,8 +242,7 @@ def obtener_datos_gics():
         
     for sector, ticker in etfs_sectores.items():
         try:
-            tk = yf.Ticker(ticker)
-            info = tk.info
+            info = obtener_info_ticker_cached(ticker)
             pe = info.get("trailingPE") or info.get("forwardPE")
             pe_val = float(pe) if pe else None
             
@@ -285,74 +298,10 @@ def calcular_rsi_serie(serie, period=14):
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
-# Motor Multihilo para extraer datos de un ticker individual rápido
-def extraer_info_ticker(ticker, lider_list, df_close):
-    try:
-        panel = "Principal" if ticker in lider_list else "General"
-        tk = yf.Ticker(ticker)
-        info = tk.info
-        
-        ticker_limpio = ticker.replace(".BA", "")
-        empresa = info.get("shortName", ticker_limpio)
-        
-        # Ratios y nuevos datos (Dividendo y Volumen)
-        pe = info.get("trailingPE", info.get("forwardPE"))
-        pbv = info.get("priceToBook")
-        volumen = info.get("averageVolume", 0)
-        dy = info.get("dividendYield", 0)
-        
-        pe_val = round(pe, 2) if isinstance(pe, (int, float)) else None
-        pbv_val = round(pbv, 2) if isinstance(pbv, (int, float)) else None
-        dy_val = round(dy * 100, 2) if isinstance(dy, (int, float)) and dy > 0 else None
-        
-        rsi_val, tendencia = None, "N/D"
-        if not df_close.empty and ticker in df_close.columns:
-            serie = df_close[ticker].dropna()
-            if len(serie) >= 15:
-                rsi_serie = calcular_rsi_serie(serie)
-                if not rsi_serie.empty and not pd.isna(rsi_serie.iloc[-1]):
-                    rsi_val = round(float(rsi_serie.iloc[-1]), 2)
-                    sma20 = serie.rolling(window=20).mean().iloc[-1]
-                    precio_actual = serie.iloc[-1]
-                    tendencia = "Alcista" if precio_actual > sma20 else "Bajista"
-
-        # Lógica inteligente del Asesor
-        lectura = "Evaluando activo..."
-        if volumen < 20000 and panel == "General":
-            lectura = "🔴 RIESGO DE ILIQUIDEZ EXTREMO. Difícil salir de la posición sin perder precio."
-        elif rsi_val is not None:
-            if rsi_val > 70:
-                lectura = "¡Precaución! Indicador RSI de euforia. Posible toma de ganancias inminente."
-            elif rsi_val < 35:
-                lectura = "Oportunidad Técnica: Acción castigada (Sobreventa). Posible rebote."
-            else:
-                if pbv_val and pbv_val < 1:
-                    lectura = "Zona neutral, pero cotiza muy barata por fundamentales (P/BV < 1)."
-                else:
-                    lectura = "Lateralizando en zona de equilibrio. Riesgo/Beneficio neutro."
-                    
-            if panel == "General" and volumen < 100000:
-                lectura += " (Atención: Operar con límite por spread y liquidez baja)."
-
-        return {
-            "Ticker": ticker_limpio,
-            "Empresa": empresa,
-            "Panel": panel,
-            "P/E": pe_val,
-            "P/BV": pbv_val,
-            "Div Yield (%)": dy_val,
-            "Vol. (M)": round(volumen / 1_000_000, 2) if volumen else None,
-            "RSI": rsi_val,
-            "Tendencia": tendencia,
-            "Lectura": lectura
-        }
-    except Exception as e:
-        logger.warning(f"Fallo extrayendo {ticker}: {e}")
-        return None
 
 @st.cache_data(ttl=3600)
 def obtener_datos_merval():
-    """Descarga veloz (Multithreading) de acciones del Merval y Panel General"""
+    """Descarga de acciones combinando Batching de Precios y Caché de Fundamentales"""
     lider = ["ALUA.BA", "BBAR.BA", "BMA.BA", "BYMA.BA", "CEPU.BA", "COME.BA", "CRES.BA", 
              "CVH.BA", "EDN.BA", "GGAL.BA", "IRSA.BA", "LOMA.BA", "MIRG.BA", "PAMP.BA", 
              "SUPV.BA", "TECO2.BA", "TGNO4.BA", "TGSU2.BA", "TRAN.BA", "TXAR.BA", "VALO.BA", "YPFD.BA"]
@@ -370,12 +319,68 @@ def obtener_datos_merval():
         df_close = pd.DataFrame()
 
     resultados = []
-    # Usamos 10 hilos para reducir el tiempo de carga drásticamente
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(extraer_info_ticker, t, lider, df_close): t for t in todos_los_tickers}
-        for future in as_completed(futures):
-            res = future.result()
-            if res: resultados.append(res)
+    
+    for ticker in todos_los_tickers:
+        try:
+            panel = "Principal" if ticker in lider else "General"
+            
+            # Usamos la memoria caché, que es segura frente a baneos (1 vez cada 24hs)
+            info = obtener_info_ticker_cached(ticker)
+            
+            ticker_limpio = ticker.replace(".BA", "")
+            empresa = info.get("shortName", ticker_limpio)
+            
+            pe = info.get("trailingPE", info.get("forwardPE"))
+            pbv = info.get("priceToBook")
+            volumen = info.get("averageVolume", 0)
+            dy = info.get("dividendYield", 0)
+            
+            pe_val = round(pe, 2) if isinstance(pe, (int, float)) else None
+            pbv_val = round(pbv, 2) if isinstance(pbv, (int, float)) else None
+            dy_val = round(dy * 100, 2) if isinstance(dy, (int, float)) and dy > 0 else None
+            
+            rsi_val, tendencia = None, "N/D"
+            if not df_close.empty and ticker in df_close.columns:
+                serie = df_close[ticker].dropna()
+                if len(serie) >= 15:
+                    rsi_serie = calcular_rsi_serie(serie)
+                    if not rsi_serie.empty and not pd.isna(rsi_serie.iloc[-1]):
+                        rsi_val = round(float(rsi_serie.iloc[-1]), 2)
+                        sma20 = serie.rolling(window=20).mean().iloc[-1]
+                        precio_actual = serie.iloc[-1]
+                        tendencia = "Alcista" if precio_actual > sma20 else "Bajista"
+
+            lectura = "Evaluando activo..."
+            if volumen < 20000 and panel == "General":
+                lectura = "🔴 RIESGO DE ILIQUIDEZ EXTREMO. Difícil salir de la posición sin perder precio."
+            elif rsi_val is not None:
+                if rsi_val > 70:
+                    lectura = "¡Precaución! Indicador RSI de euforia. Posible toma de ganancias inminente."
+                elif rsi_val < 35:
+                    lectura = "Oportunidad Técnica: Acción castigada (Sobreventa). Posible rebote."
+                else:
+                    if pbv_val and pbv_val < 1:
+                        lectura = "Zona neutral, pero cotiza muy barata por fundamentales (P/BV < 1)."
+                    else:
+                        lectura = "Lateralizando en zona de equilibrio. Riesgo/Beneficio neutro."
+                        
+                if panel == "General" and volumen < 100000:
+                    lectura += " (Atención: Operar con límite por spread y liquidez baja)."
+
+            resultados.append({
+                "Ticker": ticker_limpio,
+                "Empresa": empresa,
+                "Panel": panel,
+                "P/E": pe_val,
+                "P/BV": pbv_val,
+                "Div Yield (%)": dy_val,
+                "Vol. (M)": round(volumen / 1_000_000, 2) if volumen else None,
+                "RSI": rsi_val,
+                "Tendencia": tendencia,
+                "Lectura": lectura
+            })
+        except Exception as e:
+            logger.warning(f"Fallo extrayendo {ticker}: {e}")
             
     return sorted(resultados, key=lambda x: x["RSI"] if x["RSI"] is not None else 999)
 
@@ -394,7 +399,6 @@ def obtener_noticias_acciones(lista_tickers):
     return noticias
 
 
-# --- LA SOLUCIÓN 100% INFALIBLE Y COMPLETA ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     try:
