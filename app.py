@@ -97,10 +97,11 @@ def get_val(df, metric, ticker):
 def render_nivel1_macro():
     st.markdown("### Contexto Macroeconómico")
     brecha_calculada = None
-    with st.spinner("Sincronizando datos macroeconómicos..."):
+    with st.spinner("Sincronizando datos macroeconómicos y geopolíticos..."):
         macro_arg_data = obtener_macro_argentina()
         macro_int_data = obtener_macro_internacional()
     col_arg, col_int = st.columns(2)
+    
     with col_arg:
         st.subheader("🇦🇷 Mercado Argentino")
         rp = macro_arg_data.get("riesgo_pais") or {}
@@ -116,24 +117,37 @@ def render_nivel1_macro():
         texto_tasa = f"{tasa:.1f}%" if tasa is not None else "N/D"
         texto_reservas = f"USD {res_bcra/1000:.1f}B" if res_bcra is not None else "N/D"
         
+        # Nuevos indicadores visuales
+        texto_merv_usd = f"USD {macro_arg_data.get('merval_usd', {}).get('valor', 0):,.0f}" if macro_arg_data.get('merval_usd', {}).get('valor') else 'N/D'
+        texto_al30 = f"${macro_arg_data.get('bono_al30', {}).get('valor', 0):,.2f}" if macro_arg_data.get('bono_al30', {}).get('valor') else 'N/D'
+        
         html_caja = f"""<div style="background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between; flex-wrap: wrap;">
-            <div style="width: 19%;">
+            <div style="width: 24%; margin-bottom: 10px;">
+                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">MERVAL (ARS)</p>
+                <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_merv_val}</h4>
+            </div>
+            <div style="width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;">
+                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">MERVAL (USD)</p>
+                <h4 style="margin:5px 0; color:#2ecca6; font-size: 1rem;">{texto_merv_usd}</h4>
+            </div>
+            <div style="width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;">
                 <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">RIESGO PAÍS</p>
                 <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_rp_val}</h4>
             </div>
-            <div style="width: 21%; border-left: 1px solid #2a2e39; padding-left: 8px;">
-                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">S&P MERVAL</p>
-                <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_merv_val}</h4>
+            <div style="width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;">
+                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">BONO AL30</p>
+                <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_al30}</h4>
             </div>
-            <div style="width: 18%; border-left: 1px solid #2a2e39; padding-left: 8px;">
+            
+            <div style="width: 32%; padding-top: 10px; border-top: 1px solid #2a2e39;">
                 <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">INFLACIÓN</p>
                 <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_inf}</h4>
             </div>
-            <div style="width: 18%; border-left: 1px solid #2a2e39; padding-left: 8px;">
-                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">TASA REF</p>
+            <div style="width: 33%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;">
+                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">TASA REF BCRA</p>
                 <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_tasa}</h4>
             </div>
-            <div style="width: 20%; border-left: 1px solid #2a2e39; padding-left: 8px;">
+            <div style="width: 33%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;">
                 <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">RESERVAS</p>
                 <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_reservas}</h4>
             </div>
@@ -309,7 +323,7 @@ def render_nivel5_ia():
     st.write("El Asesor Financiero evaluará la Macro, las Valuaciones, los Sectores GICS y tu Tablero Merval para entregarte recomendaciones prácticas y operables.")
     
     if st.button("Generar Recomendaciones Automáticas", type="primary"):
-        with st.spinner("La IA Cuantitativa está compilando las bases de datos..."):
+        with st.spinner("La IA Cuantitativa está compilando el contexto geopolítico y financiero..."):
             macro_arg = obtener_macro_argentina()
             macro_int = obtener_macro_internacional()
             gics = obtener_datos_gics()
