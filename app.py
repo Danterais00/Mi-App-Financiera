@@ -411,7 +411,6 @@ if tickers_raw:
 
             st.markdown("---")
             if st.button("⚡ Generar Reporte Matutino Nivel 5", type="primary"):
-                # Cálculo para selección TOP 10 dentro del reporte
                 scores_rep = []
                 for t in lista_tickers:
                     if t in analisis_completo and analisis_completo[t]["beta_val"] < 1.5 and analisis_completo[t]["upside_val"] > 0:
@@ -559,7 +558,7 @@ Tras aplicar los filtros *Sine Qua Non* (Beta < 1.5 y Upside > 0%), los activos 
             html += "</tr></tbody></table>"
             st.markdown(html, unsafe_allow_html=True)
 
-        # --- TAB 5 Y 6: INGRESOS Y EPS ---
+        # --- TAB 5 Y 6: INGRESOS Y EPS (CORREGIDO ALTAIR) ---
         for tab_obj, datos_list, titulo_lbl, es_moneda in [(tab_rev, datos_revenue, "Ingresos Totales", True), (tab_eps, datos_eps, "Basic EPS", False)]:
             with tab_obj:
                 if datos_list:
@@ -580,6 +579,7 @@ Tras aplicar los filtros *Sine Qua Non* (Beta < 1.5 y Upside > 0%), los activos 
                     html += "</tbody></table>"
                     st.markdown(html, unsafe_allow_html=True)
 
+                    # Gráfico de Líneas Altair (Compatibilidad Garantizada v4/v5)
                     df_plot = df_m.drop(columns=["Tendencia"]).reset_index().melt(id_vars="Ticker")
                     df_plot['periodo'] = df_plot['variable'].str.split('(').str[0]
                     if es_moneda: df_plot['valor_b'] = df_plot['value'] / 1e9
@@ -591,7 +591,8 @@ Tras aplicar los filtros *Sine Qua Non* (Beta < 1.5 y Upside > 0%), los activos 
                         x=alt.X('periodo', sort=None, title="Trimestre"),
                         y=alt.Y(y_col, title=y_title),
                         color='Ticker'
-                    ).properties(height=300).configure_background(fill='transparent').configure_view(strokeWidth=0)
+                    ).properties(height=300)
+
                     st.altair_chart(chart, use_container_width=True)
 
         # --- TAB 7: MOMENTO TÉCNICO ---
