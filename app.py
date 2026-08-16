@@ -117,10 +117,10 @@ def render_nivel1_macro():
         texto_tasa = f"{tasa:.1f}%" if tasa is not None else "N/D"
         texto_reservas = f"USD {res_bcra/1000:.1f}B" if res_bcra is not None else "N/D"
         
-        # Nuevos indicadores visuales
         texto_merv_usd = f"USD {macro_arg_data.get('merval_usd', {}).get('valor', 0):,.0f}" if macro_arg_data.get('merval_usd', {}).get('valor') else 'N/D'
         texto_al30 = f"${macro_arg_data.get('bono_al30', {}).get('valor', 0):,.2f}" if macro_arg_data.get('bono_al30', {}).get('valor') else 'N/D'
         
+        # Eliminados los saltos de línea internos para evitar la ruptura del renderizado HTML en Markdown
         html_caja = f"""<div style="background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between; flex-wrap: wrap;">
             <div style="width: 24%; margin-bottom: 10px;">
                 <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">MERVAL (ARS)</p>
@@ -138,7 +138,6 @@ def render_nivel1_macro():
                 <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">BONO AL30</p>
                 <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_al30}</h4>
             </div>
-            
             <div style="width: 32%; padding-top: 10px; border-top: 1px solid #2a2e39;">
                 <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">INFLACIÓN</p>
                 <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_inf}</h4>
