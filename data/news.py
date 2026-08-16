@@ -11,7 +11,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+# Cabecera para evitar bloqueos Anti-Bot (Error 403)
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*'
+}
 
 # --- LA DEFENSA CONTRA BLOQUEOS DE YAHOO FINANCE ---
 @st.cache_data(ttl=86400) # Caché de 24 horas para datos de balance
@@ -36,8 +40,9 @@ def obtener_macro_argentina():
         "inflacion": None, "tasa_bcra": None, "reservas": None
     }
     
+    # 1. DÓLARES
     try:
-        res = requests.get("https://dolarapi.com/v1/dolares", timeout=15)
+        res = requests.get("https://dolarapi.com/v1/dolares", headers=HEADERS, timeout=10)
         if res.status_code == 200:
             for d in res.json():
                 if d["casa"] in ["oficial", "blue", "bolsa", "contadoconliqui", "tarjeta"]:
@@ -45,30 +50,29 @@ def obtener_macro_argentina():
                     datos["dolares"].append({"nombre": nombre, "compra": d["compra"], "venta": d["venta"]})
     except Exception as e: logger.warning(f"Error DolarAPI: {e}")
     
+    # 2. RIESGO PAÍS (Con doble protección)
     try:
-        res_rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", timeout=15)
-        if res_rp.status_code == 200:
-            data_rp = res_rp.json()
-            if isinstance(data_rp, list) and len(data_rp) > 0:
-                datos["riesgo_pais"] = {"valor": data_rp[-1]["valor"], "variacion": ""}
+        res_rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", headers=HEADERS, timeout=10)
+        if res_rp.status_code == 200 and len(res_rp.json()) > 0:
+            datos["riesgo_pais"] = {"valor": res_rp.json()[-1]["valor"], "variacion": ""}
         else: raise Exception("Saltar al respaldo")
     except Exception as e:
         try:
-            res_rp_alt = requests.get("https://mercados.ambito.com/riesgopais/info", headers=HEADERS, timeout=15)
+            res_rp_alt = requests.get("https://mercados.ambito.com/riesgopais/info", headers=HEADERS, timeout=10)
             if res_rp_alt.status_code == 200 and "valor" in res_rp_alt.json():
                 datos["riesgo_pais"] = {"valor": res_rp_alt.json().get("valor"), "variacion": res_rp_alt.json().get("variacion")}
-        except Exception as e2: logger.warning(f"Error Riesgo País (ambos): {e2}")
+        except Exception as e2: logger.warning(f"Error Riesgo País: {e2}")
 
+    # 3. INFLACIÓN
     try:
-        res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", timeout=15)
-        if res_inf.status_code == 200:
-            data_inf = res_inf.json()
-            if isinstance(data_inf, list) and len(data_inf) > 0:
-                datos["inflacion"] = float(data_inf[-1]["valor"]) 
+        res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", headers=HEADERS, timeout=10)
+        if res_inf.status_code == 200 and len(res_inf.json()) > 0:
+            datos["inflacion"] = float(res_inf.json()[-1]["valor"]) 
     except Exception as e: logger.warning(f"Error Inflación: {e}")
 
+    # 4. TASA BCRA (Con Anti-Bot y Múltiples Respaldos)
     try:
-        res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=15)
+        res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", headers=HEADERS, timeout=10)
         if res_tasa.status_code == 200:
             data_tasa = res_tasa.json()
             if isinstance(data_tasa, list):
@@ -81,7 +85,7 @@ def obtener_macro_argentina():
         if datos["tasa_bcra"] is None: raise Exception("Saltar a Plazo Fijo")
     except Exception as e:
         try:
-            res_tasa_alt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", timeout=15)
+            res_tasa_alt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", headers=HEADERS, timeout=10)
             if res_tasa_alt.status_code == 200:
                 data_tasa_alt = res_tasa_alt.json()
                 if isinstance(data_tasa_alt, list):
@@ -91,10 +95,19 @@ def obtener_macro_argentina():
                             tasa_num = float(val_alt)
                             datos["tasa_bcra"] = tasa_num * 100 if tasa_num < 2 else tasa_num
                             break
-        except Exception as e2: logger.warning(f"Error Tasa BCRA: {e2}")
+            if datos["tasa_bcra"] is None: raise Exception("Saltar a Ambito")
+        except Exception as e2:
+            try:
+                # Respaldo de emergencia en caso de caída de API principal
+                res_tasa_ambito = requests.get("https://mercados.ambito.com/tasas/badlar/info", headers=HEADERS, timeout=10)
+                if res_tasa_ambito.status_code == 200 and "valor" in res_tasa_ambito.json():
+                    val_str = res_tasa_ambito.json().get("valor", "0").replace(",", ".")
+                    datos["tasa_bcra"] = float(val_str)
+            except Exception as e3: logger.warning(f"Error Tasa BCRA en todos los endpoints: {e3}")
 
+    # 5. RESERVAS BCRA (Con Anti-Bot y Fuente Secundaria)
     try:
-        res_bcra = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", timeout=15)
+        res_bcra = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", headers=HEADERS, timeout=10)
         if res_bcra.status_code == 200:
             data_bcra = res_bcra.json()
             if isinstance(data_bcra, list):
@@ -102,9 +115,17 @@ def obtener_macro_argentina():
                     if item.get("valor") is not None:
                         datos["reservas"] = float(item["valor"])
                         break
-    except Exception as e: logger.warning(f"Error Reservas BCRA: {e}")
+        if datos["reservas"] is None: raise Exception("Saltar a Respaldo de Reservas")
+    except Exception as e: 
+        try:
+            # Plan B para Reservas
+            res_res_alt = requests.get("https://mercados.ambito.com/bcra/reservas/info", headers=HEADERS, timeout=10)
+            if res_res_alt.status_code == 200 and "valor" in res_res_alt.json():
+                val_str = res_res_alt.json().get("valor", "0").replace(".", "").replace(",", ".")
+                datos["reservas"] = float(val_str)
+        except Exception as e2: logger.warning(f"Error Reservas BCRA en todos los endpoints: {e2}")
 
-    # Extracción combinada: Merval y Bono AL30
+    # 6. Extracción combinada: Merval y Bono AL30
     try:
         hist_arg = yf.download(["^MERV", "AL30.BA"], period="1y", progress=False)
         df_close = hist_arg['Close'] if 'Close' in hist_arg else pd.DataFrame()
@@ -128,7 +149,7 @@ def obtener_macro_argentina():
                     
     except Exception as e: logger.warning(f"Error Extracción Merval/AL30: {e}")
 
-    # Calculadora Interna: Merval USD (CCL)
+    # 7. Calculadora Interna: Merval USD (CCL)
     try:
         ccl_venta = next((float(d['venta']) for d in datos["dolares"] if d['nombre'] == 'CCL'), None)
         if ccl_venta and datos["merval"]["valor"]:
@@ -136,6 +157,7 @@ def obtener_macro_argentina():
     except Exception as e: logger.warning(f"Error calculando Merval USD: {e}")
     
     return datos
+
 
 @st.cache_data(ttl=3600)
 def obtener_macro_internacional():
@@ -428,7 +450,6 @@ def obtener_noticias_acciones(lista_tickers):
 @st.cache_data(ttl=1800)
 def obtener_noticias_globales():
     try:
-        # Extraemos los titulares principales relacionados a crudo, oro y S&P
         url = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC,CL=F,GC=F&region=US&lang=en-US"
         feed = feedparser.parse(url)
         entradas = []
@@ -455,7 +476,6 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         merval_val = macro_arg.get('merval', {}).get('valor', 'N/D')
         reservas_val = macro_arg.get('reservas', 'N/D')
         
-        # Nuevos indicadores agregados
         merval_usd_val = macro_arg.get('merval_usd', {}).get('valor', 'N/D')
         if merval_usd_val != 'N/D': merval_usd_val = f"{merval_usd_val:.0f}"
         al30_val = macro_arg.get('bono_al30', {}).get('valor', 'N/D')
@@ -482,7 +502,6 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         sp500_val = get_m('S&P 500 (Global)')
         nasdaq_val = get_m('Nasdaq (Tech)')
         
-        # Nuevos índices agregados
         dow_val = get_m('Dow Jones')
         nikkei_val = get_m('Nikkei 225 (Japón)')
         euro_val = get_m('Euro Stoxx 50 (Europa)')
