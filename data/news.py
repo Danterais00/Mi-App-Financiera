@@ -5,23 +5,24 @@ import pandas as pd
 import streamlit as st
 import logging
 import time
+import urllib3
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Desactivar advertencias de certificados de seguridad (Necesario para sitios gubernamentales)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- CONFIGURACIÓN DE LOGS ---
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# --- ESCUDO ANTI-BOTS MEJORADO ---
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*',
-    'Referer': 'https://www.ambito.com/' # Clave para que Ámbito no nos bloquee
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
 }
 
 # --- LA DEFENSA CONTRA BLOQUEOS DE YAHOO FINANCE ---
 @st.cache_data(ttl=86400) # Caché de 24 horas para datos de balance
 def obtener_info_ticker_cached(ticker):
-    """Extrae métricas fundamentales con retraso (Throttling) para evitar baneo de IP."""
     time.sleep(0.3) 
     try:
         info = yf.Ticker(ticker).info
@@ -29,7 +30,6 @@ def obtener_info_ticker_cached(ticker):
     except Exception as e:
         logger.warning(f"Error extrayendo info de {ticker}: {e}")
         return {}
-
 
 @st.cache_data(ttl=1800)
 def obtener_macro_argentina():
@@ -56,13 +56,7 @@ def obtener_macro_argentina():
         res_rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", headers=HEADERS, timeout=10)
         if res_rp.status_code == 200 and len(res_rp.json()) > 0:
             datos["riesgo_pais"] = {"valor": res_rp.json()[-1]["valor"], "variacion": ""}
-        else: raise Exception("Saltar al respaldo")
-    except Exception as e:
-        try:
-            res_rp_alt = requests.get("https://mercados.ambito.com/riesgopais/info", headers=HEADERS, timeout=10)
-            if res_rp_alt.status_code == 200 and "valor" in res_rp_alt.json():
-                datos["riesgo_pais"] = {"valor": res_rp_alt.json().get("valor"), "variacion": res_rp_alt.json().get("variacion")}
-        except Exception as e2: logger.warning(f"Error Riesgo País (ambos): {e2}")
+    except Exception as e: logger.warning(f"Error Riesgo País: {e}")
 
     # 3. INFLACIÓN
     try:
@@ -71,76 +65,65 @@ def obtener_macro_argentina():
             datos["inflacion"] = float(res_inf.json()[-1]["valor"]) 
     except Exception as e: logger.warning(f"Error Inflación: {e}")
 
-    # 4. TASA BCRA (Con Limpieza Robusta)
+    # 4. EXTRACCIÓN OFICIAL DEL BCRA (VÍA DIRECTA - SOLUCIÓN PARA TASA Y RESERVAS)
     try:
-        res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", headers=HEADERS, timeout=10)
-        if res_tasa.status_code == 200:
-            data_tasa = res_tasa.json()
-            if isinstance(data_tasa, list):
-                for item in reversed(data_tasa):
-                    val = item.get("valor") or item.get("tasa")
-                    if val is not None:
-                        tasa_num = float(val)
-                        datos["tasa_bcra"] = tasa_num * 100 if tasa_num < 2 else tasa_num
-                        break 
-        if datos["tasa_bcra"] is None: raise Exception("Saltar a Plazo Fijo")
+        res_bcra = requests.get("https://www.bcra.gob.ar/", headers=HEADERS, verify=False, timeout=15)
+        # Leer las tablas HTML de la página principal del Banco Central
+        dfs = pd.read_html(res_bcra.text, decimal=",", thousands=".")
+        for df in dfs:
+            if len(df.columns) >= 2:
+                for _, row in df.iterrows():
+                    key_str = str(row.iloc[0]).lower()
+                    # Limpiamos símbolos molestos
+                    val_str = str(row.iloc[1]).replace("U$S", "").replace("%", "").replace(".", "").replace(",", ".").strip()
+                    
+                    try:
+                        # Extraer Reservas Internacionales
+                        if "reservas" in key_str and datos["reservas"] is None:
+                            datos["reservas"] = float(val_str)
+                        # Extraer Tasa de Política Monetaria
+                        elif ("política monetaria" in key_str or "pases" in key_str) and datos["tasa_bcra"] is None:
+                            datos["tasa_bcra"] = float(val_str)
+                    except: pass
     except Exception as e:
+        logger.warning(f"Error Scraping Directo BCRA: {e}")
+
+    # Respaldos en caso de que falle el Scraping del BCRA
+    if datos["tasa_bcra"] is None:
         try:
-            # Respaldo Ámbito (Limpiamos % y comas)
-            res_tasa_alt = requests.get("https://mercados.ambito.com/tasas/plazofijo/info", headers=HEADERS, timeout=10)
-            if res_tasa_alt.status_code == 200 and "valor" in res_tasa_alt.json():
-                val_str = res_tasa_alt.json().get("valor", "0").replace("%", "").replace(",", ".")
-                datos["tasa_bcra"] = float(val_str)
-        except Exception as e2: logger.warning(f"Error Tasa BCRA en todos los endpoints: {e2}")
+            res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", headers=HEADERS, timeout=10)
+            if res_tasa.status_code == 200 and len(res_tasa.json()) > 0:
+                val = res_tasa.json()[-1].get("valor")
+                datos["tasa_bcra"] = float(val) * 100 if float(val) < 2 else float(val)
+        except: pass
 
-    # 5. RESERVAS BCRA (Con Limpieza Robusta)
+    # 5. AISLAMIENTO DEL BONO AL30 (Búsqueda en profundidad)
     try:
-        res_bcra = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", headers=HEADERS, timeout=10)
-        if res_bcra.status_code == 200:
-            data_bcra = res_bcra.json()
-            if isinstance(data_bcra, list) and len(data_bcra) > 0:
-                for item in reversed(data_bcra):
-                    if item.get("valor") is not None:
-                        datos["reservas"] = float(item["valor"])
-                        break
-        if datos["reservas"] is None: raise Exception("Saltar a Respaldo")
-    except Exception as e: 
-        try:
-            # Plan B Ámbito (Limpiamos U$S y puntos de miles)
-            res_res_alt = requests.get("https://mercados.ambito.com/bcra/reservas/info", headers=HEADERS, timeout=10)
-            if res_res_alt.status_code == 200 and "valor" in res_res_alt.json():
-                val_str = res_res_alt.json().get("valor", "0")
-                # Ejemplo que limpia: "U$S 27.500" -> "27500"
-                val_str = val_str.replace("U$S", "").replace("USD", "").replace(".", "").replace(",", ".").strip()
-                datos["reservas"] = float(val_str)
-        except Exception as e2: logger.warning(f"Error Reservas BCRA: {e2}")
+        tk_al30 = yf.Ticker("AL30.BA")
+        hist_al30 = tk_al30.history(period="1mo") # Traemos todo el mes para asegurar un dato
+        if not hist_al30.empty and 'Close' in hist_al30.columns:
+            al30_closes = hist_al30['Close'].dropna()
+            if len(al30_closes) >= 2:
+                datos["bono_al30"]["valor"] = float(al30_closes.iloc[-1])
+                datos["bono_al30"]["var_diaria"] = float(((al30_closes.iloc[-1] / al30_closes.iloc[-2]) - 1) * 100)
+    except Exception as e: logger.warning(f"Error AL30 Aislado: {e}")
 
-    # 6. BONO AL30 (Migrado a Ámbito en lugar de Yahoo Finance)
+    # 6. MERVAL PESOS (Extracción independiente)
     try:
-        res_al30 = requests.get("https://mercados.ambito.com/bonos/AL30/info", headers=HEADERS, timeout=10)
-        if res_al30.status_code == 200 and "valor" in res_al30.json():
-            val_str = res_al30.json().get("valor", "0").replace(".", "").replace(",", ".")
-            datos["bono_al30"]["valor"] = float(val_str)
-            # Intentar sacar variación diaria si existe
-            var_str = res_al30.json().get("variacion", "0").replace("%", "").replace(",", ".")
-            datos["bono_al30"]["var_diaria"] = float(var_str)
-    except Exception as e: logger.warning(f"Error extrayendo AL30 de Ámbito: {e}")
-
-    # 7. MERVAL PESOS (Se mantiene en Yahoo Finance)
-    try:
-        hist_arg = yf.download(["^MERV"], period="1y", progress=False)
-        if not hist_arg.empty and "^MERV" in hist_arg['Close'].columns:
-            merv = hist_arg['Close']["^MERV"].dropna()
-            if len(merv) >= 2:
-                act = merv.iloc[-1]
+        tk_merv = yf.Ticker("^MERV")
+        hist_merv = tk_merv.history(period="1y")
+        if not hist_merv.empty and 'Close' in hist_merv.columns:
+            merv_closes = hist_merv['Close'].dropna()
+            if len(merv_closes) >= 2:
+                act = merv_closes.iloc[-1]
                 datos["merval"]["valor"] = float(act)
-                datos["merval"]["var_diaria"] = float(((act / merv.iloc[-2]) - 1) * 100)
-                if len(merv) >= 21: datos["merval"]["var_1m"] = float(((act / merv.iloc[-21]) - 1) * 100)
-                if len(merv) >= 126: datos["merval"]["var_6m"] = float(((act / merv.iloc[-126]) - 1) * 100)
-                if len(merv) >= 250: datos["merval"]["var_1y"] = float(((act / merv.iloc[0]) - 1) * 100)
-    except Exception as e: logger.warning(f"Error Extracción Merval: {e}")
+                datos["merval"]["var_diaria"] = float(((act / merv_closes.iloc[-2]) - 1) * 100)
+                if len(merv_closes) >= 21: datos["merval"]["var_1m"] = float(((act / merv_closes.iloc[-21]) - 1) * 100)
+                if len(merv_closes) >= 126: datos["merval"]["var_6m"] = float(((act / merv_closes.iloc[-126]) - 1) * 100)
+                if len(merv_closes) >= 250: datos["merval"]["var_1y"] = float(((act / merv_closes.iloc[0]) - 1) * 100)
+    except Exception as e: logger.warning(f"Error Merval: {e}")
 
-    # 8. Calculadora Interna: Merval USD (CCL)
+    # 7. Calculadora Interna: Merval USD (CCL)
     try:
         ccl_venta = next((float(d['venta']) for d in datos["dolares"] if d['nombre'] == 'CCL'), None)
         if ccl_venta and datos["merval"]["valor"]:
@@ -323,7 +306,6 @@ def obtener_datos_gics():
         
     return sorted(datos_sectores, key=lambda x: x["Score"], reverse=True)
 
-
 def calcular_rsi_serie(serie, period=14):
     delta = serie.diff()
     gain = delta.where(delta > 0, 0)
@@ -436,7 +418,6 @@ def obtener_noticias_acciones(lista_tickers):
         except Exception as e: logger.warning(f"Error noticias {ticker}: {e}"); noticias[ticker] = []
     return noticias
 
-# --- NUEVO SENSOR GEOPOLÍTICO GLOBAL ---
 @st.cache_data(ttl=1800)
 def obtener_noticias_globales():
     try:
@@ -450,7 +431,6 @@ def obtener_noticias_globales():
         logger.warning(f"Error extrayendo noticias globales: {e}")
         return []
 
-# --- MOTOR IA INSTITUCIONAL ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     try:
