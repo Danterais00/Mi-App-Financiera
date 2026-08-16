@@ -5,8 +5,9 @@ import altair as alt
 from datetime import datetime
 import urllib.request
 import xml.etree.ElementTree as ET
+import json
 
-# 1. CONFIGURACIÓN DE PÁGINA Y ESTILOS
+# 1. CONFIGURACIÓN DE PÁGINA Y ESTILOS SMARTINVEST PRO
 st.set_page_config(
     page_title="SmartInvest AI - Terminal Pro Nivel 5",
     page_icon="⚡",
@@ -14,30 +15,99 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# --- CSS PERSONALIZADO (SMARTINVEST DARK PRO MULTI-RIBBON UI) ---
 CUSTOM_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Urbanist:wght@600;700;800&display=swap');
+
     :root {
-        --bg-main: #0a0a0f; --bg-card: #14141f; --bg-input: #1c1c2b;
-        --border-color: #252538; --text-main: #f3f4f6; --text-muted: #9ca3af;
-        --primary: #10b981; --danger: #ef4444; --blue: #3b82f6; --warning: #f59e0b;
+        --bg-main: #0a0a0f;
+        --bg-card: #14141f;
+        --bg-input: #1c1c2b;
+        --border-color: #252538;
+        --text-main: #f3f4f6;
+        --text-muted: #9ca3af;
+        --primary: #10b981;
+        --danger: #ef4444;
+        --blue: #3b82f6;
+        --warning: #f59e0b;
     }
-    .stApp { background-color: var(--bg-main); font-family: 'Inter', sans-serif; color: var(--text-main); }
+
+    .stApp {
+        background-color: var(--bg-main);
+        font-family: 'Inter', sans-serif;
+        color: var(--text-main);
+    }
+
     #MainMenu, footer, header {visibility: hidden;}
-    .market-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 20px; }
-    .market-pill { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; display: flex; flex-direction: column; }
-    .market-pill .lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; }
-    .market-pill .val { font-size: 14px; font-weight: 800; font-family: 'Urbanist'; color: #fff; margin-top: 2px; }
-    .market-pill .chg { font-size: 11px; font-weight: 700; margin-top: 1px; }
-    .top-card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+
+    /* Encabezado Principal */
+    .smart-header {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        padding: 16px 20px;
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .smart-header h1 {
+        font-family: 'Urbanist', sans-serif;
+        font-size: 24px;
+        font-weight: 800;
+        color: #fff;
+        margin: 0;
+    }
+    .smart-header h1 span { color: var(--blue); }
+
+    /* Estructura de Cintas Horizontales (Ribbon Grid) */
+    .ribbon-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--blue);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 15px;
+        margin-bottom: 10px;
+    }
+    .ribbon-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    .ribbon-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 12px 14px;
+        display: flex;
+        flex-direction: column;
+    }
+    .ribbon-card .lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; }
+    .ribbon-card .val { font-size: 15px; font-weight: 800; font-family: 'Urbanist'; color: #fff; margin-top: 3px; }
+    .ribbon-card .sub { font-size: 11px; font-weight: 700; margin-top: 2px; }
+
+    /* Tarjetas TOP 10 */
+    .top-card {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 12px;
+    }
     .top-card-header { display: flex; justify-content: space-between; align-items: center; }
     .ticker-title { font-family: 'Urbanist'; font-size: 20px; font-weight: 800; color: #fff; }
     .score-badge { background: rgba(16, 185, 129, 0.15); border: 1px solid var(--primary); color: var(--primary); font-weight: 800; font-size: 12px; padding: 2px 8px; border-radius: 6px; }
+
     .rag-pill { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; display: inline-block; margin: 6px 0; }
     .rag-strong-buy { background: rgba(16, 185, 129, 0.2); color: var(--primary); border: 1px solid var(--primary); }
     .rag-ideal { background: rgba(59, 130, 246, 0.2); color: var(--blue); border: 1px solid var(--blue); }
     .rag-caution { background: rgba(245, 158, 11, 0.2); color: var(--warning); border: 1px solid var(--warning); }
     .rag-avoid { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid var(--danger); }
+
+    /* Tablas Personalizadas */
     .smart-table { width: 100%; border-collapse: separate; border-spacing: 0 4px; margin-top: 10px; }
     .smart-table th { color: var(--text-muted); font-size: 11px; text-transform: uppercase; font-weight: 700; padding: 8px 10px; border-bottom: 1px solid var(--border-color); text-align: center; }
     .smart-table td { background-color: var(--bg-card); padding: 10px; font-size: 12px; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); text-align: center; }
@@ -45,7 +115,16 @@ CUSTOM_CSS = """
     .smart-table td:last-child { border-right: 1px solid var(--border-color); border-radius: 0 6px 6px 0; }
     .cell-highlight { background-color: rgba(16, 185, 129, 0.18) !important; color: #a7f3d0 !important; font-weight: 700; }
     .row-promedio td { background-color: #1c1c30 !important; color: var(--warning) !important; font-weight: 700; }
-    .report-box { background: var(--bg-card); border: 1px solid var(--blue); border-radius: 14px; padding: 20px; margin-top: 15px; line-height: 1.6; }
+
+    /* Reporte Consola */
+    .report-box {
+        background: var(--bg-card);
+        border: 1px solid var(--blue);
+        border-radius: 14px;
+        padding: 20px;
+        margin-top: 15px;
+        line-height: 1.6;
+    }
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
@@ -64,12 +143,12 @@ TOOLTIPS = {
     "Quick Ratio": "Liquidez inmediata excluyendo inventarios."
 }
 
-# --- CAPTURA DE DATOS MACRO Y NOTICIAS DINÁMICAS ---
+# --- FUNCIONES DE CAPTURA MACRO & ARGENTINA API ---
 @st.cache_data(ttl=300)
 def obtener_datos_macro_globales():
     tickers_macro = {
-        "S&P 500": "^GSPC", "Nasdaq": "^IXIC", "Merval ARS": "^MERV",
-        "Brent Oil": "BZ=F", "Bono US 10Y": "^TNX", "VIX": "^VIX", "Nikkei 225": "^N225"
+        "S&P 500": "^GSPC", "Nasdaq": "^IXIC", "Nikkei 225": "^N225",
+        "Brent Oil": "BZ=F", "Bono US 10Y": "^TNX", "VIX": "^VIX"
     }
     res = {}
     for nombre, symb in tickers_macro.items():
@@ -77,12 +156,52 @@ def obtener_datos_macro_globales():
             tk = yf.Ticker(symb)
             h = tk.history(period="2d")
             if len(h) >= 2:
-                p_act, p_prev = h['Close'].iloc[-1], h['Close'].iloc[-2]
+                p_act, p_prev = float(h['Close'].iloc[-1]), float(h['Close'].iloc[-2])
                 res[nombre] = {"precio": p_act, "var": ((p_act - p_prev) / p_prev) * 100}
             elif len(h) == 1:
-                res[nombre] = {"precio": h['Close'].iloc[-1], "var": 0.0}
+                res[nombre] = {"precio": float(h['Close'].iloc[-1]), "var": 0.0}
         except Exception:
             res[nombre] = {"precio": 0.0, "var": 0.0}
+    return res
+
+@st.cache_data(ttl=300)
+def obtener_datos_argentina():
+    res = {
+        "merval_ars": 0.0, "merval_var": 0.0,
+        "oficial": 0.0, "mep": 0.0, "ccl": 0.0, "brecha": 0.0, "riesgo_pais": 0
+    }
+    # Merval ARS via yfinance
+    try:
+        tk_m = yf.Ticker("^MERV")
+        hm = tk_m.history(period="2d")
+        if len(hm) >= 2:
+            p1, p2 = float(hm['Close'].iloc[-1]), float(hm['Close'].iloc[-2])
+            res["merval_ars"] = p1
+            res["merval_var"] = ((p1 - p2) / p2) * 100
+    except Exception: pass
+
+    # Dólares via DolarApi
+    try:
+        req = urllib.request.Request("https://dolarapi.com/v1/dolares", headers={'User-Agent': 'Mozilla/5.0'})
+        raw = urllib.request.urlopen(req, timeout=3).read()
+        data = json.loads(raw)
+        dolas = {item['casa']: float(item['venta']) for item in data if 'casa' in item and 'venta' in item}
+        res["oficial"] = dolas.get("oficial", 0.0)
+        res["mep"] = dolas.get("bolsa", 0.0)
+        res["ccl"] = dolas.get("contadoconliqui", 0.0)
+        if res["oficial"] > 0 and res["ccl"] > 0:
+            res["brecha"] = ((res["ccl"] - res["oficial"]) / res["oficial"]) * 100
+    except Exception: pass
+
+    # Riesgo País via ArgentinaDatos API
+    try:
+        req_rp = urllib.request.Request("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo", headers={'User-Agent': 'Mozilla/5.0'})
+        raw_rp = urllib.request.urlopen(req_rp, timeout=3).read()
+        data_rp = json.loads(raw_rp)
+        if isinstance(data_rp, dict) and "valor" in data_rp:
+            res["riesgo_pais"] = int(data_rp["valor"])
+    except Exception: pass
+
     return res
 
 @st.cache_data(ttl=600)
@@ -91,37 +210,37 @@ def obtener_noticias_en_vivo():
     noticias = []
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        html = urllib.request.urlopen(req).read()
+        html = urllib.request.urlopen(req, timeout=4).read()
         root = ET.fromstring(html)
-        for item in root.findall('.//item')[:5]:
+        for item in root.findall('.//item')[:4]:
             noticias.append(item.find('title').text)
     except Exception:
         noticias = [
-            "Avances en los mercados internacionales tras nuevos datos de inflación.",
-            "Expectativa en la plaza local por la evolución de las tasas y el dólar.",
-            "Alta volatilidad en commodities energéticos por tensiones globales."
+            "Mercados atentos a los datos de inflación e tasas de interés globales.",
+            "Expectativa en la plaza financiera local por la evolución del dólar y bonos.",
+            "Volatilidad en commodities energéticos por factores geopolíticos."
         ]
     return noticias
 
+# CARGA DE DATOS
 macro_data = obtener_datos_macro_globales()
+arg_data = obtener_datos_argentina()
 noticias_vivo = obtener_noticias_en_vivo()
 
-# MARKET BAR
-st.markdown(f"""
-<div class="market-bar">
-    <div class="market-pill"><span class="lbl">S&P 500</span><span class="val">{macro_data.get('S&P 500', {}).get('precio', 0):,.1f}</span><span class="chg" style="color:{'#10b981' if macro_data.get('S&P 500', {}).get('var', 0) >= 0 else '#ef4444'}">{macro_data.get('S&P 500', {}).get('var', 0):+.2f}%</span></div>
-    <div class="market-pill"><span class="lbl">Nasdaq</span><span class="val">{macro_data.get('Nasdaq', {}).get('precio', 0):,.1f}</span><span class="chg" style="color:{'#10b981' if macro_data.get('Nasdaq', {}).get('var', 0) >= 0 else '#ef4444'}">{macro_data.get('Nasdaq', {}).get('var', 0):+.2f}%</span></div>
-    <div class="market-pill"><span class="lbl">Merval ARS</span><span class="val">{macro_data.get('Merval ARS', {}).get('precio', 0):,.0f}</span><span class="chg" style="color:{'#10b981' if macro_data.get('Merval ARS', {}).get('var', 0) >= 0 else '#ef4444'}">{macro_data.get('Merval ARS', {}).get('var', 0):+.2f}%</span></div>
-    <div class="market-pill"><span class="lbl">Brent Oil</span><span class="val">${macro_data.get('Brent Oil', {}).get('precio', 0):,.2f}</span><span class="chg" style="color:{'#10b981' if macro_data.get('Brent Oil', {}).get('var', 0) >= 0 else '#ef4444'}">{macro_data.get('Brent Oil', {}).get('var', 0):+.2f}%</span></div>
-    <div class="market-pill"><span class="lbl">US 10Y Yield</span><span class="val">{macro_data.get('Bono US 10Y', {}).get('precio', 0):.2f}%</span><span class="chg" style="color:{'#10b981' if macro_data.get('Bono US 10Y', {}).get('var', 0) >= 0 else '#ef4444'}">{macro_data.get('Bono US 10Y', {}).get('var', 0):+.2f}%</span></div>
-    <div class="market-pill"><span class="lbl">VIX (Miedo)</span><span class="val">{macro_data.get('VIX', {}).get('precio', 0):.2f}</span><span class="chg" style="color:{'#ef4444' if macro_data.get('VIX', {}).get('var', 0) >= 0 else '#10b981'}">{macro_data.get('VIX', {}).get('var', 0):+.2f}%</span></div>
+# ENCABEZADO Y BARRA LATERAL
+st.markdown("""
+<div class="smart-header">
+    <div>
+        <h1>Smart<span>Invest</span> AI</h1>
+        <div style="font-size:11px; color:var(--text-muted); font-weight:600;">Terminal Pro v2.0 • Multi-Ribbon System & Reportes Nivel 5</div>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
 st.sidebar.markdown("### ⚙️ Panel de Control")
 modo_estrategia = st.sidebar.radio("Estrategia Activa:", ["Crecimiento (Agresivo)", "Fortaleza (Defensivo)"])
 st.sidebar.markdown("---")
-st.sidebar.info("💡 **SmartInvest Nivel 5:** Motor macroeconómico y cuantitativo dinámico.")
+st.sidebar.info("💡 **SmartInvest Nivel 5:** Monitor macro sin duplicidad y scoring cuantitativo unificado.")
 
 tickers_raw = st.text_input("Tickers de Cobertura (separados por coma):", "BP, CVX, ET, PBR, TEN, VIST, XOM, SHEL, AAPL.BA, MSFT.BA, GOOGL.BA, AMZN.BA, MELI.BA, NVDA.BA").upper()
 
@@ -141,7 +260,7 @@ if tickers_raw:
     fechas_headers = []
     nombres_base = ["4 Trim. atrás", "3 Trim. atrás", "2 Trim. atrás", "1 Trim. atrás", "Último Trim."]
 
-    with st.spinner("Procesando indicadores fundamentales y de mercado..."):
+    with st.spinner("Procesando indicadores fundamentales y cuantitativos..."):
         for ticker in lista_tickers:
             try:
                 accion = yf.Ticker(ticker)
@@ -274,7 +393,7 @@ if tickers_raw:
 
     if datos_fundamentales:
         df_fund = pd.DataFrame(datos_fundamentales).set_index("Ticker")
-        
+
         promedios = {}
         ratios_cols = ["PER", "Margen Neto (%)", "ROE (%)", "ROA (%)", "Free Cash Flow", "Div Yield (%)", "Debt/Equity", "Current Ratio", "Quick Ratio", "Net Income", "Cost of Revenue"]
         for col in ratios_cols:
@@ -304,38 +423,61 @@ if tickers_raw:
             "🚦 Momento Técnico"
         ])
 
-        # --- TAB 1: NOTICIAS & REPORTE MACRO (DINÁMICO) ---
+        # --- TAB 1: NOTICIAS & REPORTE MACRO (100% MULTI-RIBBON UI) ---
         with tab_macro:
             st.markdown("### 📰 Dashboard de Coyuntura & Generador Nivel 5")
-            col1, col2, col3 = st.columns(3)
 
-            with col1:
-                st.subheader("🌍 Clima Global & Tasas")
-                sp_v = macro_data.get('S&P 500', {}).get('var', 0)
-                nk_v = macro_data.get('Nikkei 225', {}).get('var', 0)
-                oil_p = macro_data.get('Brent Oil', {}).get('precio', 0)
-                st.write(f"- **S&P 500:** {macro_data.get('S&P 500', {}).get('precio', 0):,.1f} ({sp_v:+.2f}%)")
-                st.write(f"- **Nikkei 225:** {macro_data.get('Nikkei 225', {}).get('precio', 0):,.1f} ({nk_v:+.2f}%)")
-                st.write(f"- **Petróleo Brent:** ${oil_p:.2f}/bbl")
-                st.write(f"- **Bono US 10 YR:** {macro_data.get('Bono US 10Y', {}).get('precio', 0):.2f}%")
+            # CINTA 1: CLIMA GLOBAL & COMMODITIES
+            sp_v = macro_data.get('S&P 500', {}).get('var', 0)
+            nk_v = macro_data.get('Nikkei 225', {}).get('var', 0)
+            oil_p = macro_data.get('Brent Oil', {}).get('precio', 0)
+            oil_v = macro_data.get('Brent Oil', {}).get('var', 0)
+            us10_p = macro_data.get('Bono US 10Y', {}).get('precio', 0)
+            vix_p = macro_data.get('VIX', {}).get('precio', 0)
 
-            with col2:
-                st.subheader("🇦🇷 Monitor Argentina")
-                merv_p = macro_data.get('Merval ARS', {}).get('precio', 0)
-                merv_v = macro_data.get('Merval ARS', {}).get('var', 0)
-                st.write(f"- **S&P Merval:** {merv_p:,.0f} pts ({merv_v:+.2f}%)")
-                if merv_p < 3000000 and merv_p > 0:
-                    st.warning("⚠️ **Soporte Clave:** Merval debajo del nivel de 3M de puntos.")
-                else:
-                    st.success("✅ **Soporte Clave:** Merval sobre el nivel de 3M de puntos.")
+            st.markdown('<div class="ribbon-title">🌍 CINTA 1: CLIMA GLOBAL & COMMODITIES</div>', unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="ribbon-grid">
+                <div class="ribbon-card"><span class="lbl">S&P 500</span><span class="val">{macro_data.get('S&P 500', {}).get('precio', 0):,.1f}</span><span class="sub" style="color:{'#10b981' if sp_v >= 0 else '#ef4444'}">{sp_v:+.2f}%</span></div>
+                <div class="ribbon-card"><span class="lbl">Nasdaq 100</span><span class="val">{macro_data.get('Nasdaq', {}).get('precio', 0):,.1f}</span><span class="sub" style="color:{'#10b981' if macro_data.get('Nasdaq', {}).get('var', 0) >= 0 else '#ef4444'}">{macro_data.get('Nasdaq', {}).get('var', 0):+.2f}%</span></div>
+                <div class="ribbon-card"><span class="lbl">Nikkei 225</span><span class="val">{macro_data.get('Nikkei 225', {}).get('precio', 0):,.1f}</span><span class="sub" style="color:{'#10b981' if nk_v >= 0 else '#ef4444'}">{nk_v:+.2f}%</span></div>
+                <div class="ribbon-card"><span class="lbl">Petróleo Brent</span><span class="val">${oil_p:.2f}</span><span class="sub" style="color:{'#10b981' if oil_v >= 0 else '#ef4444'}">{oil_v:+.2f}%</span></div>
+                <div class="ribbon-card"><span class="lbl">Bono US 10Y</span><span class="val">{us10_p:.2f}%</span><span class="sub" style="color:#3b82f6;">Tasa Ref.</span></div>
+                <div class="ribbon-card"><span class="lbl">VIX (Miedo)</span><span class="val">{vix_p:.2f}</span><span class="sub" style="color:{'#ef4444' if vix_p > 20 else '#10b981'};">{'Alta Volatilidad' if vix_p > 20 else 'Estable'}</span></div>
+            </div>
+            """, unsafe_allow_html=True)
 
-            with col3:
-                st.subheader("📡 Titulares en Vivo (RSS)")
-                for n in noticias_vivo[:4]:
-                    st.write(f"• {n}")
+            # CINTA 2: MONITOR ARGENTINA & MAPA CAMBIARIO
+            merv_p = arg_data.get('merval_ars', 0)
+            merv_v = arg_data.get('merval_var', 0)
+            ccl_p = arg_data.get('ccl', 0)
+            merv_usd = (merv_p / ccl_p) if (merv_p > 0 and ccl_p > 0) else 0
 
-            st.markdown("---")
-            if st.button("⚡ Generar Reporte Matutino Nivel 5", type="primary"):
+            st.markdown('<div class="ribbon-title">🇦🇷 CINTA 2: MONITOR ARGENTINA & MAPA CAMBIARIO</div>', unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="ribbon-grid">
+                <div class="ribbon-card"><span class="lbl">S&P Merval (ARS)</span><span class="val">{merv_p:,.0f}</span><span class="sub" style="color:{'#10b981' if merv_v >= 0 else '#ef4444'}">{merv_v:+.2f}%</span></div>
+                <div class="ribbon-card"><span class="lbl">Merval (USD CCL)</span><span class="val">{merv_usd:,.0f} pts</span><span class="sub" style="color:#3b82f6;">Ajustado CCL</span></div>
+                <div class="ribbon-card"><span class="lbl">Dólar Oficial</span><span class="val">${arg_data.get('oficial', 0):,.2f}</span><span class="sub" style="color:var(--text-muted);">Banco Nación</span></div>
+                <div class="ribbon-card"><span class="lbl">Dólar MEP</span><span class="val">${arg_data.get('mep', 0):,.2f}</span><span class="sub" style="color:#10b981;">Bolsa</span></div>
+                <div class="ribbon-card"><span class="lbl">Dólar CCL</span><span class="val">${arg_data.get('ccl', 0):,.2f}</span><span class="sub" style="color:#10b981;">Contado c/ Liq.</span></div>
+                <div class="ribbon-card"><span class="lbl">Brecha Cambiaria</span><span class="val">{arg_data.get('brecha', 0):.1f}%</span><span class="sub" style="color:#f59e0b;">CCL vs Oficial</span></div>
+                <div class="ribbon-card"><span class="lbl">Riesgo País</span><span class="val">{arg_data.get('riesgo_pais', 0)} pb</span><span class="sub" style="color:#f59e0b;">EMBI JP Morgan</span></div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # CINTA 3: FEED DE TITULARES EN VIVO
+            st.markdown('<div class="ribbon-title">📡 CINTA 3: TITULARES Y DRIVERS EN VIVO (RSS)</div>', unsafe_allow_html=True)
+            for n in noticias_vivo:
+                st.markdown(f"""
+                <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:10px 14px; margin-bottom:6px; font-size:12.5px; color:var(--text-main);">
+                    📌 {n}
+                </div>
+                """, unsafe_allow_html=True)
+
+            # CINTA 4: CONSOLA DE GENERACIÓN REPORTE NIVEL 5
+            st.markdown('<div class="ribbon-title">⚡ CINTA 4: GENERADOR AUTOMÁTICO REPORTE MATUTINO NIVEL 5</div>', unsafe_allow_html=True)
+            if st.button("Generar Reporte Matutino Nivel 5", type="primary"):
                 scores_rep = []
                 for t in lista_tickers:
                     if t in analisis_completo and analisis_completo[t]["beta_val"] < 1.5 and analisis_completo[t]["upside_val"] > 0:
@@ -350,10 +492,10 @@ if tickers_raw:
 ### 📝 RESUMEN MATUTINO DE MERCADOS – SmartInvest AI ({fecha_actual})
 
 **🌍 Panorama Internacional**
-Wall Street opera con tendencia **{'positiva' if sp_v >= 0 else 'bajista'}** (S&P 500: {sp_v:+.2f}%), con el bono del Tesoro a 10 años en **{macro_data.get('Bono US 10Y', {}).get('precio', 0):.2f}%** y el Petróleo Brent en **${oil_p:.2f}**.
+Wall Street opera con tendencia **{'positiva' if sp_v >= 0 else 'bajista'}** (S&P 500: {sp_v:+.2f}%), con el bono del Tesoro a 10 años cotizando en **{us10_p:.2f}%** y el Petróleo Brent en **${oil_p:.2f}**. El índice de volatilidad VIX se ubica en **{vix_p:.2f} points**.
 
 **🇦🇷 Mercado Local (Argentina)**
-El S&P Merval cotiza en **{merv_p:,.0f} puntos ({merv_v:+.2f}%)**, manteniendo el foco en la curva soberana y el mercado cambiario.
+El S&P Merval cotiza en **{merv_p:,.0f} puntos ({merv_v:+.2f}%)** (~{merv_usd:,.0f} USD CCL). En el mercado cambiario, el Dólar CCL cotiza a **${ccl_p:,.2f}** con una brecha del **{arg_data.get('brecha', 0):.1f}%** frente al oficial, mientras el Riesgo País se posiciona en **{arg_data.get('riesgo_pais', 0)} pb**.
 
 **📡 Principales Titulares de Hoy:**
 {titulares_formatted}
@@ -361,7 +503,7 @@ El S&P Merval cotiza en **{merv_p:,.0f} puntos ({merv_v:+.2f}%)**, manteniendo e
 **🔎 Racional Cuantitativo SmartInvest (TOP Selección)**
 Los activos destacados con mejor perfil fundamental (Beta < 1.5 y Upside > 0%) son: {top_3_str}.
 
-*Reporte generado automáticamente en tiempo real.*
+*Reporte generado automáticamente en tiempo real por SmartInvest Terminal Pro.*
 """
                 st.markdown(f'<div class="report-box">{reporte_md}</div>', unsafe_allow_html=True)
 
@@ -424,7 +566,7 @@ Los activos destacados con mejor perfil fundamental (Beta < 1.5 y Upside > 0%) s
                                 st.write(f"💰 **Margen Neto:** {s['Margin']*100:.2f}%")
                                 st.write(f"⚡ **Beta:** {s['Beta']:.2f} | **Upside:** {s['Upside']*100:.1f}%")
 
-        # TAB 3: VALUACIÓN
+        # TAB 3: VALUACIÓN & TARGETS
         with tab_val:
             html = "<table class='smart-table'><thead><tr><th>Ticker</th><th>Empresa</th><th>Precio</th><th>Fair Value (Target)</th><th>Upside %</th><th>Beta</th><th>Volumen Prom.</th></tr></thead><tbody>"
             for _, f in df_fund.iterrows():
@@ -450,7 +592,7 @@ Los activos destacados con mejor perfil fundamental (Beta < 1.5 y Upside > 0%) s
             html += "</tbody></table>"
             st.markdown(html, unsafe_allow_html=True)
 
-        # TAB 4: RATIOS
+        # TAB 4: RATIOS FUNDAMENTALES
         with tab_fund:
             ratios_head = "".join([f"<th title='{TOOLTIPS.get(r, '')}'>{r}</th>" for r in ratios_cols])
             html = f"<table class='smart-table'><thead><tr><th>Ticker</th>{ratios_head}</tr></thead><tbody>"
@@ -523,7 +665,7 @@ Los activos destacados con mejor perfil fundamental (Beta < 1.5 y Upside > 0%) s
 
                     st.altair_chart(chart, use_container_width=True)
 
-        # TAB 7: TÉCNICO
+        # TAB 7: MOMENTO TÉCNICO
         with tab_tec:
             if datos_tecnicos:
                 df_t = pd.DataFrame(datos_tecnicos).set_index("Ticker")
