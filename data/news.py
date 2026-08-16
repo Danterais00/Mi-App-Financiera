@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURACIÓN DE LOGS ---
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -13,10 +14,10 @@ logger = logging.getLogger(__name__)
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
 # --- LA DEFENSA CONTRA BLOQUEOS DE YAHOO FINANCE ---
-@st.cache_data(ttl=86400) # Caché de 24 horas para datos que no cambian en el día (Balances)
+@st.cache_data(ttl=86400) # Caché de 24 horas para datos de balance
 def obtener_info_ticker_cached(ticker):
     """Extrae métricas fundamentales con retraso (Throttling) para evitar baneo de IP."""
-    time.sleep(0.3) # Simula comportamiento humano
+    time.sleep(0.3) 
     try:
         info = yf.Ticker(ticker).info
         return dict(info)
@@ -30,6 +31,8 @@ def obtener_macro_argentina():
     datos = {
         "dolares": [], "riesgo_pais": None, 
         "merval": {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None},
+        "merval_usd": {"valor": None},
+        "bono_al30": {"valor": None, "var_diaria": None},
         "inflacion": None, "tasa_bcra": None, "reservas": None
     }
     
@@ -101,16 +104,36 @@ def obtener_macro_argentina():
                         break
     except Exception as e: logger.warning(f"Error Reservas BCRA: {e}")
 
+    # Extracción combinada: Merval y Bono AL30
     try:
-        merv = yf.Ticker("^MERV").history(period="1y")
-        if len(merv) >= 2:
-            act = merv['Close'].iloc[-1]
-            datos["merval"]["valor"] = float(act)
-            datos["merval"]["var_diaria"] = float(((act / merv['Close'].iloc[-2]) - 1) * 100)
-            if len(merv) >= 21: datos["merval"]["var_1m"] = float(((act / merv['Close'].iloc[-21]) - 1) * 100)
-            if len(merv) >= 126: datos["merval"]["var_6m"] = float(((act / merv['Close'].iloc[-126]) - 1) * 100)
-            if len(merv) >= 250: datos["merval"]["var_1y"] = float(((act / merv['Close'].iloc[0]) - 1) * 100)
-    except Exception as e: logger.warning(f"Error Merval: {e}")
+        hist_arg = yf.download(["^MERV", "AL30.BA"], period="1y", progress=False)
+        df_close = hist_arg['Close'] if 'Close' in hist_arg else pd.DataFrame()
+        
+        if not df_close.empty:
+            if "^MERV" in df_close.columns:
+                merv = df_close["^MERV"].dropna()
+                if len(merv) >= 2:
+                    act = merv.iloc[-1]
+                    datos["merval"]["valor"] = float(act)
+                    datos["merval"]["var_diaria"] = float(((act / merv.iloc[-2]) - 1) * 100)
+                    if len(merv) >= 21: datos["merval"]["var_1m"] = float(((act / merv.iloc[-21]) - 1) * 100)
+                    if len(merv) >= 126: datos["merval"]["var_6m"] = float(((act / merv.iloc[-126]) - 1) * 100)
+                    if len(merv) >= 250: datos["merval"]["var_1y"] = float(((act / merv.iloc[0]) - 1) * 100)
+            
+            if "AL30.BA" in df_close.columns:
+                al30 = df_close["AL30.BA"].dropna()
+                if len(al30) >= 2:
+                    datos["bono_al30"]["valor"] = float(al30.iloc[-1])
+                    datos["bono_al30"]["var_diaria"] = float(((al30.iloc[-1] / al30.iloc[-2]) - 1) * 100)
+                    
+    except Exception as e: logger.warning(f"Error Extracción Merval/AL30: {e}")
+
+    # Calculadora Interna: Merval USD (CCL)
+    try:
+        ccl_venta = next((float(d['venta']) for d in datos["dolares"] if d['nombre'] == 'CCL'), None)
+        if ccl_venta and datos["merval"]["valor"]:
+            datos["merval_usd"]["valor"] = datos["merval"]["valor"] / ccl_venta
+    except Exception as e: logger.warning(f"Error calculando Merval USD: {e}")
     
     return datos
 
@@ -119,8 +142,11 @@ def obtener_macro_internacional():
     datos = {}
     tickers_macro = {
         "S&P 500 (Global)": "^GSPC",
+        "Dow Jones": "^DJI",
         "Nasdaq (Tech)": "^IXIC",
         "Russell 2000 (Small Caps)": "^RUT",
+        "Euro Stoxx 50 (Europa)": "^STOXX50E",
+        "Nikkei 225 (Japón)": "^N225",
         "Oro (Refugio)": "GC=F",
         "Petróleo Crudo (WTI)": "CL=F", 
         "DXY (Índice Dólar)": "DX-Y.NYB",
@@ -180,7 +206,6 @@ def obtener_macro_internacional():
 
 @st.cache_data(ttl=3600)
 def obtener_valuaciones_mercado():
-    # Ticker fantasma corregido: PAMP -> PAM (ADR en USA)
     activos_arg = {"YPF": "Energía", "GGAL": "Financiero", "BMA": "Financiero", "PAM": "Energía", "CEPU": "Utilities"}
     activos_usa = {"SPY": "S&P 500", "QQQ": "Nasdaq", "XLE": "Energía", "XLF": "Financiero", "XLK": "Tecnología", "XLV": "Salud"}
     
@@ -233,7 +258,6 @@ def obtener_datos_gics():
     tickers = list(etfs_sectores.values())
     
     try:
-        # Descarga de precios rápida
         hist_data = yf.download(tickers, period="6mo", progress=False)
         df_close = hist_data['Close'] if 'Close' in hist_data else pd.DataFrame()
     except Exception as e:
@@ -289,7 +313,6 @@ def obtener_datos_gics():
 
 
 def calcular_rsi_serie(serie, period=14):
-    """Calcula el RSI (Relative Strength Index) de una serie de pandas"""
     delta = serie.diff()
     gain = delta.where(delta > 0, 0)
     loss = -delta.where(delta < 0, 0)
@@ -298,10 +321,70 @@ def calcular_rsi_serie(serie, period=14):
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
+# Motor Multihilo
+def extraer_info_ticker(ticker, lider_list, df_close):
+    try:
+        panel = "Principal" if ticker in lider_list else "General"
+        info = obtener_info_ticker_cached(ticker)
+        
+        ticker_limpio = ticker.replace(".BA", "")
+        empresa = info.get("shortName", ticker_limpio)
+        
+        pe = info.get("trailingPE", info.get("forwardPE"))
+        pbv = info.get("priceToBook")
+        volumen = info.get("averageVolume", 0)
+        dy = info.get("dividendYield", 0)
+        
+        pe_val = round(pe, 2) if isinstance(pe, (int, float)) else None
+        pbv_val = round(pbv, 2) if isinstance(pbv, (int, float)) else None
+        dy_val = round(dy * 100, 2) if isinstance(dy, (int, float)) and dy > 0 else None
+        
+        rsi_val, tendencia = None, "N/D"
+        if not df_close.empty and ticker in df_close.columns:
+            serie = df_close[ticker].dropna()
+            if len(serie) >= 15:
+                rsi_serie = calcular_rsi_serie(serie)
+                if not rsi_serie.empty and not pd.isna(rsi_serie.iloc[-1]):
+                    rsi_val = round(float(rsi_serie.iloc[-1]), 2)
+                    sma20 = serie.rolling(window=20).mean().iloc[-1]
+                    precio_actual = serie.iloc[-1]
+                    tendencia = "Alcista" if precio_actual > sma20 else "Bajista"
+
+        lectura = "Evaluando activo..."
+        if volumen < 20000 and panel == "General":
+            lectura = "🔴 RIESGO DE ILIQUIDEZ EXTREMO. Difícil salir de la posición sin perder precio."
+        elif rsi_val is not None:
+            if rsi_val > 70:
+                lectura = "¡Precaución! Indicador RSI de euforia. Posible toma de ganancias inminente."
+            elif rsi_val < 35:
+                lectura = "Oportunidad Técnica: Acción castigada (Sobreventa). Posible rebote."
+            else:
+                if pbv_val and pbv_val < 1:
+                    lectura = "Zona neutral, pero cotiza muy barata por fundamentales (P/BV < 1)."
+                else:
+                    lectura = "Lateralizando en zona de equilibrio. Riesgo/Beneficio neutro."
+                    
+            if panel == "General" and volumen < 100000:
+                lectura += " (Atención: Operar con límite por spread y liquidez baja)."
+
+        return {
+            "Ticker": ticker_limpio,
+            "Empresa": empresa,
+            "Panel": panel,
+            "P/E": pe_val,
+            "P/BV": pbv_val,
+            "Div Yield (%)": dy_val,
+            "Vol. (M)": round(volumen / 1_000_000, 2) if volumen else None,
+            "RSI": rsi_val,
+            "Tendencia": tendencia,
+            "Lectura": lectura
+        }
+    except Exception as e:
+        logger.warning(f"Fallo extrayendo {ticker}: {e}")
+        return None
 
 @st.cache_data(ttl=3600)
 def obtener_datos_merval():
-    """Descarga de acciones combinando Batching de Precios y Caché de Fundamentales"""
     lider = ["ALUA.BA", "BBAR.BA", "BMA.BA", "BYMA.BA", "CEPU.BA", "COME.BA", "CRES.BA", 
              "CVH.BA", "EDN.BA", "GGAL.BA", "IRSA.BA", "LOMA.BA", "MIRG.BA", "PAMP.BA", 
              "SUPV.BA", "TECO2.BA", "TGNO4.BA", "TGSU2.BA", "TRAN.BA", "TXAR.BA", "VALO.BA", "YPFD.BA"]
@@ -319,68 +402,11 @@ def obtener_datos_merval():
         df_close = pd.DataFrame()
 
     resultados = []
-    
-    for ticker in todos_los_tickers:
-        try:
-            panel = "Principal" if ticker in lider else "General"
-            
-            # Usamos la memoria caché, que es segura frente a baneos (1 vez cada 24hs)
-            info = obtener_info_ticker_cached(ticker)
-            
-            ticker_limpio = ticker.replace(".BA", "")
-            empresa = info.get("shortName", ticker_limpio)
-            
-            pe = info.get("trailingPE", info.get("forwardPE"))
-            pbv = info.get("priceToBook")
-            volumen = info.get("averageVolume", 0)
-            dy = info.get("dividendYield", 0)
-            
-            pe_val = round(pe, 2) if isinstance(pe, (int, float)) else None
-            pbv_val = round(pbv, 2) if isinstance(pbv, (int, float)) else None
-            dy_val = round(dy * 100, 2) if isinstance(dy, (int, float)) and dy > 0 else None
-            
-            rsi_val, tendencia = None, "N/D"
-            if not df_close.empty and ticker in df_close.columns:
-                serie = df_close[ticker].dropna()
-                if len(serie) >= 15:
-                    rsi_serie = calcular_rsi_serie(serie)
-                    if not rsi_serie.empty and not pd.isna(rsi_serie.iloc[-1]):
-                        rsi_val = round(float(rsi_serie.iloc[-1]), 2)
-                        sma20 = serie.rolling(window=20).mean().iloc[-1]
-                        precio_actual = serie.iloc[-1]
-                        tendencia = "Alcista" if precio_actual > sma20 else "Bajista"
-
-            lectura = "Evaluando activo..."
-            if volumen < 20000 and panel == "General":
-                lectura = "🔴 RIESGO DE ILIQUIDEZ EXTREMO. Difícil salir de la posición sin perder precio."
-            elif rsi_val is not None:
-                if rsi_val > 70:
-                    lectura = "¡Precaución! Indicador RSI de euforia. Posible toma de ganancias inminente."
-                elif rsi_val < 35:
-                    lectura = "Oportunidad Técnica: Acción castigada (Sobreventa). Posible rebote."
-                else:
-                    if pbv_val and pbv_val < 1:
-                        lectura = "Zona neutral, pero cotiza muy barata por fundamentales (P/BV < 1)."
-                    else:
-                        lectura = "Lateralizando en zona de equilibrio. Riesgo/Beneficio neutro."
-                        
-                if panel == "General" and volumen < 100000:
-                    lectura += " (Atención: Operar con límite por spread y liquidez baja)."
-
-            resultados.append({
-                "Ticker": ticker_limpio,
-                "Empresa": empresa,
-                "Panel": panel,
-                "P/E": pe_val,
-                "P/BV": pbv_val,
-                "Div Yield (%)": dy_val,
-                "Vol. (M)": round(volumen / 1_000_000, 2) if volumen else None,
-                "RSI": rsi_val,
-                "Tendencia": tendencia,
-                "Lectura": lectura
-            })
-        except Exception as e:
-            logger.warning(f"Fallo extrayendo {ticker}: {e}")
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(extraer_info_ticker, t, lider, df_close): t for t in todos_los_tickers}
+        for future in as_completed(futures):
+            res = future.result()
+            if res: resultados.append(res)
             
     return sorted(resultados, key=lambda x: x["RSI"] if x["RSI"] is not None else 999)
 
@@ -398,18 +424,41 @@ def obtener_noticias_acciones(lista_tickers):
         except Exception as e: logger.warning(f"Error noticias {ticker}: {e}"); noticias[ticker] = []
     return noticias
 
+# --- NUEVO SENSOR GEOPOLÍTICO GLOBAL ---
+@st.cache_data(ttl=1800)
+def obtener_noticias_globales():
+    try:
+        # Extraemos los titulares principales relacionados a crudo, oro y S&P
+        url = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC,CL=F,GC=F&region=US&lang=en-US"
+        feed = feedparser.parse(url)
+        entradas = []
+        for entry in feed.entries[:5]: 
+            entradas.append(entry.title)
+        return entradas
+    except Exception as e:
+        logger.warning(f"Error extrayendo noticias globales: {e}")
+        return []
 
+# --- MOTOR IA INSTITUCIONAL ---
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(macro_arg, macro_int, datos_gics):
     try:
         valuaciones = obtener_valuaciones_mercado()
         datos_merval = obtener_datos_merval()
+        noticias_globales = obtener_noticias_globales()
+        
+        contexto_noticias = "\n".join([f"- {n}" for n in noticias_globales]) if noticias_globales else "No hay noticias relevantes detectadas."
         
         rp_val = macro_arg.get('riesgo_pais', {}).get('valor', 'N/D') if macro_arg.get('riesgo_pais') else 'N/D'
         inf_arg = macro_arg.get('inflacion', 'N/D')
         tasa_arg = macro_arg.get('tasa_bcra', 'N/D')
         merval_val = macro_arg.get('merval', {}).get('valor', 'N/D')
         reservas_val = macro_arg.get('reservas', 'N/D')
+        
+        # Nuevos indicadores agregados
+        merval_usd_val = macro_arg.get('merval_usd', {}).get('valor', 'N/D')
+        if merval_usd_val != 'N/D': merval_usd_val = f"{merval_usd_val:.0f}"
+        al30_val = macro_arg.get('bono_al30', {}).get('valor', 'N/D')
         
         dolares = macro_arg.get("dolares", [])
         brecha_str = "N/D"
@@ -433,32 +482,41 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         sp500_val = get_m('S&P 500 (Global)')
         nasdaq_val = get_m('Nasdaq (Tech)')
         
+        # Nuevos índices agregados
+        dow_val = get_m('Dow Jones')
+        nikkei_val = get_m('Nikkei 225 (Japón)')
+        euro_val = get_m('Euro Stoxx 50 (Europa)')
+        
         prompt = (
             "Actúa como un Asesor Financiero experto y práctico para un inversor individual residente en Argentina.\n"
-            "Tu objetivo es traducir los datos de mercado en decisiones de inversión claras, directas y sin jerga abstracta. "
-            "Si mencionas un dato técnico, explica inmediatamente en qué afecta al bolsillo o a la decisión de comprar/vender.\n\n"
+            "Tu objetivo es redactar un Resumen Matutino de Mercados, traduciendo los datos en decisiones de inversión claras, directas y sin jerga abstracta.\n\n"
             
             "REGLAS ESTRICTAS DE RESPUESTA:\n"
-            "1. NO hables en lenguaje teórico de Wall Street. Usa lenguaje sencillo.\n"
-            "2. Provee EJEMPLOS CONCRETOS. Si sugieres Renta Fija Argentina, di si conviene comprar 'Lecaps' (Letras), 'Obligaciones Negociables (ONs)' o 'Bonos Soberanos (AL30/GD30)'.\n"
-            "3. Si sugieres CEDEARs, menciona los tickers exactos (ej. SPY, QQQ, AAPL).\n"
+            "1. NO hables en lenguaje teórico. Integra el 'Contexto Geopolítico' para explicar por qué suben o bajan los activos de riesgo (ej. Petróleo u Oro).\n"
+            "2. Provee EJEMPLOS CONCRETOS. Si sugieres Renta Fija Argentina, menciona los Bonos Soberanos (AL30) que se muestran en los datos y explica su dinámica.\n"
+            "3. En la Macro Argentina, es obligatorio analizar el 'Merval en USD (CCL)', ya que es el termómetro real del mercado.\n"
             "4. Utiliza el formato de Semáforo: 🟢 (Comprar), 🟡 (Mantener/Neutro), 🔴 (Vender/Evitar).\n"
-            "5. APLICA LA METODOLOGÍA DEL ASESOR PARA EL MERVAL: Busca Valor (P/BV bajo), Dividendos altos, Momento de Entrada (NO comprar si RSI > 70, sugerir compra si RSI < 35), y evalúa el Riesgo de Liquidez alertando si el volumen es muy bajo.\n\n"
+            "5. APLICA LA METODOLOGÍA DEL ASESOR PARA EL MERVAL: Busca Valor (P/BV bajo), Dividendos altos, Momento de Entrada (sugerir compra si RSI < 35, evitar si RSI > 70), y evalúa el Riesgo de Liquidez alertando si el volumen es bajo.\n\n"
             
             "ESTRUCTURA OBLIGATORIA DE TU RESPUESTA:\n"
-            "### 1. Resumen Macro (Traducido al Inversor)\n"
-            "[Explicación breve de si el mundo y Argentina están para tomar riesgo o ser conservadores]\n\n"
-            "### 2. Oportunidades en Renta Fija Local (Pesos y Dólares)\n"
-            "[Emoji] **Instrumentos Recomendados:** [Por qué elegirlos y tickers/tipos concretos]\n\n"
+            "### 1. Resumen Geopolítico y Global (Traducido al Inversor)\n"
+            "[Integra los titulares de noticias, el petróleo, el S&P y el comportamiento de Europa/Asia (Nikkei, Euro Stoxx) para dar contexto general.]\n\n"
+            "### 2. Oportunidades en Renta Fija Local y Bonos (AL30)\n"
+            "[Emoji] **Instrumentos Recomendados:** [Análisis del Riesgo País, Brecha y el precio actual del Bono AL30]\n\n"
             "### 3. Oportunidades Globales (CEDEARs)\n"
-            "[Emoji] **Sectores y Acciones a mirar:** [Explicación basada en los scores y las valuaciones. Tickers concretos]\n\n"
-            "### 4. Oportunidades en el Merval Local (Pesos)\n"
-            "[Emoji] **Acciones Argentinas:** [Analiza la tabla del Merval aplicando las reglas de P/BV, RSI y Volumen]\n\n"
+            "[Emoji] **Sectores y Acciones a mirar:** [Explicación basada en los scores GICS y las valuaciones. Tickers concretos]\n\n"
+            "### 4. Oportunidades en el Merval Local\n"
+            "[Emoji] **Acciones Argentinas:** [Analiza el S&P Merval en USD y provee oportunidades de la tabla aplicando las reglas de P/BV, RSI y Volumen]\n\n"
             
             "--- INICIO DE LOS DATOS RECOPILADOS (HOY) ---\n\n"
             
+            "**CONTEXTO GEOPOLÍTICO Y NOTICIAS GLOBALES:**\n"
+            f"{contexto_noticias}\n\n"
+            
             "**MACROECONOMÍA ARGENTINA:**\n"
-            f"- S&P Merval: {merval_val}\n"
+            f"- S&P Merval (Pesos): {merval_val} puntos\n"
+            f"- S&P Merval (USD CCL): {merval_usd_val} puntos\n"
+            f"- Bono Soberano AL30 (ARS): ${al30_val}\n"
             f"- Riesgo País: {rp_val} puntos\n"
             f"- Inflación Mensual: {inf_arg}%\n"
             f"- Tasa de Interés BCRA: {tasa_arg}%\n"
@@ -467,7 +525,10 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             
             "**MACROECONOMÍA INTERNACIONAL:**\n"
             f"- S&P 500: {sp500_val}\n"
+            f"- Dow Jones: {dow_val}\n"
             f"- Nasdaq: {nasdaq_val}\n"
+            f"- Euro Stoxx 50 (Europa): {euro_val}\n"
+            f"- Nikkei 225 (Japón): {nikkei_val}\n"
             f"- Oro: {oro_val}\n"
             f"- Petróleo WTI: {petroleo_val}\n"
             f"- Bono del Tesoro 10 Años (Rendimiento): {bono_val}%\n"
@@ -493,12 +554,12 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         for m in top_interesantes:
             prompt += f"- {m['Ticker']} ({m['Empresa']}): P/E: {m['P/E']}x | P/BV: {m['P/BV']}x | RSI: {m['RSI']} | Vol(M): {m['Vol. (M)']} | Div.Yield: {m['Div Yield (%)']}% | Panel: {m['Panel']} | Lectura: {m['Lectura']}\n"
 
-        prompt += "\n--- FIN DE LOS DATOS ---\n¡Redacta tu análisis ahora aplicando estrictamente tus nuevas reglas!"
+        prompt += "\n--- FIN DE LOS DATOS ---\n¡Redacta tu Resumen Matutino de Mercados ahora aplicando estrictamente tus nuevas reglas!"
 
         mensaje_ui = (
             '<div style="margin-bottom: 15px; font-size: 1.05rem; color: #e2e8f0;">'
-            '💡 <b>¡Tu Compilado Integral está listo!</b><br><br>'
-            'Hemos actualizado las instrucciones. Ahora la IA analizará <b>todas las tablas</b> (Macro, Valuaciones, Sectores y <b>Merval Local</b>) y te dará recomendaciones prácticas con <b>instrumentos operables y aplicando tus propios filtros de análisis técnico y fundamental.</b><br><br>'
+            '💡 <b>¡Tu Reporte Matutino Institucional está listo!</b><br><br>'
+            'La IA ahora tiene acceso total al <b>Merval en USD, Bonos AL30, Geopolítica Mundial y el radar de Europa/Asia</b>. Generará un informe profesional cruzando la narrativa de las noticias con los datos duros de tu Screener.<br><br>'
             '<b>Copia el texto del recuadro a continuación y pégalo en tu ChatGPT, Claude o Gemini web.</b>'
             '</div>'
             '<div style="background-color: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; overflow-x: auto;">'
