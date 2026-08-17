@@ -1,3 +1,4 @@
+import requests
 import feedparser
 import yfinance as yf
 import pandas as pd
@@ -7,27 +8,17 @@ import time
 import urllib3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# Desactivar advertencias de certificados SSL (Necesario para la API del BCRA)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- CONFIGURACIÓN DE LOGS ---
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# --- MOTOR DE RED ANTI-FIREWALL (SPOOFING TLS) ---
-def safe_fetch(url, timeout=10):
-    """
-    Función infalible que utiliza curl_cffi para imitar la huella TLS criptográfica
-    de Google Chrome y evitar los bloqueos (Error 403) en Streamlit Cloud.
-    """
-    try:
-        from curl_cffi import requests as cffi_requests
-        # Impersonamos un navegador Chrome real para atravesar Cloudflare
-        return cffi_requests.get(url, impersonate="chrome120", timeout=timeout, verify=False)
-    except ImportError:
-        # Fallback a requests estándar si el usuario olvidó instalar curl_cffi
-        import requests
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
-        return requests.get(url, headers=headers, timeout=timeout, verify=False)
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json'
+}
 
 # --- LA DEFENSA CONTRA BLOQUEOS DE YAHOO FINANCE ---
 @st.cache_data(ttl=86400) # Caché de 24 horas para datos de balance
@@ -50,9 +41,9 @@ def obtener_macro_argentina():
         "inflacion": None, "tasa_bcra": None, "reservas": None
     }
     
-    # 1. DÓLARES
+    # 1. DÓLARES (DolarAPI - Muy estable)
     try:
-        res = safe_fetch("https://dolarapi.com/v1/dolares")
+        res = requests.get("https://dolarapi.com/v1/dolares", headers=HEADERS, timeout=10)
         if res.status_code == 200:
             for d in res.json():
                 if d["casa"] in ["oficial", "blue", "bolsa", "contadoconliqui", "tarjeta"]:
@@ -62,79 +53,78 @@ def obtener_macro_argentina():
     
     # 2. RIESGO PAÍS
     try:
-        res_rp = safe_fetch("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais")
+        res_rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", headers=HEADERS, timeout=10)
         if res_rp.status_code == 200 and len(res_rp.json()) > 0:
             datos["riesgo_pais"] = {"valor": res_rp.json()[-1]["valor"], "variacion": ""}
     except Exception as e: logger.warning(f"Error Riesgo País: {e}")
 
     # 3. INFLACIÓN
     try:
-        res_inf = safe_fetch("https://api.argentinadatos.com/v1/finanzas/indices/inflacion")
+        res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", headers=HEADERS, timeout=10)
         if res_inf.status_code == 200 and len(res_inf.json()) > 0:
             datos["inflacion"] = float(res_inf.json()[-1]["valor"]) 
     except Exception as e: logger.warning(f"Error Inflación: {e}")
 
-    # 4 & 5. TASA BCRA & RESERVAS (BCRA API v4.0 + CFFI Spoofing)
+    # 4 & 5. TASA BCRA & RESERVAS (BCRA API v4.0 - Conexión Limpia SSL bypass)
     try:
-        res_vars = safe_fetch("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias")
+        res_vars = requests.get("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias", verify=False, timeout=10)
         if res_vars.status_code == 200:
             variables = res_vars.json()
             id_reservas = next((v['idVariable'] for v in variables if "reservas internacionales" in v['descripcion'].lower()), 1)
             id_tasa = next((v['idVariable'] for v in variables if "política monetaria" in v['descripcion'].lower() or "pases" in v['descripcion'].lower()), 6)
             
-            res_res = safe_fetch(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id_reservas}")
+            # Reservas
+            res_res = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id_reservas}", verify=False, timeout=10)
             if res_res.status_code == 200 and len(res_res.json().get('results', [])) > 0:
                 datos["reservas"] = float(res_res.json()['results'][-1]["valor"])
                 
-            res_t = safe_fetch(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id_tasa}")
+            # Tasas
+            res_t = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id_tasa}", verify=False, timeout=10)
             if res_t.status_code == 200 and len(res_t.json().get('results', [])) > 0:
                 datos["tasa_bcra"] = float(res_t.json()['results'][-1]["valor"])
-    except Exception as e: logger.warning(f"Error BCRA v4.0: {e}")
+    except Exception as e:
+        logger.warning(f"Error API Oficial BCRA v4.0: {e}")
 
-    # FALLBACK RESERVAS (Gobierno Argentino Series de Tiempo - Libre de bloqueos)
-    if datos["reservas"] is None:
-        try:
-            # Endpoint oficial del gobierno para Reservas
-            res_datos = safe_fetch("https://apis.datos.gob.ar/series/api/series/?ids=174.1_RESERVAS_I_0_0_25&limit=1&sort=desc")
-            if res_datos.status_code == 200:
-                data_json = res_datos.json()
-                if "data" in data_json and len(data_json["data"]) > 0:
-                    datos["reservas"] = float(data_json["data"][0][1])
-        except: pass
-
-    # FALLBACK TASA (Ámbito Financiero con Spoofing TLS)
+    # Fallbacks de Tasa y Reservas si la web del BCRA se cae
     if datos["tasa_bcra"] is None:
         try:
-            res_tasa_amb = safe_fetch("https://mercados.ambito.com/tasas/plazofijo/info")
-            if res_tasa_amb.status_code == 200 and "valor" in res_tasa_amb.json():
-                val_str = res_tasa_amb.json().get("valor", "0").replace("%", "").replace(",", ".")
-                datos["tasa_bcra"] = float(val_str)
+            res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=10)
+            if res_tasa.status_code == 200 and len(res_tasa.json()) > 0:
+                val = res_tasa.json()[-1].get("valor")
+                datos["tasa_bcra"] = float(val) * 100 if float(val) < 2 else float(val)
         except: pass
 
-    # 6. BONO AL30 (Nuevo endpoint API gratuita recomendada: data912)
+    if datos["reservas"] is None:
+        try:
+            res_res = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", timeout=10)
+            if res_res.status_code == 200 and len(res_res.json()) > 0:
+                datos["reservas"] = float(res_res.json()[-1].get("valor"))
+        except: pass
+
+    # 6. BONO AL30 (Vía DATA912 + Respaldo de Histórico Yahoo)
     try:
-        res_al30 = safe_fetch("https://data912.com/live/arg_bonds")
+        res_al30 = requests.get("https://data912.com/live/arg_bonds", timeout=10)
         if res_al30.status_code == 200:
             bonds_data = res_al30.json()
-            # Iteramos en caso de que sea una lista de diccionarios
             if isinstance(bonds_data, list):
                 for b in bonds_data:
                     if b.get("ticker") == "AL30" or b.get("especie") == "AL30":
-                        datos["bono_al30"]["valor"] = float(b.get("price", b.get("ultimo", 0)))
+                        datos["bono_al30"]["valor"] = float(b.get("price", b.get("ultimo", b.get("precio", 0))))
                         break
-            # O si es un diccionario con el ticker como clave
-            elif isinstance(bonds_data, dict) and "AL30" in bonds_data:
-                datos["bono_al30"]["valor"] = float(bonds_data["AL30"].get("price", bonds_data["AL30"].get("ultimo", 0)))
     except Exception as e: logger.warning(f"Error data912 AL30: {e}")
 
-    # FALLBACK AL30 (Ámbito con Spoofing TLS)
-    if datos["bono_al30"]["valor"] is None:
+    # Fallback infalible de Calidad de Datos (Último cierre válido en Yahoo Finance)
+    if datos["bono_al30"]["valor"] is None or datos["bono_al30"]["valor"] == 0:
         try:
-            res_al30_amb = safe_fetch("https://mercados.ambito.com/bono/AL30/info")
-            if res_al30_amb.status_code == 200 and "valor" in res_al30_amb.json():
-                val_str = res_al30_amb.json().get("valor", "0").replace(".", "").replace(",", ".")
-                datos["bono_al30"]["valor"] = float(val_str)
-        except: pass
+            tk_al30 = yf.Ticker("AL30.BA")
+            hist_al30 = tk_al30.history(period="1mo") 
+            if not hist_al30.empty and 'Close' in hist_al30.columns:
+                al30_closes = hist_al30['Close'].dropna() 
+                if len(al30_closes) >= 1:
+                    datos["bono_al30"]["valor"] = float(al30_closes.iloc[-1])
+                if len(al30_closes) >= 2:
+                    datos["bono_al30"]["var_diaria"] = float(((al30_closes.iloc[-1] / al30_closes.iloc[-2]) - 1) * 100)
+        except Exception as e: logger.warning(f"Error Fallback Yahoo AL30: {e}")
 
     # 7. MERVAL PESOS
     try:
@@ -210,7 +200,7 @@ def obtener_macro_internacional():
                 datos[nombre] = {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}
                 url = f"https://api.stlouisfed.org/fred/series/observations?series_id={config['id']}&api_key={api_key}&file_type=json&units={config['units']}&sort_order=desc&limit=15"
                 try:
-                    res = safe_fetch(url)
+                    res = requests.get(url, timeout=10)
                     if res.status_code == 200:
                         obs = res.json().get("observations", [])
                         valid_obs = [float(o["value"]) for o in obs if o["value"] != "."]
