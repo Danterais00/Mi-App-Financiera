@@ -164,7 +164,8 @@ def obtener_macro_internacional():
         "Petróleo Crudo (WTI)": "CL=F", 
         "DXY (Índice Dólar)": "DX-Y.NYB",
         "VIX (Miedo)": "^VIX",
-        "Bono 10Y EE.UU (%)": "^TNX"
+        "Bono 10Y EE.UU (%)": "^TNX",
+        "Bono 10Y Japón (%)": "^JGBS"
     }
     
     for nombre in tickers_macro.keys():
@@ -439,7 +440,8 @@ def obtener_noticias_acciones(lista_tickers):
 @st.cache_data(ttl=1800)
 def obtener_noticias_globales():
     try:
-        url = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC,CL=F,GC=F&region=US&lang=en-US"
+        # Se ha incluido ^TNX (Bono 10Y US) para forzar noticias de la FED y tasas
+        url = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC,CL=F,GC=F,^TNX&region=US&lang=en-US"
         feed = feedparser.parse(url)
         entradas = []
         for entry in feed.entries[:5]: 
@@ -483,6 +485,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             return macro_int.get(key, {}).get('valor', 'N/D') if key in macro_int else 'N/D'
             
         bono_val = get_m('Bono 10Y EE.UU (%)')
+        bono_jp_val = get_m('Bono 10Y Japón (%)')
         inf_us_val = get_m('Inflación EE.UU YoY (%)')
         curva_val = get_m('Yield Curve 2Y-10Y (pts)')
         oro_val = get_m('Oro (Refugio)')
@@ -509,11 +512,12 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             "2. Provee EJEMPLOS CONCRETOS. Si sugieres Renta Fija Argentina, menciona los Bonos Soberanos (AL30) que se muestran en los datos y explica su dinámica.\n"
             "3. En la Macro Argentina, es obligatorio analizar el 'Merval en USD (CCL)', ya que es el termómetro real del mercado.\n"
             "4. Utiliza el formato de Semáforo: 🟢 (Comprar), 🟡 (Mantener/Neutro), 🔴 (Vender/Evitar).\n"
-            "5. APLICA LA METODOLOGÍA DEL ASESOR PARA EL MERVAL: Busca Valor (P/BV bajo), Dividendos altos, Momento de Entrada (sugerir compra si RSI < 35, evitar si RSI > 70), y evalúa el Riesgo de Liquidez alertando si el volumen es bajo.\n\n"
+            "5. APLICA LA METODOLOGÍA DEL ASESOR PARA EL MERVAL: Busca Valor (P/BV bajo), Dividendos altos, Momento de Entrada (sugerir compra si RSI < 35, evitar si RSI > 70), y evalúa el Riesgo de Liquidez alertando si el volumen es bajo.\n"
+            "6. EN EL RESUMEN GLOBAL: Debes mencionar explícitamente el último dato de IPC de EE.UU., el comportamiento de las bolsas de Europa/Asia (Nikkei, Euro Stoxx), el rendimiento del bono japonés, y deducir la probabilidad de la tasa de la FED basándote en la Curva de Inversión y las noticias.\n\n"
             
             "ESTRUCTURA OBLIGATORIA DE TU RESPUESTA:\n"
             "### 1. Resumen Geopolítico y Global (Traducido al Inversor)\n"
-            "[Integra los titulares de noticias, el petróleo, el S&P y el comportamiento de Europa/Asia (Nikkei, Euro Stoxx) para dar contexto general.]\n\n"
+            "[Integra los titulares de noticias, el petróleo, IPC de EE.UU., bolsas de Europa/Asia, el bono japonés y tu lectura sobre qué hará la FED con las tasas.]\n\n"
             "### 2. Oportunidades en Renta Fija Local y Bonos (AL30)\n"
             "[Emoji] **Instrumentos Recomendados:** [Análisis del Riesgo País, Brecha y el precio actual del Bono AL30]\n\n"
             "### 3. Oportunidades Globales (CEDEARs)\n"
@@ -547,7 +551,8 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             f"- VIX (Índice de Miedo): {vix_val}\n"
             f"- Oro: {oro_val}\n"
             f"- Petróleo WTI: {petroleo_val}\n"
-            f"- Bono del Tesoro 10 Años (Rendimiento): {bono_val}%\n"
+            f"- Bono del Tesoro 10 Años EE.UU. (Rendimiento): {bono_val}%\n"
+            f"- Bono 10 Años Japón (Rendimiento): {bono_jp_val}%\n"
             f"- Tasa FED: {tasa_fed_val}%\n"
             f"- Inflación Anual EE.UU: {inf_us_val}%\n"
             f"- Desempleo EE.UU: {desempleo_us_val}%\n"
