@@ -114,44 +114,29 @@ def render_nivel1_macro():
         texto_rp_val = rp.get('valor') if rp.get('valor') is not None else 'N/D'
         texto_merv_val = f"{merv.get('valor'):,.0f}" if merv.get('valor') is not None else 'N/D'
         texto_inf = f"{inf:.1f}%" if inf is not None else "N/D"
+        
+        # Validamos si la tasa es N/D o viene de Fallback histórico para evitar errores
         texto_tasa = f"{tasa:.1f}%" if tasa is not None else "N/D"
+        # Formateamos Reservas a Billions (Miles de millones) si existe
         texto_reservas = f"USD {res_bcra/1000:.1f}B" if res_bcra is not None else "N/D"
         
         texto_merv_usd = f"USD {macro_arg_data.get('merval_usd', {}).get('valor', 0):,.0f}" if macro_arg_data.get('merval_usd', {}).get('valor') else 'N/D'
         texto_al30 = f"${macro_arg_data.get('bono_al30', {}).get('valor', 0):,.2f}" if macro_arg_data.get('bono_al30', {}).get('valor') else 'N/D'
         
-        # Eliminados los saltos de línea internos para evitar la ruptura del renderizado HTML en Markdown
-        html_caja = f"""<div style="background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between; flex-wrap: wrap;">
-            <div style="width: 24%; margin-bottom: 10px;">
-                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">MERVAL (ARS)</p>
-                <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_merv_val}</h4>
-            </div>
-            <div style="width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;">
-                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">MERVAL (USD)</p>
-                <h4 style="margin:5px 0; color:#2ecca6; font-size: 1rem;">{texto_merv_usd}</h4>
-            </div>
-            <div style="width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;">
-                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">RIESGO PAÍS</p>
-                <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_rp_val}</h4>
-            </div>
-            <div style="width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;">
-                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">BONO AL30</p>
-                <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_al30}</h4>
-            </div>
-            <div style="width: 32%; padding-top: 10px; border-top: 1px solid #2a2e39;">
-                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">INFLACIÓN</p>
-                <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_inf}</h4>
-            </div>
-            <div style="width: 33%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;">
-                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">TASA REF BCRA</p>
-                <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_tasa}</h4>
-            </div>
-            <div style="width: 33%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;">
-                <p style="margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;">RESERVAS</p>
-                <h4 style="margin:5px 0; color:#fff; font-size: 1rem;">{texto_reservas}</h4>
-            </div>
-        </div>"""
+        # HTML Aplanado con actualización de TASA POL. MONETARIA
+        html_caja = (
+            f"<div style='background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between; flex-wrap: wrap;'>"
+            f"<div style='width: 24%; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>MERVAL (ARS)</p><h4 style='margin:5px 0; color:#fff; font-size: 1rem;'>{texto_merv_val}</h4></div>"
+            f"<div style='width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>MERVAL (USD)</p><h4 style='margin:5px 0; color:#2ecca6; font-size: 1rem;'>{texto_merv_usd}</h4></div>"
+            f"<div style='width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>RIESGO PAÍS</p><h4 style='margin:5px 0; color:#fff; font-size: 1rem;'>{texto_rp_val}</h4></div>"
+            f"<div style='width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>BONO AL30</p><h4 style='margin:5px 0; color:#fff; font-size: 1rem;'>{texto_al30}</h4></div>"
+            f"<div style='width: 32%; padding-top: 10px; border-top: 1px solid #2a2e39;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>INFLACIÓN</p><h4 style='margin:5px 0; color:#fff; font-size: 1rem;'>{texto_inf}</h4></div>"
+            f"<div style='width: 33%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TASA POL. MONETARIA</p><h4 style='margin:5px 0; color:#fff; font-size: 1rem;'>{texto_tasa}</h4></div>"
+            f"<div style='width: 33%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>RESERVAS</p><h4 style='margin:5px 0; color:#fff; font-size: 1rem;'>{texto_reservas}</h4></div>"
+            f"</div>"
+        )
         st.markdown(html_caja, unsafe_allow_html=True)
+        
         if dolares:
             val_oficial = next((float(d['venta']) for d in dolares if d['nombre'] == 'Oficial'), None)
             val_ccl = next((float(d['venta']) for d in dolares if d['nombre'] == 'CCL'), None)
@@ -327,13 +312,11 @@ def render_nivel5_ia():
             macro_int = obtener_macro_internacional()
             gics = obtener_datos_gics()
             analisis_texto = generar_analisis_ia(macro_arg, macro_int, gics)
-            st.markdown(f"""
-            <div style="background-color: #12161f; padding: 25px 30px; border-radius: 12px; border-left: 5px solid #2ecca6; border-top: 1px solid #2a2e39; border-right: 1px solid #2a2e39; border-bottom: 1px solid #2a2e39; box-shadow: 0px 4px 15px rgba(0,0,0,0.2);">
-                <div style="font-size: 1.05rem; line-height: 1.8; color: #e2e8f0;">
-                    {analisis_texto}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown((
+                f"<div style='background-color: #12161f; padding: 25px 30px; border-radius: 12px; border-left: 5px solid #2ecca6; border-top: 1px solid #2a2e39; border-right: 1px solid #2a2e39; border-bottom: 1px solid #2a2e39; box-shadow: 0px 4px 15px rgba(0,0,0,0.2);'>"
+                f"<div style='font-size: 1.05rem; line-height: 1.8; color: #e2e8f0;'>{analisis_texto}</div>"
+                f"</div>"
+            ), unsafe_allow_html=True)
 
 @st.fragment
 def render_noticias_cartera():
@@ -345,12 +328,12 @@ def render_noticias_cartera():
                 if headlines:
                     st.markdown(f"#### 🔵 {ticker}")
                     for h in headlines:
-                        st.markdown(f"""
-                        <div style="background-color: #171b26; padding: 12px; border-radius: 6px; border-left: 4px solid #4d8bf0; margin-bottom:10px;">
-                            <a href="{h['link']}" target="_blank" style="color: #e2e8f0; text-decoration: none; font-weight: 600; font-size: 0.95rem;">{h['titulo']}</a>
-                            <p style="margin: 5px 0 0 0; color: #8ba1b6; font-size: 0.75rem;">{h['fecha']}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        st.markdown((
+                            f"<div style='background-color: #171b26; padding: 12px; border-radius: 6px; border-left: 4px solid #4d8bf0; margin-bottom:10px;'>"
+                            f"<a href='{h['link']}' target='_blank' style='color: #e2e8f0; text-decoration: none; font-weight: 600; font-size: 0.95rem;'>{h['titulo']}</a>"
+                            f"<p style='margin: 5px 0 0 0; color: #8ba1b6; font-size: 0.75rem;'>{h['fecha']}</p>"
+                            f"</div>"
+                        ), unsafe_allow_html=True)
                     st.write("")
     else: st.info("👈 Ingresa los tickers y presiona 'Sincronizar Datos' en la barra lateral.")
 
@@ -544,14 +527,14 @@ else:
                     ticker = s['t']
                     with col_box:
                         logo_html = f'<img src="{st.session_state.analisis[ticker]["logo_url"]}" class="top10-logo" onerror="this.style.display=\'none\'">' if ticker in st.session_state.analisis and st.session_state.analisis[ticker].get("logo_url") else ''
-                        st.markdown(f"""
-                        <div style="background-color: #12161f; padding: 12px 5px; border-radius: 12px; border: 1px solid #2a2e39; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-                            <p style='color:#a3a8b8; margin:0 0 5px 0; font-size: 0.75rem;'>Puesto #{i+1}</p>
-                            {logo_html}
-                            <h2 style='margin: 4px 0; color:#ffffff; font-size: 1.6rem;'>{ticker}</h2>
-                            <p style='color:#2ecca6; margin:0; font-size: 0.95rem;'><b>{s['total']} Puntos</b></p>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        st.markdown((
+                            f"<div style='background-color: #12161f; padding: 12px 5px; border-radius: 12px; border: 1px solid #2a2e39; text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;'>"
+                            f"<p style='color:#a3a8b8; margin:0 0 5px 0; font-size: 0.75rem;'>Puesto #{i+1}</p>"
+                            f"{logo_html}"
+                            f"<h2 style='margin: 4px 0; color:#ffffff; font-size: 1.6rem;'>{ticker}</h2>"
+                            f"<p style='color:#2ecca6; margin:0; font-size: 0.95rem;'><b>{s['total']} Puntos</b></p>"
+                            f"</div>"
+                        ), unsafe_allow_html=True)
                     with col_text:
                         roe = get_val(dft, "ROE (%)", ticker); net_margin = get_val(dft, "Margen Neto (%)", ticker)
                         fwd_pe = get_val(dft, "Forward P/E", ticker); peg = get_val(dft, "PEG Ratio", ticker)
@@ -591,15 +574,16 @@ else:
                             elif r > 70: tec_str = f"🔴 <strong>PRECAUCIÓN:</strong> RSI en <strong>{r:.1f}</strong> (euforia); alto riesgo de recorte."
                             elif d < 0: tec_str = f"🟡 <strong>ALERTA BAJISTA:</strong> Cotizando un <strong>{abs(d):.1f}%</strong> por debajo de media móvil de 200."
                             else: tec_str = f"⚪ <strong>ZONA NEUTRAL:</strong> RSI en <strong>{r:.1f}</strong>, tendencia estable."
-                        html_text = f"""
-                        <div style="font-size: 0.88rem; line-height: 1.4; color: #cbd5e1; padding: 4px 0;">
-                            <p style="margin: 0 0 6px 0; color:#ffffff; font-weight: 600; font-size: 0.95rem;">💡 Racional de Inversión:</p>
-                            <p style="margin: 0 0 4px 0;"><strong>• Fundamental:</strong> {fun_str}</p>
-                            <p style="margin: 0 0 4px 0;"><strong>• Momentum:</strong> {mom_text}</p>
-                            <p style="margin: 0 0 4px 0;"><strong>• Perfil / Valoración:</strong> {riesgo_str}</p>
-                            <p style="margin: 0 0 0 0;"><strong>• Timing Técnico:</strong> {tec_str}</p>
-                        </div>
-                        """
+                        
+                        html_text = (
+                            f"<div style='font-size: 0.88rem; line-height: 1.4; color: #cbd5e1; padding: 4px 0;'>"
+                            f"<p style='margin: 0 0 6px 0; color:#ffffff; font-weight: 600; font-size: 0.95rem;'>💡 Racional de Inversión:</p>"
+                            f"<p style='margin: 0 0 4px 0;'><strong>• Fundamental:</strong> {fun_str}</p>"
+                            f"<p style='margin: 0 0 4px 0;'><strong>• Momentum:</strong> {mom_text}</p>"
+                            f"<p style='margin: 0 0 4px 0;'><strong>• Perfil / Valoración:</strong> {riesgo_str}</p>"
+                            f"<p style='margin: 0 0 0 0;'><strong>• Timing Técnico:</strong> {tec_str}</p>"
+                            f"</div>"
+                        )
                         st.markdown(html_text, unsafe_allow_html=True)
                     st.write("---")
     else:
