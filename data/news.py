@@ -489,10 +489,16 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         petroleo_val = get_m('Petróleo Crudo (WTI)')
         sp500_val = get_m('S&P 500 (Global)')
         nasdaq_val = get_m('Nasdaq (Tech)')
-        
         dow_val = get_m('Dow Jones')
         nikkei_val = get_m('Nikkei 225 (Japón)')
         euro_val = get_m('Euro Stoxx 50 (Europa)')
+        
+        # --- NUEVAS VARIABLES INTEGRADAS ---
+        russell_val = get_m('Russell 2000 (Small Caps)')
+        dxy_val = get_m('DXY (Índice Dólar)')
+        vix_val = get_m('VIX (Miedo)')
+        tasa_fed_val = get_m('Tasa FED (%)')
+        desempleo_us_val = get_m('Desempleo EE.UU (%)')
         
         prompt = (
             "Actúa como un Asesor Financiero experto y práctico para un inversor individual residente en Argentina.\n"
@@ -533,13 +539,18 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             "**MACROECONOMÍA INTERNACIONAL:**\n"
             f"- S&P 500: {sp500_val}\n"
             f"- Dow Jones: {dow_val}\n"
-            f"- Nasdaq: {nasdaq_val}\n"
+            f"- Nasdaq (Tech): {nasdaq_val}\n"
+            f"- Russell 2000 (Small Caps): {russell_val}\n"
             f"- Euro Stoxx 50 (Europa): {euro_val}\n"
             f"- Nikkei 225 (Japón): {nikkei_val}\n"
+            f"- DXY (Índice Dólar): {dxy_val}\n"
+            f"- VIX (Índice de Miedo): {vix_val}\n"
             f"- Oro: {oro_val}\n"
             f"- Petróleo WTI: {petroleo_val}\n"
             f"- Bono del Tesoro 10 Años (Rendimiento): {bono_val}%\n"
+            f"- Tasa FED: {tasa_fed_val}%\n"
             f"- Inflación Anual EE.UU: {inf_us_val}%\n"
+            f"- Desempleo EE.UU: {desempleo_us_val}%\n"
             f"- Curva Inversión (2Y-10Y): {curva_val} puntos\n\n"
             
             "**VALUACIONES ACTUALES (NIVEL 2):**\n"
