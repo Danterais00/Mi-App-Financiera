@@ -7,3 +7,4 @@ feedparser
 beautifulsoup4
 requests
 google-generativeai
+curl_cffi==0.5.10
