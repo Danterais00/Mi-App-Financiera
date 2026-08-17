@@ -8,7 +8,7 @@ import time
 import urllib3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Desactivar advertencias de certificados de seguridad (Necesario para sitios gubernamentales)
+# Desactivar advertencias de certificados SSL (Necesario para la API del BCRA)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- CONFIGURACIÓN DE LOGS ---
@@ -16,8 +16,8 @@ logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s -
 logger = logging.getLogger(__name__)
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Accept': 'application/json, text/plain, */*'
 }
 
 # --- LA DEFENSA CONTRA BLOQUEOS DE YAHOO FINANCE ---
@@ -65,30 +65,23 @@ def obtener_macro_argentina():
             datos["inflacion"] = float(res_inf.json()[-1]["valor"]) 
     except Exception as e: logger.warning(f"Error Inflación: {e}")
 
-    # 4. EXTRACCIÓN OFICIAL DEL BCRA (VÍA DIRECTA - SOLUCIÓN PARA TASA Y RESERVAS)
+    # 4 & 5. TASA BCRA & RESERVAS (VÍA API OFICIAL BCRA - 100% ESTABLE Y SIN SCRAPING)
     try:
-        res_bcra = requests.get("https://www.bcra.gob.ar/", headers=HEADERS, verify=False, timeout=15)
-        # Leer las tablas HTML de la página principal del Banco Central
-        dfs = pd.read_html(res_bcra.text, decimal=",", thousands=".")
-        for df in dfs:
-            if len(df.columns) >= 2:
-                for _, row in df.iterrows():
-                    key_str = str(row.iloc[0]).lower()
-                    # Limpiamos símbolos molestos
-                    val_str = str(row.iloc[1]).replace("U$S", "").replace("%", "").replace(".", "").replace(",", ".").strip()
-                    
-                    try:
-                        # Extraer Reservas Internacionales
-                        if "reservas" in key_str and datos["reservas"] is None:
-                            datos["reservas"] = float(val_str)
-                        # Extraer Tasa de Política Monetaria
-                        elif ("política monetaria" in key_str or "pases" in key_str) and datos["tasa_bcra"] is None:
-                            datos["tasa_bcra"] = float(val_str)
-                    except: pass
+        # Conexión directa a los servidores JSON del Banco Central
+        res_bcra = requests.get("https://api.bcra.gob.ar/estadisticas/v2.0/PrincipalesVariables", verify=False, timeout=10)
+        if res_bcra.status_code == 200:
+            resultados = res_bcra.json().get("results", [])
+            for item in resultados:
+                # ID 1 = Reservas Internacionales
+                if item.get("idVariable") == 1 and datos["reservas"] is None: 
+                    datos["reservas"] = float(item["valor"])
+                # ID 6 = Tasa de Política Monetaria
+                elif item.get("idVariable") == 6 and datos["tasa_bcra"] is None: 
+                    datos["tasa_bcra"] = float(item["valor"])
     except Exception as e:
-        logger.warning(f"Error Scraping Directo BCRA: {e}")
+        logger.warning(f"Error API Oficial BCRA: {e}")
 
-    # Respaldos en caso de que falle el Scraping del BCRA
+    # Respaldos de emergencia por si la API oficial se cae
     if datos["tasa_bcra"] is None:
         try:
             res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", headers=HEADERS, timeout=10)
@@ -97,18 +90,36 @@ def obtener_macro_argentina():
                 datos["tasa_bcra"] = float(val) * 100 if float(val) < 2 else float(val)
         except: pass
 
-    # 5. AISLAMIENTO DEL BONO AL30 (Búsqueda en profundidad)
+    if datos["reservas"] is None:
+        try:
+            res_res = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", headers=HEADERS, timeout=10)
+            if res_res.status_code == 200 and len(res_res.json()) > 0:
+                datos["reservas"] = float(res_res.json()[-1].get("valor"))
+        except: pass
+
+    # 6. BONO AL30 (Aislado para evitar colisión de NaNs)
     try:
         tk_al30 = yf.Ticker("AL30.BA")
-        hist_al30 = tk_al30.history(period="1mo") # Traemos todo el mes para asegurar un dato
+        # Traemos todo el mes para tener colchón de datos
+        hist_al30 = tk_al30.history(period="1mo") 
         if not hist_al30.empty and 'Close' in hist_al30.columns:
-            al30_closes = hist_al30['Close'].dropna()
+            # Eliminamos los días vacíos o sin operaciones
+            al30_closes = hist_al30['Close'].dropna() 
             if len(al30_closes) >= 2:
                 datos["bono_al30"]["valor"] = float(al30_closes.iloc[-1])
                 datos["bono_al30"]["var_diaria"] = float(((al30_closes.iloc[-1] / al30_closes.iloc[-2]) - 1) * 100)
-    except Exception as e: logger.warning(f"Error AL30 Aislado: {e}")
+    except Exception as e: logger.warning(f"Error AL30 Aislado (Yahoo): {e}")
 
-    # 6. MERVAL PESOS (Extracción independiente)
+    # Fallback Ambit para AL30 si Yahoo Finance está caído
+    if datos["bono_al30"]["valor"] is None:
+        try:
+            res_al30 = requests.get("https://mercados.ambito.com/bono/AL30/info", headers=HEADERS, timeout=5)
+            if res_al30.status_code == 200 and "valor" in res_al30.json():
+                val_str = res_al30.json().get("valor", "0").replace(".", "").replace(",", ".")
+                datos["bono_al30"]["valor"] = float(val_str)
+        except: pass
+
+    # 7. MERVAL PESOS (Aislado)
     try:
         tk_merv = yf.Ticker("^MERV")
         hist_merv = tk_merv.history(period="1y")
@@ -123,7 +134,7 @@ def obtener_macro_argentina():
                 if len(merv_closes) >= 250: datos["merval"]["var_1y"] = float(((act / merv_closes.iloc[0]) - 1) * 100)
     except Exception as e: logger.warning(f"Error Merval: {e}")
 
-    # 7. Calculadora Interna: Merval USD (CCL)
+    # 8. Calculadora Interna: Merval USD (CCL)
     try:
         ccl_venta = next((float(d['venta']) for d in datos["dolares"] if d['nombre'] == 'CCL'), None)
         if ccl_venta and datos["merval"]["valor"]:
