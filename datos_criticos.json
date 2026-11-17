@@ -1,0 +1,11 @@
+{
+    "ultima_actualizacion": "2026-11-17 23:02:19",
+    "riesgo_pais_alternativo": null,
+    "dolar_futuro_rofex": [
+        {
+            "vencimiento": "Ene-25",
+            "tna": "45.5"
+        }
+    ],
+    "curva_iamc": []
+}
