@@ -24,9 +24,9 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 📦 Instalar librerías
+     - name: 📦 Instalar librerías
         run: |
-          pip install requests beautifulsoup4 pandas
+          pip install requests beautifulsoup4 pandas yfinance
           # Añade aquí curl_cffi si decides usarlo para evitar bloqueos TLS
 
       - name: 🚀 Ejecutar Scraper
