@@ -150,6 +150,21 @@ def obtener_macro_argentina():
     
     return datos
 
+# --- EL PUENTE (FASE 3) ---
+@st.cache_data(ttl=1800)
+def obtener_datos_criticos_puente():
+    url_json = "https://raw.githubusercontent.com/Danterais00/Mi-App-Financiera/refs/heads/main/datos_criticos.json"
+    
+    try:
+        respuesta = requests.get(url_json, timeout=5)
+        if respuesta.status_code == 200:
+            return respuesta.json()
+    except Exception as e:
+        logger.warning(f"Error leyendo el JSON puente: {e}")
+        
+    return None
+# --------------------------
+
 @st.cache_data(ttl=3600)
 def obtener_macro_internacional():
     datos = {}
@@ -445,7 +460,6 @@ def obtener_noticias_acciones(lista_tickers):
 @st.cache_data(ttl=1800)
 def obtener_noticias_globales():
     try:
-        # Se ha incluido ^TNX (Bono 10Y US) para forzar noticias de la FED y tasas
         url = "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC,CL=F,GC=F,^TNX&region=US&lang=en-US"
         feed = feedparser.parse(url)
         entradas = []
@@ -462,6 +476,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         valuaciones = obtener_valuaciones_mercado()
         datos_merval = obtener_datos_merval()
         noticias_globales = obtener_noticias_globales()
+        datos_criticos = obtener_datos_criticos_puente()
         
         contexto_noticias = "\n".join([f"- {n}" for n in noticias_globales]) if noticias_globales else "No hay noticias relevantes detectadas."
         
@@ -501,7 +516,6 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         nikkei_val = get_m('Nikkei 225 (Japón)')
         euro_val = get_m('Euro Stoxx 50 (Europa)')
         
-        # --- NUEVAS VARIABLES INTEGRADAS FASE 1 ---
         russell_val = get_m('Russell 2000 (Small Caps)')
         dxy_val = get_m('DXY (Índice Dólar)')
         vix_val = get_m('VIX (Miedo)')
@@ -512,7 +526,9 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         plata_val = get_m('Plata')
         futuros_nq = get_m('Futuros Nasdaq')
         futuros_sp = get_m('Futuros S&P 500')
-        # ------------------------------------------
+        
+        dolar_futuro_rofex = datos_criticos.get('dolar_futuro_rofex', []) if datos_criticos else []
+        rofex_str = " | ".join([f"{d['vencimiento']}: {d['tna']}%" for d in dolar_futuro_rofex]) if dolar_futuro_rofex else "N/D"
         
         prompt = (
             "Actúa como un Asesor Financiero experto y práctico para un inversor individual residente en Argentina.\n"
@@ -529,8 +545,8 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             "ESTRUCTURA OBLIGATORIA DE TU RESPUESTA:\n"
             "### 1. Resumen Geopolítico y Global (Traducido al Inversor)\n"
             "[Integra los titulares de noticias, metales, Bitcoin, IPC de EE.UU., bolsas globales, el bono japonés y tu lectura sobre qué hará la FED con las tasas.]\n\n"
-            "### 2. Oportunidades en Renta Fija Local y Bonos (AL30)\n"
-            "[Emoji] **Instrumentos Recomendados:** [Análisis del Riesgo País, Brecha y el precio actual del Bono AL30]\n\n"
+            "### 2. Oportunidades en Renta Fija Local y Cobertura (ROFEX)\n"
+            "[Emoji] **Instrumentos Recomendados:** [Análisis del Riesgo País, Brecha, el precio actual del Bono AL30 y analiza la Tasa Implícita del Dólar Futuro Rofex]\n\n"
             "### 3. Oportunidades Globales (CEDEARs)\n"
             "[Emoji] **Sectores y Acciones a mirar:** [Explicación basada en los scores GICS y las valuaciones. Tickers concretos]\n\n"
             "### 4. Oportunidades en el Merval Local\n"
@@ -549,7 +565,8 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             f"- Inflación Mensual: {inf_arg}%\n"
             f"- Tasa de Interés BCRA: {tasa_arg}%\n"
             f"- Brecha Cambiaria (CCL vs Oficial): {brecha_str}\n"
-            f"- Reservas BCRA: USD {reservas_val} millones\n\n"
+            f"- Reservas BCRA: USD {reservas_val} millones\n"
+            f"- Tasas Dólar Futuro Rofex: {rofex_str}\n\n"
             
             "**MACROECONOMÍA INTERNACIONAL:**\n"
             f"- S&P 500: {sp500_val} (Futuros: {futuros_sp})\n"
@@ -595,7 +612,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         mensaje_ui = (
             '<div style="margin-bottom: 15px; font-size: 1.05rem; color: #e2e8f0;">'
             '💡 <b>¡Tu Reporte Matutino Institucional está listo!</b><br><br>'
-            'La IA ahora tiene acceso total al <b>Merval en USD, Bonos AL30, Geopolítica Mundial, Ecosistema Cripto y el radar de Europa/Asia</b>. Generará un informe profesional cruzando la narrativa de las noticias con los datos duros de tu Screener.<br><br>'
+            'La IA ahora tiene acceso total al <b>Merval en USD, Bonos AL30, Coberturas Rofex, Geopolítica Mundial, Ecosistema Cripto y el radar de Europa/Asia</b>. Generará un informe profesional cruzando la narrativa de las noticias con los datos duros de tu Screener.<br><br>'
             '<b>Copia el texto del recuadro a continuación y pégalo en tu ChatGPT, Claude o Gemini web.</b>'
             '</div>'
             '<div style="background-color: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; overflow-x: auto;">'
