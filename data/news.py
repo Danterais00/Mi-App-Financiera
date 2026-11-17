@@ -157,15 +157,20 @@ def obtener_macro_internacional():
         "S&P 500 (Global)": "^GSPC",
         "Dow Jones": "^DJI",
         "Nasdaq (Tech)": "^IXIC",
+        "Futuros S&P 500": "ES=F",       
+        "Futuros Nasdaq": "NQ=F",        
         "Russell 2000 (Small Caps)": "^RUT",
         "Euro Stoxx 50 (Europa)": "^STOXX50E",
         "Nikkei 225 (Japón)": "^N225",
         "Oro (Refugio)": "GC=F",
+        "Plata": "SI=F",                 
+        "Cobre (Industrial)": "HG=F",    
         "Petróleo Crudo (WTI)": "CL=F", 
         "DXY (Índice Dólar)": "DX-Y.NYB",
         "VIX (Miedo)": "^VIX",
         "Bono 10Y EE.UU (%)": "^TNX",
-        "Bono 10Y Japón (%)": "^JGBS"
+        "Bono 10Y Japón (%)": "^JGBS",
+        "Bitcoin (Cripto)": "BTC-USD"    
     }
     
     for nombre in tickers_macro.keys():
@@ -496,28 +501,34 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         nikkei_val = get_m('Nikkei 225 (Japón)')
         euro_val = get_m('Euro Stoxx 50 (Europa)')
         
-        # --- NUEVAS VARIABLES INTEGRADAS ---
+        # --- NUEVAS VARIABLES INTEGRADAS FASE 1 ---
         russell_val = get_m('Russell 2000 (Small Caps)')
         dxy_val = get_m('DXY (Índice Dólar)')
         vix_val = get_m('VIX (Miedo)')
         tasa_fed_val = get_m('Tasa FED (%)')
         desempleo_us_val = get_m('Desempleo EE.UU (%)')
+        btc_val = get_m('Bitcoin (Cripto)')
+        cobre_val = get_m('Cobre (Industrial)')
+        plata_val = get_m('Plata')
+        futuros_nq = get_m('Futuros Nasdaq')
+        futuros_sp = get_m('Futuros S&P 500')
+        # ------------------------------------------
         
         prompt = (
             "Actúa como un Asesor Financiero experto y práctico para un inversor individual residente en Argentina.\n"
             "Tu objetivo es redactar un Resumen Matutino de Mercados, traduciendo los datos en decisiones de inversión claras, directas y sin jerga abstracta.\n\n"
             
             "REGLAS ESTRICTAS DE RESPUESTA:\n"
-            "1. NO hables en lenguaje teórico. Integra el 'Contexto Geopolítico' para explicar por qué suben o bajan los activos de riesgo (ej. Petróleo u Oro).\n"
+            "1. NO hables en lenguaje teórico. Integra el 'Contexto Geopolítico' para explicar por qué suben o bajan los activos de riesgo (ej. Petróleo, Oro, Bitcoin).\n"
             "2. Provee EJEMPLOS CONCRETOS. Si sugieres Renta Fija Argentina, menciona los Bonos Soberanos (AL30) que se muestran en los datos y explica su dinámica.\n"
             "3. En la Macro Argentina, es obligatorio analizar el 'Merval en USD (CCL)', ya que es el termómetro real del mercado.\n"
             "4. Utiliza el formato de Semáforo: 🟢 (Comprar), 🟡 (Mantener/Neutro), 🔴 (Vender/Evitar).\n"
             "5. APLICA LA METODOLOGÍA DEL ASESOR PARA EL MERVAL: Busca Valor (P/BV bajo), Dividendos altos, Momento de Entrada (sugerir compra si RSI < 35, evitar si RSI > 70), y evalúa el Riesgo de Liquidez alertando si el volumen es bajo.\n"
-            "6. EN EL RESUMEN GLOBAL: Debes mencionar explícitamente el último dato de IPC de EE.UU., el comportamiento de las bolsas de Europa/Asia (Nikkei, Euro Stoxx), el rendimiento del bono japonés, y deducir la probabilidad de la tasa de la FED basándote en la Curva de Inversión y las noticias.\n\n"
+            "6. EN EL RESUMEN GLOBAL: Debes mencionar explícitamente la dinámica de los metales (Oro, Plata, Cobre), el ecosistema cripto (Bitcoin), el IPC de EE.UU., bolsas de Europa/Asia, bono japonés, y la expectativa de tasas de la FED.\n\n"
             
             "ESTRUCTURA OBLIGATORIA DE TU RESPUESTA:\n"
             "### 1. Resumen Geopolítico y Global (Traducido al Inversor)\n"
-            "[Integra los titulares de noticias, el petróleo, IPC de EE.UU., bolsas de Europa/Asia, el bono japonés y tu lectura sobre qué hará la FED con las tasas.]\n\n"
+            "[Integra los titulares de noticias, metales, Bitcoin, IPC de EE.UU., bolsas globales, el bono japonés y tu lectura sobre qué hará la FED con las tasas.]\n\n"
             "### 2. Oportunidades en Renta Fija Local y Bonos (AL30)\n"
             "[Emoji] **Instrumentos Recomendados:** [Análisis del Riesgo País, Brecha y el precio actual del Bono AL30]\n\n"
             "### 3. Oportunidades Globales (CEDEARs)\n"
@@ -541,16 +552,18 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             f"- Reservas BCRA: USD {reservas_val} millones\n\n"
             
             "**MACROECONOMÍA INTERNACIONAL:**\n"
-            f"- S&P 500: {sp500_val}\n"
+            f"- S&P 500: {sp500_val} (Futuros: {futuros_sp})\n"
             f"- Dow Jones: {dow_val}\n"
-            f"- Nasdaq (Tech): {nasdaq_val}\n"
+            f"- Nasdaq (Tech): {nasdaq_val} (Futuros: {futuros_nq})\n"
             f"- Russell 2000 (Small Caps): {russell_val}\n"
             f"- Euro Stoxx 50 (Europa): {euro_val}\n"
             f"- Nikkei 225 (Japón): {nikkei_val}\n"
             f"- DXY (Índice Dólar): {dxy_val}\n"
             f"- VIX (Índice de Miedo): {vix_val}\n"
-            f"- Oro: {oro_val}\n"
+            f"- Oro: {oro_val} | Plata: {plata_val}\n"
+            f"- Cobre (Termómetro Industrial): {cobre_val}\n"
             f"- Petróleo WTI: {petroleo_val}\n"
+            f"- Bitcoin (Liquidez Global): {btc_val}\n"
             f"- Bono del Tesoro 10 Años EE.UU. (Rendimiento): {bono_val}%\n"
             f"- Bono 10 Años Japón (Rendimiento): {bono_jp_val}%\n"
             f"- Tasa FED: {tasa_fed_val}%\n"
@@ -582,7 +595,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         mensaje_ui = (
             '<div style="margin-bottom: 15px; font-size: 1.05rem; color: #e2e8f0;">'
             '💡 <b>¡Tu Reporte Matutino Institucional está listo!</b><br><br>'
-            'La IA ahora tiene acceso total al <b>Merval en USD, Bonos AL30, Geopolítica Mundial y el radar de Europa/Asia</b>. Generará un informe profesional cruzando la narrativa de las noticias con los datos duros de tu Screener.<br><br>'
+            'La IA ahora tiene acceso total al <b>Merval en USD, Bonos AL30, Geopolítica Mundial, Ecosistema Cripto y el radar de Europa/Asia</b>. Generará un informe profesional cruzando la narrativa de las noticias con los datos duros de tu Screener.<br><br>'
             '<b>Copia el texto del recuadro a continuación y pégalo en tu ChatGPT, Claude o Gemini web.</b>'
             '</div>'
             '<div style="background-color: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; overflow-x: auto;">'
