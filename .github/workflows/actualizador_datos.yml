@@ -1,0 +1,41 @@
+name: 🤖 Actualizador de Datos Financieros
+
+on:
+  schedule:
+    # Se ejecuta de Lunes a Viernes a las 11:00, 14:00 y 17:00 hs (Hora Argentina / UTC-3)
+    # Nota: Los horarios cron están en UTC, por lo que sumamos 3 horas.
+    - cron: '0 14,17,20 * * 1-5'
+  workflow_dispatch: # Te permite ejecutarlo manualmente desde GitHub con un botón
+
+jobs:
+  actualizar-json:
+    runs-on: ubuntu-latest
+    
+    # Otorga permisos de escritura para que el bot pueda guardar el JSON modificado
+    permissions:
+      contents: write 
+
+    steps:
+      - name: 📥 Clonar repositorio
+        uses: actions/checkout@v3
+
+      - name: 🐍 Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 📦 Instalar librerías
+        run: |
+          pip install requests beautifulsoup4 pandas
+          # Añade aquí curl_cffi si decides usarlo para evitar bloqueos TLS
+
+      - name: 🚀 Ejecutar Scraper
+        run: python scripts/scraper_crítico.py
+
+      - name: 💾 Guardar y Subir (Commit & Push)
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add datos_criticos.json
+          git commit -m "⚡ Update automático de datos_criticos.json" || echo "No hay cambios nuevos"
+          git push
