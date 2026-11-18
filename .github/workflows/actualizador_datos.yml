@@ -2,16 +2,13 @@ name: 🤖 Actualizador de Datos Financieros
 
 on:
   schedule:
-    # Se ejecuta de Lunes a Viernes a las 11:00, 14:00 y 17:00 hs (Hora Argentina / UTC-3)
-    # Nota: Los horarios cron están en UTC, por lo que sumamos 3 horas.
     - cron: '0 14,17,20 * * 1-5'
-  workflow_dispatch: # Te permite ejecutarlo manualmente desde GitHub con un botón
+  workflow_dispatch:
 
 jobs:
   actualizar-json:
     runs-on: ubuntu-latest
     
-    # Otorga permisos de escritura para que el bot pueda guardar el JSON modificado
     permissions:
       contents: write 
 
@@ -24,15 +21,14 @@ jobs:
         with:
           python-version: '3.10'
 
-     - name: 📦 Instalar librerías
+      - name: 📦 Instalar librerías
         run: |
           pip install requests beautifulsoup4 pandas yfinance
-          # Añade aquí curl_cffi si decides usarlo para evitar bloqueos TLS
 
       - name: 🚀 Ejecutar Scraper
         run: python scripts/scraper_crítico.py
 
-      - name: 💾 Guardar y Subir (Commit & Push)
+      - name: 💾 Guardar y Subir
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
