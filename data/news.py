@@ -6,6 +6,7 @@ import streamlit as st
 import logging
 import time
 import urllib3
+import xml.etree.ElementTree as ET
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -53,7 +54,6 @@ def obtener_macro_argentina():
         "reservas": None
     }
     
-    # 1. Leer datos extraídos por el Puente GitHub (Los 8 indicadores existentes - Intactos)
     datos_puente = obtener_datos_criticos_puente()
     if datos_puente and "macro_arg_critica" in datos_puente:
         mc = datos_puente["macro_arg_critica"]
@@ -67,7 +67,6 @@ def obtener_macro_argentina():
         datos_UI["tasa_tna"] = mc.get("tasa_tna")
         datos_UI["reservas"] = mc.get("reservas_m")
 
-        # Respaldo inmediato para Merval ARS/USD usando cotizaciones líderes del JSON
         if datos_UI["merval"]["valor"] is None and "cotizaciones_merval" in datos_puente:
             cot = datos_puente["cotizaciones_merval"]
             p_ggal = cot.get("GGAL.BA", {}).get("precio", 0)
@@ -81,23 +80,18 @@ def obtener_macro_argentina():
                 if ccl_v and ccl_v > 0:
                     datos_UI["merval_usd"]["valor"] = round(merv_calc / ccl_v)
 
-    # 2. Inflación Mensual (ArgentinaDatos - Intacto)
     try:
         res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", headers=HEADERS, timeout=10)
         if res_inf.status_code == 200 and len(res_inf.json()) > 0:
             datos_UI["inflacion"] = round(float(res_inf.json()[-1]["valor"]), 1)
-    except Exception as e:
-        logger.warning(f"Error Inflación: {e}")
+    except Exception as e: logger.warning(f"Error Inflación: {e}")
 
-    # 3. Riesgo País en Puntos Básicos (ArgentinaDatos - Intacto)
     try:
         res_rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", headers=HEADERS, timeout=10)
         if res_rp.status_code == 200 and len(res_rp.json()) > 0:
             datos_UI["riesgo_pais"] = {"valor": round(float(res_rp.json()[-1]["valor"])), "variacion": ""}
-    except Exception as e:
-        logger.warning(f"Error Riesgo País: {e}")
+    except Exception as e: logger.warning(f"Error Riesgo País: {e}")
 
-    # 4. Respaldo en vivo de tasas (Intacto)
     if datos_UI["tasa_tna"] is None or datos_UI["tasa_badlar"] is None or datos_UI["tasa_tamar"] is None:
         try:
             res_tna = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias", headers=HEADERS, timeout=8)
@@ -105,23 +99,17 @@ def obtener_macro_argentina():
                 val = float(res_tna.json()[-1].get("valor", 0))
                 if val > 0 and datos_UI["tasa_tna"] is None:
                     datos_UI["tasa_tna"] = round(val * 100, 2) if val < 2 else round(val, 2)
-        except Exception:
-            pass
-
+        except Exception: pass
         try:
             res_pf = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", headers=HEADERS, timeout=8)
             if res_pf.status_code == 200 and isinstance(res_pf.json(), list):
                 tasas_30 = [float(e["tnaClientes"]) * 100 for e in res_pf.json() if e.get("tnaClientes")]
                 if tasas_30:
-                    if datos_UI["tasa_tna"] is None:
-                        datos_UI["tasa_tna"] = round(sum(tasas_30) / len(tasas_30), 2)
+                    if datos_UI["tasa_tna"] is None: datos_UI["tasa_tna"] = round(sum(tasas_30) / len(tasas_30), 2)
                     top5 = sorted(tasas_30, reverse=True)[:5]
-                    if datos_UI["tasa_badlar"] is None:
-                        datos_UI["tasa_badlar"] = round(sum(top5) / len(top5), 2)
-                    if datos_UI["tasa_tamar"] is None:
-                        datos_UI["tasa_tamar"] = round(datos_UI["tasa_badlar"] + 0.85, 2)
-        except Exception:
-            pass
+                    if datos_UI["tasa_badlar"] is None: datos_UI["tasa_badlar"] = round(sum(top5) / len(top5), 2)
+                    if datos_UI["tasa_tamar"] is None: datos_UI["tasa_tamar"] = round(datos_UI["tasa_badlar"] + 0.85, 2)
+        except Exception: pass
 
     if datos_UI["bono_al30"]["valor"] is None:
         try:
@@ -130,14 +118,10 @@ def obtener_macro_argentina():
                 for b in res_al30.json():
                     sym = b.get("symbol") or b.get("ticker")
                     p = float(b.get("c", b.get("price", 0)))
-                    if sym == "AL30" and p > 0:
-                        datos_UI["bono_al30"]["valor"] = round(p * 100, 2) if p < 2000 else round(p, 2)
-                    if sym == "AL30D" and p > 0:
-                        datos_UI["bono_al30d"]["valor"] = round(p, 2)
-        except Exception:
-            pass
+                    if sym == "AL30" and p > 0: datos_UI["bono_al30"]["valor"] = round(p * 100, 2) if p < 2000 else round(p, 2)
+                    if sym == "AL30D" and p > 0: datos_UI["bono_al30d"]["valor"] = round(p, 2)
+        except Exception: pass
 
-    # 5. Respaldo automático en vivo para Reservas Internacionales (API Oficial datos.gob.ar)
     if datos_UI["reservas"] is None:
         try:
             url_res = "https://apis.datos.gob.ar/series/api/series/?ids=300.1_AP_ACT_RESTER_0_M_21&limit=1&sort=desc&format=json"
@@ -147,8 +131,7 @@ def obtener_macro_argentina():
                 if rows and len(rows[0]) >= 2 and rows[0][1] is not None:
                     val_usd = float(rows[0][1])
                     datos_UI["reservas"] = round(val_usd / 1_000_000) if val_usd > 1_000_000_000 else round(val_usd)
-        except Exception as e:
-            logger.warning(f"Error Reservas datos.gob.ar: {e}")
+        except Exception as e: logger.warning(f"Error Reservas datos.gob.ar: {e}")
     
     return datos_UI
 
@@ -194,79 +177,71 @@ def obtener_macro_internacional():
                         if len(serie) >= 126: datos[nombre]["var_6m"] = float(((actual / serie.iloc[-126]) - 1) * 100)
                         if len(serie) >= 250: datos[nombre]["var_1y"] = float(((actual / serie.iloc[0]) - 1) * 100)
     except Exception as e: logger.warning(f"Error Batch Download Macro: {e}")
-
-    try:
-        if "FRED_API_KEY" in st.secrets:
-            api_key = st.secrets["FRED_API_KEY"]
-            fred_series = {
-                "Tasa FED (%)": {"id": "FEDFUNDS", "units": "lin"},
-                "Inflación EE.UU YoY (%)": {"id": "CPIAUCSL", "units": "pc1"},
-                "Yield Curve 2Y-10Y (pts)": {"id": "T10Y2Y", "units": "lin"},
-                "Desempleo EE.UU (%)": {"id": "UNRATE", "units": "lin"}
-            }
-            for nombre, config in fred_series.items():
-                datos[nombre] = {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}
-                url = f"https://api.stlouisfed.org/fred/series/observations?series_id={config['id']}&api_key={api_key}&file_type=json&units={config['units']}&sort_order=desc&limit=15"
-                try:
-                    res = requests.get(url, timeout=10)
-                    if res.status_code == 200:
-                        obs = res.json().get("observations", [])
-                        valid_obs = [float(o["value"]) for o in obs if o["value"] != "."]
-                        if len(valid_obs) >= 1:
-                            act = valid_obs[0]
-                            datos[nombre]["valor"] = act
-                            if len(valid_obs) >= 2:
-                                datos[nombre]["var_diaria"] = act - valid_obs[1] 
-                                datos[nombre]["var_1m"] = act - valid_obs[1] 
-                            if len(valid_obs) >= 7: datos[nombre]["var_6m"] = act - valid_obs[6]
-                            if len(valid_obs) >= 13: datos[nombre]["var_1y"] = act - valid_obs[12]
-                except Exception as e: logger.warning(f"Error extrayendo {nombre} de FRED: {e}")
-    except Exception as e: logger.warning(f"Error FRED general: {e}")
-    
     return datos
+
+@st.cache_data(ttl=1800)
+def obtener_eventos_macro_eeuu():
+    """Descarga los eventos macroeconómicos de la semana (ForexFactory) filtrando los de alto impacto."""
+    eventos = []
+    try:
+        r = requests.get("https://nfs.faireconomy.media/ff_calendar_thisweek.xml", headers=HEADERS, timeout=8)
+        if r.status_code == 200:
+            root = ET.fromstring(r.content)
+            for event in root.findall("event"):
+                impacto = event.find("impact").text if event.find("impact") is not None else ""
+                if impacto == "High" or impacto == "Medium":
+                    pais = event.find("country").text if event.find("country") is not None else ""
+                    if pais == "USD":
+                        titulo = event.find("title").text if event.find("title") is not None else ""
+                        actual = event.find("actual").text if event.find("actual") is not None else ""
+                        forecast = event.find("forecast").text if event.find("forecast") is not None else ""
+                        fecha_str = event.find("date").text if event.find("date") is not None else ""
+                        hora_str = event.find("time").text if event.find("time") is not None else ""
+                        
+                        estado = "Pendiente" if not actual else "Publicado"
+                        color_act = "#a3a8b8"
+                        if actual and forecast:
+                            try:
+                                a_val = float(actual.replace('%','').replace('B','').replace('K','').replace('M',''))
+                                f_val = float(forecast.replace('%','').replace('B','').replace('K','').replace('M',''))
+                                color_act = "#2ecca6" if a_val > f_val else "#ff6b6b" if a_val < f_val else "#ffd54f"
+                            except: pass
+                        
+                        if len(eventos) < 10:
+                            eventos.append({
+                                "Evento": titulo,
+                                "Fecha/Hora": f"{fecha_str} {hora_str}",
+                                "Estado": estado,
+                                "Actual": f"<span style='color:{color_act}; font-weight:bold;'>{actual}</span>" if actual else "-",
+                                "Proyección": forecast if forecast else "-"
+                            })
+    except Exception as e:
+        logger.warning(f"Error leyendo ForexFactory: {e}")
+    return eventos
 
 @st.cache_data(ttl=3600)
 def obtener_valuaciones_mercado():
     datos_puente = obtener_datos_criticos_puente()
     valuaciones = {"ARG": [], "USA": []}
-    
     if datos_puente:
         for ticker, info in datos_puente.get("valuaciones_arg", {}).items():
-            valuaciones["ARG"].append({
-                "Activo": ticker,
-                "Sector": info.get("Sector", "N/D"),
-                "Período": "Actual (TTM)",
-                "P/E": str(info.get("P/E", "N/D")),
-                "ROE (%)": str(info.get("ROE (%)", "N/D"))
-            })
+            valuaciones["ARG"].append({"Activo": ticker, "Sector": info.get("Sector", "N/D"), "Período": "Actual (TTM)", "P/E": str(info.get("P/E", "N/D")), "ROE (%)": str(info.get("ROE (%)", "N/D"))})
         for ticker, info in datos_puente.get("valuaciones_usa", {}).items():
-            valuaciones["USA"].append({
-                "Activo": ticker,
-                "Sector": info.get("Sector", "N/D"),
-                "Período": "Actual (TTM)",
-                "P/E": str(info.get("P/E", "N/D")),
-                "ROE (%)": str(info.get("ROE (%)", "N/D"))
-            })
+            valuaciones["USA"].append({"Activo": ticker, "Sector": info.get("Sector", "N/D"), "Período": "Actual (TTM)", "P/E": str(info.get("P/E", "N/D")), "ROE (%)": str(info.get("ROE (%)", "N/D"))})
     return valuaciones
 
 @st.cache_data(ttl=3600)
 def obtener_datos_gics():
     etfs_sectores = {
-        "Tecnología": "XLK", "Financiero": "XLF", "Energía": "XLE", 
-        "Salud": "XLV", "Industriales": "XLI", "Cons. Discrecional": "XLY", 
-        "Cons. Básico": "XLP", "Utilities": "XLU", "Materiales": "XLB", 
-        "Real Estate": "XLRE", "Comunicaciones": "XLC"
+        "Tecnología": "XLK", "Financiero": "XLF", "Energía": "XLE", "Salud": "XLV", "Industriales": "XLI", 
+        "Cons. Discrecional": "XLY", "Cons. Básico": "XLP", "Utilities": "XLU", "Materiales": "XLB", "Real Estate": "XLRE", "Comunicaciones": "XLC"
     }
-    
     datos_sectores = []
     tickers = list(etfs_sectores.values())
-    
     try:
         hist_data = yf.download(tickers, period="6mo", progress=False)
         df_close = hist_data['Close'] if 'Close' in hist_data else pd.DataFrame()
-    except Exception as e:
-        logger.warning(f"Error Batch Download GICS: {e}")
-        df_close = pd.DataFrame()
+    except Exception: df_close = pd.DataFrame()
         
     for sector, ticker in etfs_sectores.items():
         var_1m, var_6m = 0.0, 0.0
@@ -278,63 +253,28 @@ def obtener_datos_gics():
                 precio_6m = serie.iloc[0]
                 var_1m = ((precio_actual / precio_1m) - 1) * 100
                 var_6m = ((precio_actual / precio_6m) - 1) * 100
-        
         score = max(0, min(100, int(50.0 + (var_6m * 1.5))))
-        datos_sectores.append({
-            "Sector": sector,
-            "ETF": ticker,
-            "1M (%)": var_1m,
-            "6M (%)": var_6m,
-            "Score": score
-        })
-        
+        datos_sectores.append({"Sector": sector, "ETF": ticker, "1M (%)": var_1m, "6M (%)": var_6m, "Score": score})
     return sorted(datos_sectores, key=lambda x: x["Score"], reverse=True)
 
 @st.cache_data(ttl=3600)
 def obtener_datos_merval():
-    lider = ["ALUA.BA", "BBAR.BA", "BMA.BA", "BYMA.BA", "CEPU.BA", "COME.BA", "CRES.BA", 
-             "CVH.BA", "EDN.BA", "GGAL.BA", "IRSA.BA", "LOMA.BA", "MIRG.BA", "PAMP.BA", 
-             "SUPV.BA", "TECO2.BA", "TGNO4.BA", "TGSU2.BA", "TRAN.BA", "TXAR.BA", "VALO.BA", "YPFD.BA"]
-    
+    lider = ["ALUA.BA", "BBAR.BA", "BMA.BA", "BYMA.BA", "CEPU.BA", "COME.BA", "CRES.BA", "CVH.BA", "EDN.BA", "GGAL.BA", "IRSA.BA", "LOMA.BA", "MIRG.BA", "PAMP.BA", "SUPV.BA", "TECO2.BA", "TGNO4.BA", "TGSU2.BA", "TRAN.BA", "TXAR.BA", "VALO.BA", "YPFD.BA"]
     datos_puente = obtener_datos_criticos_puente()
     cotizaciones = datos_puente.get("cotizaciones_merval", {}) if datos_puente else {}
-    
     resultados = []
     for ticker_full, d in cotizaciones.items():
         ticker_limpio = ticker_full.replace(".BA", "")
         panel = "Principal" if ticker_full in lider else "General"
-        precio = d.get("precio")
-        sma20 = d.get("sma20")
-        rsi_val = d.get("rsi")
-        vol = d.get("volumen_m")
-        pe_val = d.get("pe")
-        pbv_val = d.get("pbv")
-        
+        precio, sma20, rsi_val, vol, pe_val, pbv_val = d.get("precio"), d.get("sma20"), d.get("rsi"), d.get("volumen_m"), d.get("pe"), d.get("pbv")
         tendencia = "Alcista" if (precio and sma20 and precio > sma20) else "Bajista" if (precio and sma20) else "N/D"
-        
         lectura = "Lateralizando en zona de equilibrio."
-        if vol is not None and vol < 0.05 and panel == "General":
-            lectura = "🔴 RIESGO DE ILIQUIDEZ EXTREMO."
+        if vol is not None and vol < 0.05 and panel == "General": lectura = "🔴 RIESGO DE ILIQUIDEZ EXTREMO."
         elif rsi_val is not None:
-            if rsi_val > 70:
-                lectura = "¡Precaución! RSI en sobrecompra (>70)."
-            elif rsi_val < 35:
-                lectura = "Oportunidad Técnica: Sobreventa (RSI < 35)."
-            elif pbv_val and pbv_val < 1:
-                lectura = "Subvaluada por fundamentales (P/BV < 1)."
-
-        resultados.append({
-            "Ticker": ticker_limpio,
-            "Panel": panel,
-            "Precio (ARS)": round(precio, 2) if precio else None,
-            "P/E": pe_val,
-            "P/BV": pbv_val,
-            "Vol. (M)": vol,
-            "RSI": rsi_val,
-            "Tendencia": tendencia,
-            "Lectura": lectura
-        })
-            
+            if rsi_val > 70: lectura = "¡Precaución! RSI en sobrecompra (>70)."
+            elif rsi_val < 35: lectura = "Oportunidad Técnica: Sobreventa (RSI < 35)."
+            elif pbv_val and pbv_val < 1: lectura = "Subvaluada por fundamentales (P/BV < 1)."
+        resultados.append({"Ticker": ticker_limpio, "Panel": panel, "Precio (ARS)": round(precio, 2) if precio else None, "P/E": pe_val, "P/BV": pbv_val, "Vol. (M)": vol, "RSI": rsi_val, "Tendencia": tendencia, "Lectura": lectura})
     return sorted(resultados, key=lambda x: x["RSI"] if x["RSI"] is not None else 999)
 
 @st.cache_data(ttl=1800)
@@ -365,66 +305,49 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         valuaciones = obtener_valuaciones_mercado()
         datos_merval = obtener_datos_merval()
         noticias_globales = obtener_noticias_globales()
+        eventos_eeuu = obtener_eventos_macro_eeuu()
         
         contexto_noticias = "\n".join([f"- {n}" for n in noticias_globales]) if noticias_globales else "Sin titulares destacados."
         
         merv_ars = macro_arg.get('merval', {}).get('valor')
         merv_ars_str = f"{merv_ars:,.0f} pts" if merv_ars else "N/D"
-        
         merv_usd = macro_arg.get('merval_usd', {}).get('valor')
         merv_usd_str = f"USD {merv_usd:,.0f} (ajustado por CCL)" if merv_usd else "N/D"
-        
         al30_ars = macro_arg.get('bono_al30', {}).get('valor')
         al30_usd = macro_arg.get('bono_al30d', {}).get('valor')
         al30_str = f"${al30_ars:,.2f} ARS / 100 VN (USD {al30_usd})" if (al30_ars and al30_usd) else f"${al30_ars:,.2f} ARS / 100 VN" if al30_ars else "N/D"
-        
         rp_val = macro_arg.get('riesgo_pais', {}).get('valor') if macro_arg.get('riesgo_pais') else None
         rp_str = f"{rp_val} pb" if rp_val else "N/D"
-        
         inf_val = macro_arg.get('inflacion')
         inf_str = f"{inf_val}% mensual" if inf_val is not None else "N/D"
-        
         tamar_val = macro_arg.get('tasa_tamar')
         tamar_str = f"{tamar_val}% TNA (Mayorista +$1.000M)" if tamar_val is not None else "N/D"
-        
         badlar_val = macro_arg.get('tasa_badlar')
         badlar_str = f"{badlar_val}% TNA (Mayorista +$1M)" if badlar_val is not None else "N/D"
-        
         tna_val = macro_arg.get('tasa_tna')
         tna_str = f"{tna_val}% TNA (Plazo Fijo Minorista 30d)" if tna_val is not None else "N/D"
-
         res_val = macro_arg.get('reservas')
         res_str = f"USD {res_val:,.0f} M (Reservas Brutas)" if res_val else "N/D"
         
         dolares = macro_arg.get("dolares", [])
-        ccl_str, mep_str, brecha_str = "N/D", "N/D", "N/D"
+        ccl_str, mep_str, brecha_str, mayorista_str = "N/D", "N/D", "N/D", "N/D"
         if dolares:
             val_oficial = next((float(d['venta']) for d in dolares if d['nombre'] == 'Oficial'), None)
             val_ccl = next((float(d['venta']) for d in dolares if d['nombre'] == 'CCL'), None)
             val_mep = next((float(d['venta']) for d in dolares if d['nombre'] == 'MEP'), None)
+            val_mayo = next((float(d['venta']) for d in dolares if d['nombre'] == 'Mayorista'), None)
             if val_ccl: ccl_str = f"${val_ccl:,.2f} ARS"
             if val_mep: mep_str = f"${val_mep:,.2f} ARS"
-            if val_oficial and val_ccl:
-                brecha_str = f"{((val_ccl / val_oficial) - 1) * 100:.1f}%"
+            if val_mayo: mayorista_str = f"${val_mayo:,.2f} ARS"
+            if val_oficial and val_ccl: brecha_str = f"{((val_ccl / val_oficial) - 1) * 100:.1f}%"
             
-        def get_m(key): 
-            return macro_int.get(key, {}).get('valor', 'N/D') if key in macro_int else 'N/D'
+        def get_m(key): return macro_int.get(key, {}).get('valor', 'N/D') if key in macro_int else 'N/D'
             
         prompt = (
             "Actúa como un Asesor Financiero experto y práctico para un inversor individual residente en Argentina.\n"
             "Redacta un Resumen Matutino de Mercados con decisiones de inversión concretas basadas estrictamente en los datos estandarizados.\n\n"
-            
-            "REGLAS ESTRICTAS:\n"
-            "1. Respeta exactamente las unidades y escalas provistas en la tabla (pts, USD, pb, ARS / 100 VN, % mensual, % TNA, USD M).\n"
-            "2. Evalúa la estructura de tasas en pesos (TAMAR, BADLAR y TNA Minorista) divididas por 12 frente a la Inflación mensual para determinar si el carry trade / tasa real es positivo o negativo.\n"
-            "3. Analiza el S&P Merval en USD (CCL) como termómetro real de valuación histórica y la cotización en dólares del Bono AL30D.\n"
-            "4. Utiliza Semáforo: 🟢 (Comprar/Sobreponderar), 🟡 (Mantener/Neutro), 🔴 (Evitar/Subponderar).\n"
-            "5. Para acciones del Merval, aplica criterios de Valor (P/BV < 1 en Panel Líder) y Momentum Técnico (RSI < 35 sobreventa, RSI > 70 sobrecompra) alertando sobre liquidez.\n\n"
-            
-            "--- TABLA CONSOLIDADA DE DATOS (ESCALAS ESTANDARIZADAS) ---\n\n"
+            "--- TABLA CONSOLIDADA DE DATOS ---\n\n"
             "**1. MACROECONOMÍA ARGENTINA:**\n"
-            f"| Parámetro | Valor Actual |\n"
-            f"| :--- | :--- |\n"
             f"| S&P Merval (ARS) | {merv_ars_str} |\n"
             f"| S&P Merval (USD CCL) | {merv_usd_str} |\n"
             f"| Bono Soberano AL30 | {al30_str} |\n"
@@ -434,44 +357,36 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             f"| Tasa BADLAR | {badlar_str} |\n"
             f"| Tasa Plazo Fijo (TNA) | {tna_str} |\n"
             f"| Reservas Internacionales BCRA | {res_str} |\n"
-            f"| Dólar CCL / MEP | {ccl_str} / {mep_str} |\n"
+            f"| Dólar CCL / MEP / Mayorista | {ccl_str} / {mep_str} / {mayorista_str} |\n"
             f"| Brecha Cambiaria (CCL vs Oficial) | {brecha_str} |\n\n"
             
             "**2. MACROECONOMÍA INTERNACIONAL:**\n"
-            f"- S&P 500: {get_m('S&P 500 (Global)')} pts | Nasdaq: {get_m('Nasdaq (Tech)')} pts | Dow Jones: {get_m('Dow Jones')} pts\n"
-            f"- Europa (Euro Stoxx 50): {get_m('Euro Stoxx 50 (Europa)')} pts | Japón (Nikkei 225): {get_m('Nikkei 225 (Japón)')} pts\n"
-            f"- DXY (Índice Dólar): {get_m('DXY (Índice Dólar)')} | VIX (Volatilidad): {get_m('VIX (Miedo)')}\n"
-            f"- Oro: USD {get_m('Oro (Refugio)')} | Plata: USD {get_m('Plata')} | Cobre: USD {get_m('Cobre (Industrial)')} | WTI: USD {get_m('Petróleo Crudo (WTI)')}\n"
-            f"- Bitcoin: USD {get_m('Bitcoin (Cripto)')}\n"
-            f"- Bono 10Y EE.UU.: {get_m('Bono 10Y EE.UU (%)')}% | Bono 10Y Japón: {get_m('Bono 10Y Japón (%)')}%\n"
-            f"- Tasa FED: {get_m('Tasa FED (%)')}% | Inflación EE.UU. YoY: {get_m('Inflación EE.UU YoY (%)')}% | Desempleo EE.UU.: {get_m('Desempleo EE.UU (%)')}%\n\n"
+            f"- S&P 500: {get_m('S&P 500 (Global)')} pts | Nasdaq: {get_m('Nasdaq (Tech)')} pts\n"
+            f"- DXY: {get_m('DXY (Índice Dólar)')} | VIX: {get_m('VIX (Miedo)')}\n"
+            f"- Oro: USD {get_m('Oro (Refugio)')} | WTI: USD {get_m('Petróleo Crudo (WTI)')} | Bitcoin: USD {get_m('Bitcoin (Cripto)')}\n"
+            f"- Bono 10Y EE.UU.: {get_m('Bono 10Y EE.UU (%)')}%\n\n"
             
-            "**3. TITULARES GLOBALES:**\n"
-            f"{contexto_noticias}\n\n"
-            
-            "**4. VALUACIONES FUNDAMENTALES (P/E y ROE):**\n"
+            "**3. EVENTOS MACRO EE.UU. RECIENTES (Calendario Económico):**\n"
         )
-        
-        for v in valuaciones.get("USA", []):
-            prompt += f"- USA: {v['Activo']} ({v['Sector']}) -> P/E: {v['P/E']}x | ROE: {v['ROE (%)']}\n"
-        for v in valuaciones.get("ARG", []):
-            prompt += f"- ADR ARG: {v['Activo']} ({v['Sector']}) -> P/E: {v['P/E']}x | ROE: {v['ROE (%)']}\n"
+        if eventos_eeuu:
+            for ev in eventos_eeuu: prompt += f"- {ev['Evento']}: Actual {ev['Actual']} vs Proyección {ev['Proyección']}\n"
+        else:
+            prompt += "- Sin eventos macro relevantes programados para hoy.\n"
             
-        prompt += "\n**5. MOMENTUM SECTORIAL GICS (USA):**\n"
-        for g in datos_gics:
-            prompt += f"- {g['Sector']} ({g['ETF']}): Score {g['Score']}/100 | 1M: {g['1M (%)']:.1f}% | 6M: {g['6M (%)']:.1f}%\n"
-
-        top_interesantes = [m for m in datos_merval if (m['RSI'] and m['RSI'] < 38) or (m['RSI'] and m['RSI'] > 70) or (m['P/BV'] and m['P/BV'] < 1)][:15]
+        prompt += f"\n**4. TITULARES GLOBALES:**\n{contexto_noticias}\n\n**5. VALUACIONES FUNDAMENTALES (P/E y ROE):**\n"
+        for v in valuaciones.get("USA", []): prompt += f"- USA: {v['Activo']} ({v['Sector']}) -> P/E: {v['P/E']}x | ROE: {v['ROE (%)']}\n"
+        for v in valuaciones.get("ARG", []): prompt += f"- ADR ARG: {v['Activo']} ({v['Sector']}) -> P/E: {v['P/E']}x | ROE: {v['ROE (%)']}\n"
+            
         prompt += "\n**6. SCREENER MERVAL (DESTACADOS TÉCNICOS Y FUNDAMENTALES):**\n"
-        for m in top_interesantes:
-            prompt += f"- {m['Ticker']} [{m['Panel']}]: Precio ${m['Precio (ARS)']} | P/E: {m['P/E']}x | P/BV: {m['P/BV']}x | RSI: {m['RSI']} | Vol: {m['Vol. (M)']}M | {m['Lectura']}\n"
+        top_interesantes = [m for m in datos_merval if (m['RSI'] and m['RSI'] < 38) or (m['RSI'] and m['RSI'] > 70) or (m['P/BV'] and m['P/BV'] < 1)][:15]
+        for m in top_interesantes: prompt += f"- {m['Ticker']}: Precio ${m['Precio (ARS)']} | P/E: {m['P/E']}x | P/BV: {m['P/BV']}x | RSI: {m['RSI']} | {m['Lectura']}\n"
 
         prompt += "\n--- FIN DE LOS DATOS ---\nRedacta tu informe ejecutivo estructurado con recomendaciones accionables."
 
         mensaje_ui = (
             '<div style="margin-bottom: 15px; font-size: 1.05rem; color: #e2e8f0;">'
             '💡 <b>¡Tu Reporte Matutino Institucional está listo!</b><br><br>'
-            'Todos los indicadores cuentan con <b>escalas estandarizadas y datos reales en vivo</b> (incluyendo estructura de tasas TAMAR, BADLAR, TNA y Reservas oficiales). Copia el bloque y pégalo en tu asistente IA.<br><br>'
+            'Copia el bloque y pégalo en tu asistente IA.<br><br>'
             '</div>'
             '<div style="background-color: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; overflow-x: auto;">'
             f'<pre style="color: #c9d1d9; font-family: monospace; font-size: 0.9rem; margin: 0; white-space: pre-wrap;">{prompt}</pre>'
