@@ -10,7 +10,7 @@ from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
 from data.news import (obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones, generar_analisis_ia, obtener_valuaciones_mercado, obtener_datos_gics, obtener_datos_merval, obtener_eventos_macro_eeuu)
 
-APP_VERSION = "v12.0 - Edición Consolidada (UI Original + Mejoras)"
+APP_VERSION = "v13.0 - Nivel 3 Consolidado a 12 Meses"
 inyectar_css()
 
 if 'datos_cargados' not in st.session_state: st.session_state.datos_cargados = False
@@ -181,14 +181,16 @@ if menu_seccion == "Noticias de Mercado":
         st.markdown("### Sectores GICS (Estados Unidos)")
         ds = obtener_datos_gics()
         if ds:
+            # CAMBIO QUIRÚRGICO: Agregada cabecera y celda para 12M
             hg = '<div class="table-container"><table class="custom-table" style="width: 100%;">'
-            hg += '<tr><th style="text-align: left;">Sector (ETF)</th><th>Rend. 1 Mes</th><th>Rend. 6 Meses</th><th>Investment Score</th></tr>'
+            hg += '<tr><th style="text-align: left;">Sector (ETF)</th><th>Rend. 1 Mes</th><th>Rend. 6 Meses</th><th>Rend. 12 Meses</th><th>Investment Score</th></tr>'
             for s in ds:
-                v1m_c = "#2ecca6" if s['1M (%)'] > 0 else "#ff6b6b"
-                v6m_c = "#2ecca6" if s['6M (%)'] > 0 else "#ff6b6b"
+                v1m_c = "#2ecca6" if s.get('1M (%)', 0) > 0 else "#ff6b6b"
+                v6m_c = "#2ecca6" if s.get('6M (%)', 0) > 0 else "#ff6b6b"
+                v12m_c = "#2ecca6" if s.get('12M (%)', 0) > 0 else "#ff6b6b"
                 sc = s['Score']
                 sc_color = "#2ecca6" if sc >= 75 else "#ffd54f" if sc >= 50 else "#ff6b6b"
-                hg += f"<tr><td class='col-header' style='text-align: left;'>{s['Sector']} ({s['ETF']})</td><td style='color:{v1m_c}; font-weight:bold;'>{s['1M (%)']:+.2f}%</td><td style='color:{v6m_c}; font-weight:bold;'>{s['6M (%)']:+.2f}%</td><td><span style='background-color: {sc_color}20; color: {sc_color}; padding: 4px 10px; border-radius: 12px; font-weight: bold;'>{sc} / 100</span></td></tr>"
+                hg += f"<tr><td class='col-header' style='text-align: left;'>{s['Sector']} ({s['ETF']})</td><td style='color:{v1m_c}; font-weight:bold;'>{s.get('1M (%)', 0):+.2f}%</td><td style='color:{v6m_c}; font-weight:bold;'>{s.get('6M (%)', 0):+.2f}%</td><td style='color:{v12m_c}; font-weight:bold;'>{s.get('12M (%)', 0):+.2f}%</td><td><span style='background-color: {sc_color}20; color: {sc_color}; padding: 4px 10px; border-radius: 12px; font-weight: bold;'>{sc} / 100</span></td></tr>"
             st.markdown(hg + '</table></div>', unsafe_allow_html=True)
     with tab_n4:
         st.markdown("### 📈 Nivel 4: Screener Dinámico (Merval)")
