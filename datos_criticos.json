@@ -1,5 +1,5 @@
 {
-    "timestamp": "2026-11-18 21:31:56",
+    "timestamp": "2026-11-18 21:40:01",
     "cotizaciones_merval": {
         "ALUA.BA": {
             "precio": 836.5,
@@ -33,7 +33,7 @@
         },
         "BYMA.BA": {
             "precio": 200.0,
-            "pe": 8.261049,
+            "pe": 8.120179,
             "pbv": 2.0911753,
             "volumen_pesos_m": 1245.97061,
             "var_1m": -14.8,
@@ -123,7 +123,7 @@
         },
         "MIRG.BA": {
             "precio": 1690.0,
-            "pe": 55.174667,
+            "pe": 54.834522,
             "pbv": 0.7545747,
             "volumen_pesos_m": 54.8681315,
             "var_1m": -1.17,
@@ -133,7 +133,7 @@
         },
         "PAMP.BA": {
             "precio": 4297.5,
-            "pe": 6.1493006,
+            "pe": 5.956919,
             "pbv": 0.921697,
             "volumen_pesos_m": 4696.906212,
             "var_1m": -15.4,
@@ -183,7 +183,7 @@
         },
         "TRAN.BA": {
             "precio": 1957.0,
-            "pe": 2.8586037,
+            "pe": 2.923208,
             "pbv": 0.83520156,
             "volumen_pesos_m": 1594.3261180499999,
             "var_1m": -18.73,
@@ -223,7 +223,7 @@
         },
         "AGRO.BA": {
             "precio": 19.75,
-            "pe": 15.551182,
+            "pe": 14.962121,
             "pbv": 0.35754374,
             "volumen_pesos_m": 35.85100382499999,
             "var_1m": -36.5,
@@ -243,7 +243,7 @@
         },
         "BHIP.BA": {
             "precio": 172.5,
-            "pe": 57.885906,
+            "pe": 59.278347,
             "pbv": 0.39166,
             "volumen_pesos_m": 77.76394875,
             "var_1m": -28.27,
@@ -253,7 +253,7 @@
         },
         "CAPX.BA": {
             "precio": 2600.0,
-            "pe": 5.06063,
+            "pe": 5.1780453,
             "pbv": 0.60078377,
             "volumen_pesos_m": 10.07942,
             "var_1m": -17.33,
@@ -273,8 +273,8 @@
         },
         "GCLA.BA": {
             "precio": 1710.0,
-            "pe": 9.725856,
-            "pbv": 0.40820476,
+            "pe": 11.030124,
+            "pbv": 0.40821737,
             "volumen_pesos_m": 8.862075,
             "var_1m": -33.46,
             "var_1m_usd": -36.47,
@@ -397,7 +397,7 @@
         "GOOGL": {
             "Sector": "Comunicaciones",
             "P/E": "14.7",
-            "Forward P/E": "18.6",
+            "Forward P/E": "18.5",
             "EV/EBITDA": "18.0",
             "FCF Yield": "-0.0%",
             "Debt/Equity": "0.22",
@@ -605,7 +605,7 @@
             "P/E": "3.0",
             "Forward P/E": "9.4",
             "EV/EBITDA": "1.1",
-            "FCF Yield": "-13745.5%",
+            "FCF Yield": "N/D",
             "Debt/Equity": "0.83",
             "ROE (%)": "8.4%",
             "1M": -31.1,
@@ -651,7 +651,7 @@
         "MELI": {
             "Sector": "Tecnolog\u00eda",
             "P/E": "38.2",
-            "Forward P/E": "26.7",
+            "Forward P/E": "26.9",
             "EV/EBITDA": "20.7",
             "FCF Yield": "-3.6%",
             "Debt/Equity": "1.97",
