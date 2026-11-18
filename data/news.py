@@ -38,27 +38,41 @@ def obtener_macro_argentina():
         dUI["reservas"] = mc.get("reservas_m")
         dUI["inflacion"] = mc.get("inflacion_mensual")
         dUI["emae_ultimo"] = mc.get("emae_ultimo")
+        dUI["merval"]["valor"] = mc.get("merval_ars")
+        dUI["merval_usd"]["valor"] = mc.get("merval_usd")
         if mc.get("riesgo_pais_actual"): dUI["riesgo_pais"] = mc["riesgo_pais_actual"]
-        
-        if "cotizaciones_merval" in dp:
-            cot = dp["cotizaciones_merval"]
-            p_ggal = cot.get("GGAL.BA", {}).get("precio", 0)
-            p_ypfd = cot.get("YPFD.BA", {}).get("precio", 0)
-            p_pamp = cot.get("PAMP.BA", {}).get("precio", 0)
-            p_bma = cot.get("BMA.BA", {}).get("precio", 0)
-            if p_ggal and p_ypfd and p_pamp and p_bma:
-                merv_calc = round((p_ggal * 165) + (p_ypfd * 145) + (p_pamp * 110) + (p_bma * 75))
-                dUI["merval"]["valor"] = merv_calc
-                ccl_v = next((float(d['venta']) for d in dUI["dolares"] if d['nombre'] == 'CCL'), None)
-                if ccl_v and ccl_v > 0: dUI["merval_usd"]["valor"] = round(merv_calc / ccl_v)
 
-    # Fallbacks en vivo por si el JSON aún no corrió
-    if not dUI["dolares"]:
+    # 1. Dólares (Asegura Oficial, Blue, MEP, CCL, Mayorista)
+    if len(dUI["dolares"]) < 5:
         try:
             rd = requests.get("https://dolarapi.com/v1/dolares", timeout=6)
             if rd.status_code == 200:
-                dUI["dolares"] = [{"nombre": d["nombre"], "compra": d["compra"], "venta": d["venta"]} for d in rd.json() if d["nombre"] in ["Oficial", "Blue", "CCL", "MEP", "Mayorista"]]
+                mapa_nombres = {
+                    "oficial": "Oficial", "blue": "Blue", "bolsa": "MEP",
+                    "contadoconliqui": "CCL", "mayorista": "Mayorista"
+                }
+                orden = ["Oficial", "Blue", "MEP", "CCL", "Mayorista"]
+                lista_d = []
+                for d in rd.json():
+                    casa = d.get("casa", "").lower()
+                    if casa in mapa_nombres:
+                        lista_d.append({"nombre": mapa_nombres[casa], "compra": d.get("compra"), "venta": d.get("venta")})
+                dUI["dolares"] = sorted(lista_d, key=lambda x: orden.index(x["nombre"]) if x["nombre"] in orden else 99)
         except: pass
+
+    # 2. Merval ARS y USD en vivo si falta
+    if dUI["merval"]["valor"] is None:
+        try:
+            m_hist = yf.Ticker("^MERV").history(period="5d")
+            if not m_hist.empty:
+                dUI["merval"]["valor"] = round(float(m_hist["Close"].iloc[-1]))
+        except: pass
+    if dUI["merval"]["valor"] and dUI["merval_usd"]["valor"] is None:
+        ccl_v = next((float(d['venta']) for d in dUI["dolares"] if d['nombre'] == 'CCL'), None)
+        if ccl_v and ccl_v > 0:
+            dUI["merval_usd"]["valor"] = round(dUI["merval"]["valor"] / ccl_v)
+
+    # 3. Inflación, Riesgo País y Reservas
     if dUI["inflacion"] is None:
         try:
             ri = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", headers=HEADERS, timeout=6)
@@ -72,8 +86,30 @@ def obtener_macro_argentina():
     if dUI["reservas"] is None:
         try:
             rr = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", headers=HEADERS, timeout=6)
-            if rr.status_code == 200: dUI["reservas"] = rr.json()[-1]["valor"]
+            if rr.status_code == 200: dUI["reservas"] = float(rr.json()[-1]["valor"])
         except: pass
+
+    # 4. Tasas (BADLAR, TNA, TAMAR) en vivo si faltan
+    if dUI["tasa_badlar"] is None:
+        try:
+            rb = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=89.2_TS_INTELAR_0_D_20&limit=1&sort=desc&format=json", timeout=6)
+            if rb.status_code == 200:
+                val_b = rb.json().get("data", [])[0][1]
+                if val_b: dUI["tasa_badlar"] = round(float(val_b), 2)
+        except: pass
+    if dUI["tasa_tna"] is None:
+        try:
+            rt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazo-fijo", headers=HEADERS, timeout=6)
+            if rt.status_code == 200:
+                tasas_pf = [float(b["tnaClientes"]) for b in rt.json() if b.get("tnaClientes")]
+                if tasas_pf:
+                    prom = sum(tasas_pf) / len(tasas_pf)
+                    dUI["tasa_tna"] = round(prom * 100, 2) if prom < 2 else round(prom, 2)
+        except: pass
+    if dUI["tasa_tamar"] is None and dUI["tasa_badlar"] is not None:
+        dUI["tasa_tamar"] = round(dUI["tasa_badlar"] + 1.40, 2)
+
+    # 5. Bono AL30
     try:
         res_al30 = requests.get("https://data912.com/live/arg_bonds", headers=HEADERS, timeout=6)
         if res_al30.status_code == 200:
