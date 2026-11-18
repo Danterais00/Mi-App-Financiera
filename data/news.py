@@ -31,6 +31,19 @@ def obtener_macro_argentina():
         dUI.update({"dolares": mc.get("dolares", []), "tasa_tamar": mc.get("tasa_tamar"), "tasa_badlar": mc.get("tasa_badlar"), "tasa_tna": mc.get("tasa_tna"), "reservas": mc.get("reservas_m")})
         dUI["merval"]["valor"] = mc.get("merval_ars"); dUI["merval_usd"]["valor"] = mc.get("merval_usd")
         dUI["bono_al30"]["valor"] = mc.get("bono_al30"); dUI["bono_al30d"]["valor"] = mc.get("bono_al30d")
+        
+        # Respaldo Merval desde cotizaciones si falla la nube
+        if dUI["merval"]["valor"] is None and "cotizaciones_merval" in dp:
+            cot = dp["cotizaciones_merval"]
+            p_ggal = cot.get("GGAL.BA", {}).get("precio", 0)
+            p_ypfd = cot.get("YPFD.BA", {}).get("precio", 0)
+            p_pamp = cot.get("PAMP.BA", {}).get("precio", 0)
+            p_bma = cot.get("BMA.BA", {}).get("precio", 0)
+            if p_ggal and p_ypfd and p_pamp and p_bma:
+                merv_calc = round((p_ggal * 165) + (p_ypfd * 145) + (p_pamp * 110) + (p_bma * 75))
+                dUI["merval"]["valor"] = merv_calc
+                ccl_v = next((float(d['venta']) for d in dUI["dolares"] if d['nombre'] == 'CCL'), None)
+                if ccl_v and ccl_v > 0: dUI["merval_usd"]["valor"] = round(merv_calc / ccl_v)
     
     try:
         ri = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", headers=HEADERS, timeout=8)
@@ -40,12 +53,24 @@ def obtener_macro_argentina():
         rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", headers=HEADERS, timeout=8)
         if rp.status_code == 200: dUI["riesgo_pais"] = {"valor": round(float(rp.json()[-1]["valor"]))}
     except: pass
+    
+    if dUI["bono_al30"]["valor"] is None:
+        try:
+            res_al30 = requests.get("https://data912.com/live/arg_bonds", headers=HEADERS, timeout=8)
+            if res_al30.status_code == 200:
+                for b in res_al30.json():
+                    sym = b.get("symbol") or b.get("ticker")
+                    p = float(b.get("c", b.get("price", 0)))
+                    if sym == "AL30" and p > 0: dUI["bono_al30"]["valor"] = round(p * 100, 2) if p < 2000 else round(p, 2)
+                    if sym == "AL30D" and p > 0: dUI["bono_al30d"]["valor"] = round(p, 2)
+        except: pass
+        
     return dUI
 
 @st.cache_data(ttl=3600)
 def obtener_macro_internacional():
     datos = {}
-    tm = {"S&P 500 (Global)": "^GSPC", "Dow Jones": "^DJI", "Nasdaq (Tech)": "^IXIC", "Russell 2000 (Small Caps)": "^RUT", "Euro Stoxx 50 (Europa)": "^STOXX50E", "Nikkei 225 (Japón)": "^N225", "Oro (Refugio)": "GC=F", "Plata": "SI=F", "Cobre (Industrial)": "HG=F", "Petróleo Crudo (WTI)": "CL=F", "DXY (Índice Dólar)": "DX-Y.NYB", "VIX (Miedo)": "^VIX", "Bono 10Y EE.UU (%)": "^TNX"}
+    tm = {"S&P 500 (Global)": "^GSPC", "Dow Jones": "^DJI", "Nasdaq (Tech)": "^IXIC", "Russell 2000 (Small Caps)": "^RUT", "Euro Stoxx 50 (Europa)": "^STOXX50E", "Nikkei 225 (Japón)": "^N225", "Oro (Refugio)": "GC=F", "Plata": "SI=F", "Cobre (Industrial)": "HG=F", "Petróleo Crudo (WTI)": "CL=F", "DXY (Índice Dólar)": "DX-Y.NYB", "VIX (Miedo)": "^VIX", "Bono 10Y EE.UU (%)": "^TNX", "Bono 10Y Japón (%)": "^JGBS", "Bitcoin (Cripto)": "BTC-USD"}
     for n in tm.keys(): datos[n] = {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}
     try:
         hd = yf.download(list(tm.values()), period="1y", progress=False)
@@ -145,12 +170,20 @@ def obtener_noticias_acciones(tickers):
         except: n[t] = []
     return n
 
+@st.cache_data(ttl=1800)
+def obtener_noticias_globales():
+    try:
+        feed = feedparser.parse("https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC,CL=F,GC=F,^TNX&region=US&lang=en-US")
+        return [entry.title for entry in feed.entries[:5]]
+    except: return []
+
 @st.cache_data(ttl=3600)
 def generar_analisis_ia(m_arg, m_int, gics):
     try:
         val = obtener_valuaciones_mercado()
         dm = obtener_datos_merval()
         ev = obtener_eventos_macro_eeuu()
+        ng = obtener_noticias_globales()
         
         def g(k): return m_int.get(k, {}).get('valor', 'N/D')
         
