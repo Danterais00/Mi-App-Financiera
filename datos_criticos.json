@@ -1,11 +1,401 @@
 {
-    "ultima_actualizacion": "2026-11-17 23:02:19",
-    "riesgo_pais_alternativo": null,
+    "ultima_actualizacion": "2026-11-18 00:08:57",
     "dolar_futuro_rofex": [
         {
             "vencimiento": "Ene-25",
             "tna": "45.5"
         }
     ],
-    "curva_iamc": []
+    "cotizaciones_merval": {
+        "ALUA.BA": {
+            "precio": 798.5,
+            "sma20": 812.925,
+            "rsi": 47.75,
+            "volumen_m": 0.41,
+            "pe": 8.64,
+            "pbv": 0.87
+        },
+        "BBAR.BA": {
+            "precio": 5635.0,
+            "sma20": 6307.25,
+            "rsi": 32.33,
+            "volumen_m": 0.24,
+            "pe": 8.47,
+            "pbv": 0.82
+        },
+        "BMA.BA": {
+            "precio": 9250.0,
+            "sma20": 9922.75,
+            "rsi": 35.82,
+            "volumen_m": 0.35,
+            "pe": 13.53,
+            "pbv": 0.94
+        },
+        "BYMA.BA": {
+            "precio": 191.0,
+            "sma20": 214.0875,
+            "rsi": 23.94,
+            "volumen_m": 4.92,
+            "pe": 7.74,
+            "pbv": 2.0
+        },
+        "CEPU.BA": {
+            "precio": 1763.0,
+            "sma20": 1798.75,
+            "rsi": 44.4,
+            "volumen_m": 0.87,
+            "pe": 5.62,
+            "pbv": 0.89
+        },
+        "COME.BA": {
+            "precio": 29.219999313354492,
+            "sma20": 33.18649988174438,
+            "rsi": 25.76,
+            "volumen_m": 8.26,
+            "pe": 7.32,
+            "pbv": 0.32
+        },
+        "CRES.BA": {
+            "precio": 1528.0,
+            "sma20": 1596.3459167480469,
+            "rsi": 40.66,
+            "volumen_m": 0.28,
+            "pe": 6.89,
+            "pbv": 0.71
+        },
+        "CVH.BA": {
+            "precio": 8610.0,
+            "sma20": 8858.0,
+            "rsi": 37.07,
+            "volumen_m": 0.02,
+            "pe": 4.6,
+            "pbv": 0.43
+        },
+        "EDN.BA": {
+            "precio": 1116.0,
+            "sma20": 1315.1,
+            "rsi": 19.98,
+            "volumen_m": 0.52,
+            "pe": 3.63,
+            "pbv": 0.33
+        },
+        "GGAL.BA": {
+            "precio": 4857.5,
+            "sma20": 5358.5,
+            "rsi": 33.5,
+            "volumen_m": 2.62,
+            "pe": 38.83,
+            "pbv": 0.85
+        },
+        "IRSA.BA": {
+            "precio": 1985.0,
+            "sma20": 2081.6279113769533,
+            "rsi": 41.86,
+            "volumen_m": 0.08,
+            "pe": 7.69,
+            "pbv": 0.7
+        },
+        "LOMA.BA": {
+            "precio": 2760.0,
+            "sma20": 2988.5,
+            "rsi": 32.51,
+            "volumen_m": 0.26,
+            "pe": 20.93,
+            "pbv": 1.16
+        },
+        "MIRG.BA": {
+            "precio": 1670.0,
+            "sma20": 1761.5,
+            "rsi": 41.09,
+            "volumen_m": 0.05,
+            "pe": 100.54,
+            "pbv": 0.62
+        },
+        "PAMP.BA": {
+            "precio": 4235.0,
+            "sma20": 4647.75,
+            "rsi": 32.58,
+            "volumen_m": 0.99,
+            "pe": 5.87,
+            "pbv": 0.91
+        },
+        "SUPV.BA": {
+            "precio": 1858.0,
+            "sma20": 2107.6,
+            "rsi": 32.65,
+            "volumen_m": 0.51,
+            "pe": 5.19,
+            "pbv": 0.69
+        },
+        "TECO2.BA": {
+            "precio": 3555.0,
+            "sma20": 3676.25,
+            "rsi": 42.82,
+            "volumen_m": 0.17,
+            "pe": 7.78,
+            "pbv": 0.87
+        },
+        "TGNO4.BA": {
+            "precio": 2354.0,
+            "sma20": 2704.125,
+            "rsi": 23.61,
+            "volumen_m": 0.27,
+            "pe": 5.05,
+            "pbv": 0.78
+        },
+        "TGSU2.BA": {
+            "precio": 6990.0,
+            "sma20": 7818.0,
+            "rsi": 33.61,
+            "volumen_m": 0.21,
+            "pe": 8.57,
+            "pbv": 1.22
+        },
+        "TRAN.BA": {
+            "precio": 1858.0,
+            "sma20": 2135.5,
+            "rsi": 18.47,
+            "volumen_m": 0.55,
+            "pe": 2.77,
+            "pbv": 0.96
+        },
+        "TXAR.BA": {
+            "precio": 685.5,
+            "sma20": 723.425,
+            "rsi": 45.72,
+            "volumen_m": 1.34,
+            "pe": 5.21,
+            "pbv": 0.41
+        },
+        "VALO.BA": {
+            "precio": 524.5,
+            "sma20": 521.675,
+            "rsi": 48.52,
+            "volumen_m": 1.36,
+            "pe": 9.01,
+            "pbv": 1.33
+        },
+        "YPFD.BA": {
+            "precio": 6165.0,
+            "sma20": 7252.75,
+            "rsi": 28.51,
+            "volumen_m": 2.07,
+            "pe": 7.87,
+            "pbv": 1.17
+        },
+        "AGRO.BA": {
+            "precio": 19.700000762939453,
+            "sma20": 25.807500076293945,
+            "rsi": 12.92,
+            "volumen_m": 1.6,
+            "pe": null,
+            "pbv": null
+        },
+        "AUSO.BA": {
+            "precio": 1965.0,
+            "sma20": 2428.25,
+            "rsi": 15.73,
+            "volumen_m": 0.02,
+            "pe": null,
+            "pbv": null
+        },
+        "BHIP.BA": {
+            "precio": 178.5,
+            "sma20": 212.2,
+            "rsi": 19.51,
+            "volumen_m": 0.35,
+            "pe": null,
+            "pbv": null
+        },
+        "BPAT.BA": {
+            "precio": 1435.0,
+            "sma20": 1583.5,
+            "rsi": 28.85,
+            "volumen_m": 0.01,
+            "pe": null,
+            "pbv": null
+        },
+        "CAPX.BA": {
+            "precio": 2585.0,
+            "sma20": 2870.0,
+            "rsi": 21.96,
+            "volumen_m": 0.0,
+            "pe": null,
+            "pbv": null
+        },
+        "CECO2.BA": {
+            "precio": 394.5,
+            "sma20": 429.0,
+            "rsi": 30.18,
+            "volumen_m": 0.05,
+            "pe": null,
+            "pbv": null
+        },
+        "CELU.BA": {
+            "precio": 139.5,
+            "sma20": 158.55,
+            "rsi": 34.41,
+            "volumen_m": 0.13,
+            "pe": null,
+            "pbv": null
+        },
+        "CGPA2.BA": {
+            "precio": 1175.0,
+            "sma20": 1379.5,
+            "rsi": 22.76,
+            "volumen_m": 0.01,
+            "pe": null,
+            "pbv": null
+        },
+        "DGCU2.BA": {
+            "precio": 1180.0,
+            "sma20": 1229.25,
+            "rsi": 31.73,
+            "volumen_m": 0.01,
+            "pe": null,
+            "pbv": null
+        },
+        "FERR.BA": {
+            "precio": 14.649999618530273,
+            "sma20": 15.27250008583069,
+            "rsi": 33.21,
+            "volumen_m": 0.33,
+            "pe": null,
+            "pbv": null
+        },
+        "GBAN.BA": {
+            "precio": 1465.0,
+            "sma20": 1522.25,
+            "rsi": 40.77,
+            "volumen_m": 0.0,
+            "pe": null,
+            "pbv": null
+        },
+        "GCLA.BA": {
+            "precio": 1790.0,
+            "sma20": 2411.5,
+            "rsi": 8.81,
+            "volumen_m": 0.0,
+            "pe": null,
+            "pbv": null
+        },
+        "HAVA.BA": {
+            "precio": 3330.0,
+            "sma20": 3848.25,
+            "rsi": 20.2,
+            "volumen_m": 0.0,
+            "pe": null,
+            "pbv": null
+        },
+        "INVJ.BA": {
+            "precio": 334.0,
+            "sma20": 361.875,
+            "rsi": 30.87,
+            "volumen_m": 0.03,
+            "pe": null,
+            "pbv": null
+        },
+        "LEDE.BA": {
+            "precio": 580.0,
+            "sma20": 612.55,
+            "rsi": 34.47,
+            "volumen_m": 0.02,
+            "pe": null,
+            "pbv": null
+        },
+        "METR.BA": {
+            "precio": 2051.0,
+            "sma20": 2313.15,
+            "rsi": 32.28,
+            "volumen_m": 0.3,
+            "pe": null,
+            "pbv": null
+        },
+        "MOLI.BA": {
+            "precio": 2060.0,
+            "sma20": 2094.75,
+            "rsi": 42.15,
+            "volumen_m": 0.01,
+            "pe": null,
+            "pbv": null
+        },
+        "MORI.BA": {
+            "precio": 17.75,
+            "sma20": 19.869999980926515,
+            "rsi": 19.27,
+            "volumen_m": 2.44,
+            "pe": null,
+            "pbv": null
+        },
+        "OEST.BA": {
+            "precio": 615.0,
+            "sma20": 701.35,
+            "rsi": 25.57,
+            "volumen_m": 0.02,
+            "pe": null,
+            "pbv": null
+        },
+        "SAMI.BA": {
+            "precio": 339.5,
+            "sma20": 380.725,
+            "rsi": 29.75,
+            "volumen_m": 0.05,
+            "pe": null,
+            "pbv": null
+        }
+    },
+    "valuaciones_usa": {
+        "AAPL": {
+            "Sector": "Tecnolog\u00eda",
+            "P/E": 39.19,
+            "ROE (%)": "142.3%"
+        },
+        "MSFT": {
+            "Sector": "Tecnolog\u00eda",
+            "P/E": 26.42,
+            "ROE (%)": "34.2%"
+        },
+        "JPM": {
+            "Sector": "Financiero",
+            "P/E": 13.84,
+            "ROE (%)": "18.0%"
+        },
+        "XOM": {
+            "Sector": "Energ\u00eda",
+            "P/E": 17.2,
+            "ROE (%)": "15.5%"
+        },
+        "UNH": {
+            "Sector": "Salud",
+            "P/E": 22.24,
+            "ROE (%)": "15.8%"
+        }
+    },
+    "valuaciones_arg": {
+        "YPF": {
+            "Sector": "Energ\u00eda",
+            "P/E": 6.71,
+            "ROE (%)": "17.4%"
+        },
+        "GGAL": {
+            "Sector": "Financiero",
+            "P/E": 32.06,
+            "ROE (%)": "1.1%"
+        },
+        "BMA": {
+            "Sector": "Financiero",
+            "P/E": 11.14,
+            "ROE (%)": "7.1%"
+        },
+        "PAM": {
+            "Sector": "Energ\u00eda",
+            "P/E": 5.01,
+            "ROE (%)": "18.0%"
+        },
+        "CEPU": {
+            "Sector": "Utilities",
+            "P/E": 4.78,
+            "ROE (%)": "18.4%"
+        }
+    }
 }
