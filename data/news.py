@@ -177,6 +177,34 @@ def obtener_macro_internacional():
                         if len(serie) >= 126: datos[nombre]["var_6m"] = float(((actual / serie.iloc[-126]) - 1) * 100)
                         if len(serie) >= 250: datos[nombre]["var_1y"] = float(((actual / serie.iloc[0]) - 1) * 100)
     except Exception as e: logger.warning(f"Error Batch Download Macro: {e}")
+
+    try:
+        if "FRED_API_KEY" in st.secrets:
+            api_key = st.secrets["FRED_API_KEY"]
+            fred_series = {
+                "Tasa FED (%)": {"id": "FEDFUNDS", "units": "lin"},
+                "Inflación EE.UU YoY (%)": {"id": "CPIAUCSL", "units": "pc1"},
+                "Yield Curve 2Y-10Y (pts)": {"id": "T10Y2Y", "units": "lin"},
+                "Desempleo EE.UU (%)": {"id": "UNRATE", "units": "lin"}
+            }
+            for nombre, config in fred_series.items():
+                datos[nombre] = {"valor": None, "var_diaria": None, "var_1m": None, "var_6m": None, "var_1y": None}
+                url = f"https://api.stlouisfed.org/fred/series/observations?series_id={config['id']}&api_key={api_key}&file_type=json&units={config['units']}&sort_order=desc&limit=15"
+                try:
+                    res = requests.get(url, timeout=10)
+                    if res.status_code == 200:
+                        obs = res.json().get("observations", [])
+                        valid_obs = [float(o["value"]) for o in obs if o["value"] != "."]
+                        if len(valid_obs) >= 1:
+                            act = valid_obs[0]
+                            datos[nombre]["valor"] = act
+                            if len(valid_obs) >= 2:
+                                datos[nombre]["var_diaria"] = act - valid_obs[1] 
+                                datos[nombre]["var_1m"] = act - valid_obs[1] 
+                            if len(valid_obs) >= 7: datos[nombre]["var_6m"] = act - valid_obs[6]
+                            if len(valid_obs) >= 13: datos[nombre]["var_1y"] = act - valid_obs[12]
+                except Exception as e: logger.warning(f"Error extrayendo {nombre} de FRED: {e}")
+    except Exception as e: logger.warning(f"Error FRED general: {e}")
     return datos
 
 @st.cache_data(ttl=1800)
@@ -330,15 +358,19 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         res_str = f"USD {res_val:,.0f} M (Reservas Brutas)" if res_val else "N/D"
         
         dolares = macro_arg.get("dolares", [])
-        ccl_str, mep_str, brecha_str, mayorista_str = "N/D", "N/D", "N/D", "N/D"
+        ccl_str, mep_str, brecha_str, mayorista_str, blue_str, oficial_str = "N/D", "N/D", "N/D", "N/D", "N/D", "N/D"
         if dolares:
             val_oficial = next((float(d['venta']) for d in dolares if d['nombre'] == 'Oficial'), None)
             val_ccl = next((float(d['venta']) for d in dolares if d['nombre'] == 'CCL'), None)
             val_mep = next((float(d['venta']) for d in dolares if d['nombre'] == 'MEP'), None)
             val_mayo = next((float(d['venta']) for d in dolares if d['nombre'] == 'Mayorista'), None)
+            val_blue = next((float(d['venta']) for d in dolares if d['nombre'] == 'Blue'), None)
+            
             if val_ccl: ccl_str = f"${val_ccl:,.2f} ARS"
             if val_mep: mep_str = f"${val_mep:,.2f} ARS"
             if val_mayo: mayorista_str = f"${val_mayo:,.2f} ARS"
+            if val_blue: blue_str = f"${val_blue:,.2f} ARS"
+            if val_oficial: oficial_str = f"${val_oficial:,.2f} ARS"
             if val_oficial and val_ccl: brecha_str = f"{((val_ccl / val_oficial) - 1) * 100:.1f}%"
             
         def get_m(key): return macro_int.get(key, {}).get('valor', 'N/D') if key in macro_int else 'N/D'
@@ -346,7 +378,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         prompt = (
             "Actúa como un Asesor Financiero experto y práctico para un inversor individual residente en Argentina.\n"
             "Redacta un Resumen Matutino de Mercados con decisiones de inversión concretas basadas estrictamente en los datos estandarizados.\n\n"
-            "--- TABLA CONSOLIDADA DE DATOS ---\n\n"
+            "--- TABLA CONSOLIDADA DE DATOS (VISIÓN 360°) ---\n\n"
             "**1. MACROECONOMÍA ARGENTINA:**\n"
             f"| S&P Merval (ARS) | {merv_ars_str} |\n"
             f"| S&P Merval (USD CCL) | {merv_usd_str} |\n"
@@ -357,14 +389,17 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             f"| Tasa BADLAR | {badlar_str} |\n"
             f"| Tasa Plazo Fijo (TNA) | {tna_str} |\n"
             f"| Reservas Internacionales BCRA | {res_str} |\n"
-            f"| Dólar CCL / MEP / Mayorista | {ccl_str} / {mep_str} / {mayorista_str} |\n"
+            f"| Dólares Libres | CCL: {ccl_str} / MEP: {mep_str} / Blue: {blue_str} |\n"
+            f"| Dólares Oficiales | Mayorista: {mayorista_str} / Minorista: {oficial_str} |\n"
             f"| Brecha Cambiaria (CCL vs Oficial) | {brecha_str} |\n\n"
             
             "**2. MACROECONOMÍA INTERNACIONAL:**\n"
-            f"- S&P 500: {get_m('S&P 500 (Global)')} pts | Nasdaq: {get_m('Nasdaq (Tech)')} pts\n"
-            f"- DXY: {get_m('DXY (Índice Dólar)')} | VIX: {get_m('VIX (Miedo)')}\n"
-            f"- Oro: USD {get_m('Oro (Refugio)')} | WTI: USD {get_m('Petróleo Crudo (WTI)')} | Bitcoin: USD {get_m('Bitcoin (Cripto)')}\n"
-            f"- Bono 10Y EE.UU.: {get_m('Bono 10Y EE.UU (%)')}%\n\n"
+            f"- EE.UU. (Índices): S&P 500: {get_m('S&P 500 (Global)')} pts | Nasdaq: {get_m('Nasdaq (Tech)')} pts | Dow Jones: {get_m('Dow Jones')} pts | Russell 2000: {get_m('Russell 2000 (Small Caps)')} pts\n"
+            f"- Global (Índices): Europa (Euro Stoxx 50): {get_m('Euro Stoxx 50 (Europa)')} pts | Japón (Nikkei 225): {get_m('Nikkei 225 (Japón)')} pts\n"
+            f"- Termómetros de Riesgo: DXY (Índice Dólar): {get_m('DXY (Índice Dólar)')} | VIX (Miedo): {get_m('VIX (Miedo)')}\n"
+            f"- Commodities y Cripto: Oro: USD {get_m('Oro (Refugio)')} | Plata: USD {get_m('Plata')} | Cobre: USD {get_m('Cobre (Industrial)')} | WTI: USD {get_m('Petróleo Crudo (WTI)')} | Bitcoin: USD {get_m('Bitcoin (Cripto)')}\n"
+            f"- Tasas y Bonos: Bono 10Y EE.UU.: {get_m('Bono 10Y EE.UU (%)')}% | Bono 10Y Japón: {get_m('Bono 10Y Japón (%)')}% | Tasa FED: {get_m('Tasa FED (%)')}%\n"
+            f"- Macro EE.UU. (Histórica): Inflación YoY: {get_m('Inflación EE.UU YoY (%)')}% | Desempleo: {get_m('Desempleo EE.UU (%)')}%\n\n"
             
             "**3. EVENTOS MACRO EE.UU. RECIENTES (Calendario Económico):**\n"
         )
