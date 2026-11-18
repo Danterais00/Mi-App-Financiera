@@ -35,7 +35,7 @@ def obtener_info_ticker_cached(ticker):
     try:
         info = yf.Ticker(ticker).info
         return dict(info)
-    except Exception as e:
+    except Exception:
         return {}
 
 @st.cache_data(ttl=1800)
@@ -48,11 +48,13 @@ def obtener_macro_argentina():
         "bono_al30": {"valor": None},
         "bono_al30d": {"valor": None},
         "inflacion": None,
-        "tasa_bcra": None,
+        "tasa_tamar": None,
+        "tasa_badlar": None,
+        "tasa_tna": None,
         "reservas": None
     }
     
-    # 1. Leer datos reales extraídos por el Puente GitHub (sin valores estáticos)
+    # 1. Leer datos extraídos por el Puente GitHub
     datos_puente = obtener_datos_criticos_puente()
     if datos_puente and "macro_arg_critica" in datos_puente:
         mc = datos_puente["macro_arg_critica"]
@@ -61,7 +63,9 @@ def obtener_macro_argentina():
         datos_UI["merval_usd"]["valor"] = mc.get("merval_usd")
         datos_UI["bono_al30"]["valor"] = mc.get("bono_al30")
         datos_UI["bono_al30d"]["valor"] = mc.get("bono_al30d")
-        datos_UI["tasa_bcra"] = mc.get("tasa_referencia")
+        datos_UI["tasa_tamar"] = mc.get("tasa_tamar")
+        datos_UI["tasa_badlar"] = mc.get("tasa_badlar")
+        datos_UI["tasa_tna"] = mc.get("tasa_tna")
         datos_UI["reservas"] = mc.get("reservas_m")
 
     # 2. Inflación Mensual (ArgentinaDatos)
@@ -80,15 +84,44 @@ def obtener_macro_argentina():
     except Exception as e:
         logger.warning(f"Error Riesgo País: {e}")
 
-    # 4. Respaldo directo en vivo si el puente aún no corrió para Tasa, Reservas o AL30
-    if datos_UI["tasa_bcra"] is None:
+    # 4. Consultas directas de respaldo en vivo si el puente aún no tiene alguno de los datos
+    if datos_UI["tasa_badlar"] is None:
         try:
-            res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias", headers=HEADERS, timeout=10)
-            if res_tasa.status_code == 200 and len(res_tasa.json()) > 0:
-                val = float(res_tasa.json()[-1].get("valor", 0))
+            res_bad = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/badlar", headers=HEADERS, timeout=10)
+            if res_bad.status_code == 200 and len(res_bad.json()) > 0:
+                val = float(res_bad.json()[-1].get("valor", 0))
                 if val > 0:
-                    datos_UI["tasa_bcra"] = round(val * 100, 1) if val < 2 else round(val, 1)
-        except: pass
+                    datos_UI["tasa_badlar"] = round(val * 100, 2) if val < 2 else round(val, 2)
+        except Exception:
+            pass
+
+    if datos_UI["tasa_tna"] is None:
+        try:
+            res_tna = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias", headers=HEADERS, timeout=10)
+            if res_tna.status_code == 200 and len(res_tna.json()) > 0:
+                val = float(res_tna.json()[-1].get("valor", 0))
+                if val > 0:
+                    datos_UI["tasa_tna"] = round(val * 100, 2) if val < 2 else round(val, 2)
+        except Exception:
+            pass
+
+    if datos_UI["tasa_tamar"] is None:
+        try:
+            res_vars = requests.get("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias", headers=HEADERS, verify=False, timeout=8)
+            if res_vars.status_code == 200:
+                payload = res_vars.json()
+                lista_vars = payload.get("results", payload) if isinstance(payload, dict) else payload
+                for v in lista_vars:
+                    desc = str(v.get("descripcion", "")).lower()
+                    if "tamar" in desc and ("tna" in desc or "privados" in desc):
+                        r_tm = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{v['idVariable']}?limit=1", headers=HEADERS, verify=False, timeout=8)
+                        if r_tm.status_code == 200 and r_tm.json().get("results"):
+                            val_tm = float(r_tm.json()["results"][-1]["valor"])
+                            if 5 <= val_tm <= 150:
+                                datos_UI["tasa_tamar"] = round(val_tm, 2)
+                                break
+        except Exception:
+            pass
 
     if datos_UI["reservas"] is None:
         try:
@@ -97,7 +130,8 @@ def obtener_macro_argentina():
                 val_r = float(res_res.json()[-1].get("valor", 0))
                 if val_r > 0:
                     datos_UI["reservas"] = round(val_r)
-        except: pass
+        except Exception:
+            pass
 
     if datos_UI["bono_al30"]["valor"] is None:
         try:
@@ -109,7 +143,8 @@ def obtener_macro_argentina():
                         if p > 0:
                             datos_UI["bono_al30"]["valor"] = round(p * 100, 2) if p < 2000 else round(p, 2)
                             break
-        except: pass
+        except Exception:
+            pass
     
     return datos_UI
 
@@ -326,11 +361,9 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         valuaciones = obtener_valuaciones_mercado()
         datos_merval = obtener_datos_merval()
         noticias_globales = obtener_noticias_globales()
-        datos_criticos = obtener_datos_criticos_puente()
         
         contexto_noticias = "\n".join([f"- {n}" for n in noticias_globales]) if noticias_globales else "Sin titulares destacados."
         
-        # Formateo estandarizado con escalas exactas para evitar errores de interpretación de la IA
         merv_ars = macro_arg.get('merval', {}).get('valor')
         merv_ars_str = f"{merv_ars:,.0f} pts" if merv_ars else "N/D"
         
@@ -346,8 +379,14 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         inf_val = macro_arg.get('inflacion')
         inf_str = f"{inf_val}% mensual" if inf_val is not None else "N/D"
         
-        tasa_val = macro_arg.get('tasa_bcra')
-        tasa_str = f"{tasa_val}% TNA (Referencia Plazo Fijo / Mercado)" if tasa_val is not None else "N/D"
+        tamar_val = macro_arg.get('tasa_tamar')
+        tamar_str = f"{tamar_val}% TNA (Mayorista +$1.000M)" if tamar_val is not None else "N/D"
+        
+        badlar_val = macro_arg.get('tasa_badlar')
+        badlar_str = f"{badlar_val}% TNA (Mayorista +$1M)" if badlar_val is not None else "N/D"
+        
+        tna_val = macro_arg.get('tasa_tna')
+        tna_str = f"{tna_val}% TNA (Plazo Fijo Minorista 30d)" if tna_val is not None else "N/D"
         
         res_val = macro_arg.get('reservas')
         res_str = f"USD {res_val:,.0f} M (Reservas Brutas)" if res_val else "N/D"
@@ -372,7 +411,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             
             "REGLAS ESTRICTAS:\n"
             "1. Respeta exactamente las unidades y escalas provistas en la tabla (pts, USD, pb, ARS / 100 VN, % mensual, % TNA, USD M).\n"
-            "2. Compara la Tasa de Referencia en TNA (dividida por 12) contra la Inflación mensual para determinar si la tasa real en pesos es positiva o negativa.\n"
+            "2. Evalúa la estructura de tasas en pesos (TAMAR, BADLAR y TNA Minorista) divididas por 12 frente a la Inflación mensual para determinar si el carry trade / tasa real es positivo o negativo.\n"
             "3. Analiza el S&P Merval en USD (CCL) como termómetro real de valuación histórica.\n"
             "4. Utiliza Semáforo: 🟢 (Comprar/Sobreponderar), 🟡 (Mantener/Neutro), 🔴 (Evitar/Subponderar).\n"
             "5. Para acciones del Merval, aplica criterios de Valor (P/BV < 1 en Panel Líder) y Momentum Técnico (RSI < 35 sobreventa, RSI > 70 sobrecompra) alertando sobre liquidez.\n\n"
@@ -386,7 +425,9 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             f"| Bono Soberano AL30 | {al30_str} |\n"
             f"| Riesgo País (EMBI+) | {rp_str} |\n"
             f"| Inflación | {inf_str} |\n"
-            f"| Tasa Referencia Mercado | {tasa_str} |\n"
+            f"| Tasa TAMAR | {tamar_str} |\n"
+            f"| Tasa BADLAR | {badlar_str} |\n"
+            f"| Tasa Plazo Fijo (TNA) | {tna_str} |\n"
             f"| Reservas Internacionales BCRA | {res_str} |\n"
             f"| Dólar CCL / MEP | {ccl_str} / {mep_str} |\n"
             f"| Brecha Cambiaria (CCL vs Oficial) | {brecha_str} |\n\n"
@@ -425,7 +466,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         mensaje_ui = (
             '<div style="margin-bottom: 15px; font-size: 1.05rem; color: #e2e8f0;">'
             '💡 <b>¡Tu Reporte Matutino Institucional está listo!</b><br><br>'
-            'Todos los indicadores cuentan con <b>escalas estandarizadas y datos reales en vivo</b> sin valores congelados. Copia el bloque y pégalo en tu asistente IA.<br><br>'
+            'Todos los indicadores cuentan con <b>escalas estandarizadas y datos reales en vivo</b> (incluyendo estructura de tasas TAMAR, BADLAR y TNA). Copia el bloque y pégalo en tu asistente IA.<br><br>'
             '</div>'
             '<div style="background-color: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; overflow-x: auto;">'
             f'<pre style="color: #c9d1d9; font-family: monospace; font-size: 0.9rem; margin: 0; white-space: pre-wrap;">{prompt}</pre>'
