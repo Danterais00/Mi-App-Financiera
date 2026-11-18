@@ -1,5 +1,5 @@
 {
-    "ultima_actualizacion": "2026-11-18 13:18:15",
+    "ultima_actualizacion": "2026-11-18 14:06:55",
     "dolar_futuro_rofex": [],
     "cotizaciones_merval": {
         "ALUA.BA": {
@@ -31,7 +31,7 @@
             "sma20": 214.0875,
             "rsi": 23.94,
             "volumen_m": 5.02,
-            "pe": 7.89,
+            "pe": 7.75,
             "pbv": 2.0
         },
         "CEPU.BA": {
@@ -103,7 +103,7 @@
             "sma20": 1761.5,
             "rsi": 41.09,
             "volumen_m": 0.05,
-            "pe": 54.52,
+            "pe": 54.19,
             "pbv": 0.75
         },
         "PAMP.BA": {
@@ -111,7 +111,7 @@
             "sma20": 4647.75,
             "rsi": 32.58,
             "volumen_m": 1.0,
-            "pe": 6.06,
+            "pe": 5.87,
             "pbv": 0.91
         },
         "SUPV.BA": {
@@ -151,7 +151,7 @@
             "sma20": 2135.5,
             "rsi": 18.47,
             "volumen_m": 0.56,
-            "pe": 2.71,
+            "pe": 2.78,
             "pbv": 0.79
         },
         "TXAR.BA": {
@@ -403,10 +403,12 @@
     },
     "macro_arg_critica": {
         "merval_ars": 2855012,
-        "merval_usd": 1682,
-        "bono_al30": null,
-        "bono_al30d": null,
-        "tasa_referencia": 21.9,
+        "merval_usd": 1681,
+        "bono_al30": 82440.0,
+        "bono_al30d": 51.48,
+        "tasa_tamar": null,
+        "tasa_badlar": null,
+        "tasa_tna": 21.94,
         "reservas_m": null,
         "dolares": [
             {
@@ -416,18 +418,18 @@
             },
             {
                 "nombre": "Blue",
-                "compra": 1585.0,
-                "venta": 1605.0
+                "compra": 1590.0,
+                "venta": 1610.0
             },
             {
                 "nombre": "MEP",
-                "compra": 1591.5,
-                "venta": 1603.3
+                "compra": 1601.8,
+                "venta": 1601.8
             },
             {
                 "nombre": "CCL",
-                "compra": 1694.2,
-                "venta": 1697.2
+                "compra": 1698.5,
+                "venta": 1698.5
             }
         ]
     }
