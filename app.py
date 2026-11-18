@@ -107,32 +107,38 @@ def render_nivel1_macro():
         rp = macro_arg_data.get("riesgo_pais") or {}
         merv = macro_arg_data.get("merval") or {}
         inf = macro_arg_data.get("inflacion")
-        tasa = macro_arg_data.get("tasa_bcra")
+        tamar = macro_arg_data.get("tasa_tamar")
+        badlar = macro_arg_data.get("tasa_badlar")
+        tna = macro_arg_data.get("tasa_tna")
         res_bcra = macro_arg_data.get("reservas")
         dolares = macro_arg_data.get("dolares", [])
         
-        texto_rp_val = rp.get('valor') if rp.get('valor') is not None else 'N/D'
+        texto_rp_val = f"{rp.get('valor')} pb" if rp.get('valor') is not None else 'N/D'
         texto_merv_val = f"{merv.get('valor'):,.0f}" if merv.get('valor') is not None else 'N/D'
         texto_inf = f"{inf:.1f}%" if inf is not None else "N/D"
-        
-        # Validamos si la tasa es N/D o viene de Fallback histórico para evitar errores
-        texto_tasa = f"{tasa:.1f}%" if tasa is not None else "N/D"
-        # Formateamos Reservas a Billions (Miles de millones) si existe
-        texto_reservas = f"USD {res_bcra/1000:.1f}B" if res_bcra is not None else "N/D"
+        texto_tamar = f"{tamar:.1f}%" if tamar is not None else "N/D"
+        texto_badlar = f"{badlar:.1f}%" if badlar is not None else "N/D"
+        texto_tna = f"{tna:.1f}%" if tna is not None else "N/D"
+        texto_reservas = f"USD {res_bcra:,.0f}M" if res_bcra is not None else "N/D"
         
         texto_merv_usd = f"USD {macro_arg_data.get('merval_usd', {}).get('valor', 0):,.0f}" if macro_arg_data.get('merval_usd', {}).get('valor') else 'N/D'
         texto_al30 = f"${macro_arg_data.get('bono_al30', {}).get('valor', 0):,.2f}" if macro_arg_data.get('bono_al30', {}).get('valor') else 'N/D'
         
-        # HTML Aplanado con actualización de TASA POL. MONETARIA
+        # Grilla de 2 filas x 4 columnas (8 indicadores macroeconómicos)
         html_caja = (
             f"<div style='background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between; flex-wrap: wrap;'>"
-            f"<div style='width: 24%; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>MERVAL (ARS)</p><h4 style='margin:5px 0; color:#fff; font-size: 1rem;'>{texto_merv_val}</h4></div>"
-            f"<div style='width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>MERVAL (USD)</p><h4 style='margin:5px 0; color:#2ecca6; font-size: 1rem;'>{texto_merv_usd}</h4></div>"
-            f"<div style='width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>RIESGO PAÍS</p><h4 style='margin:5px 0; color:#fff; font-size: 1rem;'>{texto_rp_val}</h4></div>"
-            f"<div style='width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>BONO AL30</p><h4 style='margin:5px 0; color:#fff; font-size: 1rem;'>{texto_al30}</h4></div>"
-            f"<div style='width: 32%; padding-top: 10px; border-top: 1px solid #2a2e39;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>INFLACIÓN</p><h4 style='margin:5px 0; color:#fff; font-size: 1rem;'>{texto_inf}</h4></div>"
-            f"<div style='width: 33%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TASA POL. MONETARIA</p><h4 style='margin:5px 0; color:#fff; font-size: 1rem;'>{texto_tasa}</h4></div>"
-            f"<div style='width: 33%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>RESERVAS</p><h4 style='margin:5px 0; color:#fff; font-size: 1rem;'>{texto_reservas}</h4></div>"
+            # Fila 1
+            f"<div style='width: 24%; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>MERVAL (ARS)</p><h4 style='margin:5px 0; color:#fff; font-size: 0.95rem;'>{texto_merv_val}</h4></div>"
+            f"<div style='width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>MERVAL (USD)</p><h4 style='margin:5px 0; color:#2ecca6; font-size: 0.95rem;'>{texto_merv_usd}</h4></div>"
+            f"<div style='width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>RIESGO PAÍS</p><h4 style='margin:5px 0; color:#fff; font-size: 0.95rem;'>{texto_rp_val}</h4></div>"
+            f"<div style='width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>BONO AL30</p><h4 style='margin:5px 0; color:#fff; font-size: 0.95rem;'>{texto_al30}</h4></div>"
+            # Fila 2
+            f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>INFLACIÓN</p><h4 style='margin:5px 0; color:#fff; font-size: 0.95rem;'>{texto_inf}</h4></div>"
+            f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TASA TAMAR</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_tamar}</h4></div>"
+            f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TASA BADLAR</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_badlar}</h4></div>"
+            f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TNA (PF 30D)</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_tna}</h4></div>"
+            # Fila 3 (Reservas ancho completo)
+            f"<div style='width: 100%; padding-top: 10px; margin-top: 10px; border-top: 1px solid #2a2e39; display: flex; justify-content: space-between; align-items: center;'><span style='color:#a3a8b8; font-size:0.75rem; font-weight:bold;'>RESERVAS INTERNACIONALES (BCRA)</span><span style='color:#2ecca6; font-size: 1rem; font-weight:bold;'>{texto_reservas}</span></div>"
             f"</div>"
         )
         st.markdown(html_caja, unsafe_allow_html=True)
@@ -193,7 +199,7 @@ def render_nivel3_gics():
             html_gics = '<div class="table-container"><table class="custom-table" style="width: 100%;">'
             html_gics += '<tr><th style="text-align: left;">Sector (ETF)</th><th>P/E Ratio</th><th>Rend. 1 Mes</th><th>Rend. 6 Meses</th><th>Investment Score</th></tr>'
             for s in datos_sectores:
-                pe_str = f"{s['P/E']:.2f}" if s['P/E'] is not None else "N/D"
+                pe_str = f"{s['P/E']:.2f}" if s.get('P/E') is not None else "N/D"
                 v1m_c = "#2ecca6" if s['1M (%)'] > 0 else "#ff6b6b"
                 v6m_c = "#2ecca6" if s['6M (%)'] > 0 else "#ff6b6b"
                 sc = s['Score']
@@ -355,7 +361,6 @@ if menu_seccion == "Noticias de Mercado":
     with tab_n5: render_nivel5_ia()
     with tab_noticias: render_noticias_cartera()
 else:
-    # --- RESTO DEL DASHBOARD (Intacto y blindado) ---
     if st.session_state.get("datos_cargados"):
         dft = st.session_state.df_total
         if menu_seccion == "Datos y Valuación":
@@ -540,7 +545,7 @@ else:
                         fwd_pe = get_val(dft, "Forward P/E", ticker); peg = get_val(dft, "PEG Ratio", ticker)
                         evebitda = get_val(dft, "EV/EBITDA", ticker); div_yield = get_val(dft, "Div Yield (%)", ticker)
                         payout = get_val(dft, "Payout Ratio (%)", ticker); consenso = get_val(dft, "Consenso (1-5)", ticker)
-                        short_int = get_val(dft, "Short Interest (%)", ticker); deuda = get_val(dft, "Debt/Equity", ticker)
+                        deuda = get_val(dft, "Debt/Equity", ticker)
                         if es_agresivo:
                             fun_parts = []
                             if roe and roe > 0.15: fun_parts.append(f"ROE sobresaliente del <strong>{roe*100:.1f}%</strong>")
