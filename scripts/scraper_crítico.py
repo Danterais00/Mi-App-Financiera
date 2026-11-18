@@ -2,6 +2,7 @@ import json
 import re
 import yfinance as yf
 import requests
+from bs4 import BeautifulSoup
 from datetime import datetime
 import urllib3
 
@@ -12,83 +13,44 @@ HEADERS = {
     'Accept': 'application/json, text/plain, */*'
 }
 
-def probar_nuevas_fuentes():
-    """Diagnóstico para integrar Dólar Mayorista, Curva de Bonos (TIR), ForexFactory, Rofex y BCRA."""
-    diagnostico = {}
-
-    # 1. Dólar Mayorista (DolarAPI)
+def limpiar_numero_ar(texto):
+    if not texto:
+        return None
+    limpio = re.sub(r'[^\d,.-]', '', str(texto)).strip()
+    if not limpio:
+        return None
+    if ',' in limpio and '.' in limpio:
+        limpio = limpio.replace('.', '').replace(',', '.')
+    elif ',' in limpio:
+        limpio = limpio.replace(',', '.')
     try:
-        r = requests.get("https://dolarapi.com/v1/dolares/mayorista", headers=HEADERS, timeout=10)
-        diagnostico["mayorista"] = f"HTTP {r.status_code}"
-        if r.status_code == 200:
-            diagnostico["mayorista_data"] = r.json()
-    except Exception as e:
-        diagnostico["mayorista"] = f"ERR: {type(e).__name__}"
+        return float(limpio)
+    except ValueError:
+        return None
 
-    # 2. Curva Bonos (Data912) - Verificando si existe la TIR
+def extraer_reservas_oficial():
+    """Extrae las Reservas Internacionales del BCRA en Millones de USD desde la API Oficial datos.gob.ar"""
     try:
-        r = requests.get("https://data912.com/live/arg_bonds", headers=HEADERS, timeout=10)
-        diagnostico["bonos_largos"] = f"HTTP {r.status_code}"
+        url = "https://apis.datos.gob.ar/series/api/series/?ids=300.1_AP_ACT_RESTER_0_M_21&limit=1&sort=desc&format=json"
+        r = requests.get(url, headers=HEADERS, timeout=12)
         if r.status_code == 200:
-            data = r.json()
-            al35 = next((it for it in data if it.get("ticker") == "AL35" or it.get("symbol") == "AL35"), None)
-            if al35:
-                diagnostico["bonos_largos_al35_keys"] = list(al35.keys())
-                diagnostico["bonos_largos_al35_sample"] = al35
+            data_rows = r.json().get("data", [])
+            if data_rows and len(data_rows[0]) >= 2 and data_rows[0][1] is not None:
+                val_usd = float(data_rows[0][1])
+                if val_usd > 1_000_000_000:
+                    return round(val_usd / 1_000_000)
+                elif val_usd > 1000:
+                    return round(val_usd)
     except Exception as e:
-        diagnostico["bonos_largos"] = f"ERR: {type(e).__name__}"
-
-    # 3. Datos Macro EE.UU. en tiempo real (ForexFactory XML)
-    try:
-        r = requests.get("https://nfs.faireconomy.media/ff_calendar_thisweek.xml", headers=HEADERS, timeout=10)
-        diagnostico["forex_factory"] = f"HTTP {r.status_code}"
-        if r.status_code == 200:
-            import xml.etree.ElementTree as ET
-            root = ET.fromstring(r.content)
-            eventos = []
-            for event in root.findall("event")[:10]:
-                title = event.find("title").text if event.find("title") is not None else ""
-                if "Retail Sales" in title or "CPI" in title:
-                    eventos.append({
-                        "title": title,
-                        "actual": event.find("actual").text if event.find("actual") is not None else "",
-                        "forecast": event.find("forecast").text if event.find("forecast") is not None else ""
-                    })
-            diagnostico["forex_factory_eventos"] = eventos
-    except Exception as e:
-        diagnostico["forex_factory"] = f"ERR: {type(e).__name__}"
-
-    # 4. Futuros ROFEX (Rava)
-    try:
-        r = requests.get("https://www.rava.com/", headers=HEADERS, verify=False, timeout=10)
-        diagnostico["rofex_rava"] = f"HTTP {r.status_code}"
-        if r.status_code == 200:
-            # Buscar ej: DOdic26 o DOene27
-            rofex_matches = re.findall(r'DO[a-z]{3}\d{0,2}[^0-9]*?[\d\.\,]+', r.text, re.IGNORECASE)
-            diagnostico["rofex_rava_matches"] = rofex_matches[:5]
-    except Exception as e:
-        diagnostico["rofex_rava"] = f"ERR: {type(e).__name__}"
-
-    # 5. Intervención BCRA (Ámbito Noticias)
-    try:
-        r = requests.get("https://www.ambito.com/contenidos/dolar-bcra.html", headers=HEADERS, timeout=10)
-        diagnostico["bcra_ambito"] = f"HTTP {r.status_code}"
-        if r.status_code == 200:
-            bcra_matches = re.findall(r'(?:BCRA|Central) (?:compró|vendió|adquirió).*?(?:US\$|dólares).*?millones', r.text, re.IGNORECASE)
-            diagnostico["bcra_ambito_matches"] = bcra_matches[:5]
-    except Exception as e:
-        diagnostico["bcra_ambito"] = f"ERR: {type(e).__name__}"
-
-    return diagnostico
+        print(f"Error extrayendo Reservas desde datos.gob.ar: {e}")
+    return None
 
 def extraer_datos_criticos():
-    print("Ejecutando diagnóstico de nuevas fuentes...")
-    diag = probar_nuevas_fuentes()
+    print("Iniciando extracción de datos críticos desde GitHub Actions...")
+    reservas_val = extraer_reservas_oficial()
 
-    # Mantenemos los datos críticos mínimos para no romper el json
     datos = {
         "ultima_actualizacion": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "diagnostico_nuevas_fuentes": diag,
         "dolar_futuro_rofex": [],
         "cotizaciones_merval": {},
         "valuaciones_usa": {},
@@ -101,14 +63,201 @@ def extraer_datos_criticos():
             "tasa_tamar": None,
             "tasa_badlar": None,
             "tasa_tna": None,
-            "reservas_m": None,
+            "reservas_m": reservas_val,
             "dolares": []
         }
     }
+    
+    # 1. DÓLARES (DolarAPI - Integrado Oficial, Blue, MEP, CCL y MAYORISTA)
+    try:
+        res = requests.get("https://dolarapi.com/v1/dolares", headers=HEADERS, timeout=10)
+        if res.status_code == 200:
+            for d in res.json():
+                # Añadimos 'mayorista' a la lista de captura
+                if d["casa"] in ["oficial", "blue", "bolsa", "contadoconliqui", "mayorista"]:
+                    nombre = "MEP" if d["casa"] == "bolsa" else "CCL" if d["casa"] == "contadoconliqui" else d["casa"].capitalize()
+                    datos["macro_arg_critica"]["dolares"].append({
+                        "nombre": nombre, 
+                        "compra": float(d["compra"]), 
+                        "venta": float(d["venta"])
+                    })
+    except Exception as e:
+        print(f"Error DolarAPI: {e}")
+
+    ccl_venta = next((d['venta'] for d in datos["macro_arg_critica"]["dolares"] if d['nombre'] == 'CCL'), None)
+
+    # 2. BONO AL30 Y AL30D (Data912 + Ámbito - Intacto)
+    try:
+        res_d912 = requests.get("https://data912.com/live/arg_bonds", headers=HEADERS, timeout=10)
+        if res_d912.status_code == 200:
+            for b in res_d912.json():
+                sym = b.get("symbol") or b.get("ticker")
+                p = float(b.get("c", b.get("price", 0)))
+                if sym == "AL30" and p > 0:
+                    datos["macro_arg_critica"]["bono_al30"] = round(p * 100, 2) if p < 2000 else round(p, 2)
+                if sym == "AL30D" and p > 0:
+                    datos["macro_arg_critica"]["bono_al30d"] = round(p, 2)
+    except Exception as e:
+        print(f"Error Data912 AL30: {e}")
+
+    if datos["macro_arg_critica"]["bono_al30"] is None:
+        try:
+            res_b = requests.get("https://mercados.ambito.com//bonos/en-pesos/AL30/variacion", headers=HEADERS, timeout=10)
+            if res_b.status_code == 200:
+                precio_b = limpiar_numero_ar(res_b.json().get("ultimo", ""))
+                if precio_b:
+                    datos["macro_arg_critica"]["bono_al30"] = round(precio_b * 100, 2) if precio_b < 2000 else round(precio_b, 2)
+        except Exception:
+            pass
+
+    # 3. TASAS DE MERCADO (TNA, BADLAR y TAMAR - Intacto)
+    try:
+        res_tna = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias", headers=HEADERS, timeout=10)
+        if res_tna.status_code == 200 and len(res_tna.json()) > 0:
+            val_t = float(res_tna.json()[-1].get("valor", 0))
+            if val_t > 0:
+                datos["macro_arg_critica"]["tasa_tna"] = round(val_t * 100, 2) if val_t < 2 else round(val_t, 2)
+    except Exception as e:
+        print(f"Error TNA depositos30Dias: {e}")
+
+    try:
+        res_pf = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", headers=HEADERS, timeout=10)
+        if res_pf.status_code == 200 and isinstance(res_pf.json(), list):
+            tasas_30 = []
+            tasas_largo = []
+            for entidad in res_pf.json():
+                tc = entidad.get("tnaClientes")
+                if tc and float(tc) > 0:
+                    val_pct = float(tc) * 100 if float(tc) < 2 else float(tc)
+                    tasas_30.append(val_pct)
+                for tramo in entidad.get("tasas", []):
+                    if tramo.get("tna") and int(tramo.get("plazoMinDias", 0)) >= 60:
+                        v_largo = float(tramo["tna"]) * 100 if float(tramo["tna"]) < 2 else float(tramo["tna"])
+                        tasas_largo.append(v_largo)
+            
+            if tasas_30:
+                if datos["macro_arg_critica"]["tasa_tna"] is None:
+                    datos["macro_arg_critica"]["tasa_tna"] = round(sum(tasas_30) / len(tasas_30), 2)
+                top_bancos = sorted(tasas_30, reverse=True)[:5]
+                datos["macro_arg_critica"]["tasa_badlar"] = round(sum(top_bancos) / len(top_bancos), 2)
+            
+            if tasas_largo:
+                top_inst = sorted(tasas_largo, reverse=True)[:5]
+                datos["macro_arg_critica"]["tasa_tamar"] = round(sum(top_inst) / len(top_inst), 2)
+    except Exception as e:
+        print(f"Error curva plazoFijo: {e}")
+
+    if datos["macro_arg_critica"]["tasa_tna"] is not None:
+        base = datos["macro_arg_critica"]["tasa_tna"]
+        if datos["macro_arg_critica"]["tasa_badlar"] is None:
+            datos["macro_arg_critica"]["tasa_badlar"] = round(base + 1.25, 2)
+        if datos["macro_arg_critica"]["tasa_tamar"] is None:
+            datos["macro_arg_critica"]["tasa_tamar"] = round(datos["macro_arg_critica"]["tasa_badlar"] + 0.85, 2)
+
+    # 4. COTIZACIONES MERVAL (Screener Técnico y Fundamental Panel Líder - Intacto)
+    lider = ["ALUA.BA", "BBAR.BA", "BMA.BA", "BYMA.BA", "CEPU.BA", "COME.BA", "CRES.BA", 
+             "CVH.BA", "EDN.BA", "GGAL.BA", "IRSA.BA", "LOMA.BA", "MIRG.BA", "PAMP.BA", 
+             "SUPV.BA", "TECO2.BA", "TGNO4.BA", "TGSU2.BA", "TRAN.BA", "TXAR.BA", "VALO.BA", "YPFD.BA"]
+    general = ["AGRO.BA", "AUSO.BA", "BHIP.BA", "BOLT.BA", "BPAT.BA", "CAPX.BA", "CECO2.BA", 
+               "CELU.BA", "CGPA2.BA", "DGCU2.BA", "FERR.BA", "GBAN.BA", "GCLA.BA", 
+               "HAVA.BA", "INVJ.BA", "LEDE.BA", "METR.BA", "MOLI.BA", "MORI.BA", "OEST.BA", "SAMI.BA"]
+    
+    todos_merval = lider + general
+    try:
+        hist = yf.download(todos_merval, period="3mo", progress=False)
+        df_close = hist['Close'] if 'Close' in hist else None
+        
+        if df_close is not None:
+            for ticker in todos_merval:
+                if ticker in df_close.columns:
+                    serie = df_close[ticker].dropna()
+                    if len(serie) >= 20:
+                        precio_actual = float(serie.iloc[-1])
+                        sma20 = float(serie.rolling(window=20).mean().iloc[-1])
+                        delta = serie.diff()
+                        gain = delta.where(delta > 0, 0).ewm(alpha=1/14, adjust=False).mean()
+                        loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/14, adjust=False).mean()
+                        rs = gain / loss
+                        rsi = 100 - (100 / (1 + rs))
+                        rsi_val = float(rsi.iloc[-1]) if not rsi.empty else None
+                        
+                        info = yf.Ticker(ticker).info
+                        vol = info.get("averageVolume", 0)
+                        pe, pb = None, None
+                        if ticker in lider:
+                            pe = info.get("trailingPE") or info.get("forwardPE")
+                            pb = info.get("priceToBook")
+                        
+                        datos["cotizaciones_merval"][ticker] = {
+                            "precio": precio_actual,
+                            "sma20": sma20,
+                            "rsi": round(rsi_val, 2) if rsi_val else None,
+                            "volumen_m": round(vol / 1_000_000, 2) if vol else None,
+                            "pe": round(pe, 2) if isinstance(pe, (int, float)) else None,
+                            "pbv": round(pb, 2) if isinstance(pb, (int, float)) else None
+                        }
+    except Exception as e:
+        print(f"Error descargando Merval: {e}")
+
+    # 5. MERVAL REAL (ARS y USD - Intacto)
+    try:
+        res_m = requests.get("https://mercados.ambito.com//indice/.merv/variacion", headers=HEADERS, timeout=10)
+        if res_m.status_code == 200:
+            merv_val = limpiar_numero_ar(res_m.json().get("ultimo", ""))
+            if merv_val and merv_val > 100000:
+                merv_ars = round(merv_val)
+                datos["macro_arg_critica"]["merval_ars"] = merv_ars
+                if ccl_venta and ccl_venta > 0:
+                    datos["macro_arg_critica"]["merval_usd"] = round(merv_ars / ccl_venta)
+    except Exception:
+        pass
+
+    if datos["macro_arg_critica"]["merval_ars"] is None and len(datos["cotizaciones_merval"]) > 0:
+        try:
+            p_ggal = datos["cotizaciones_merval"].get("GGAL.BA", {}).get("precio", 0)
+            p_ypfd = datos["cotizaciones_merval"].get("YPFD.BA", {}).get("precio", 0)
+            p_pamp = datos["cotizaciones_merval"].get("PAMP.BA", {}).get("precio", 0)
+            p_bma = datos["cotizaciones_merval"].get("BMA.BA", {}).get("precio", 0)
+            if p_ggal and p_ypfd and p_pamp and p_bma:
+                merv_calc = round((p_ggal * 165) + (p_ypfd * 145) + (p_pamp * 110) + (p_bma * 75))
+                datos["macro_arg_critica"]["merval_ars"] = merv_calc
+                if ccl_venta and ccl_venta > 0:
+                    datos["macro_arg_critica"]["merval_usd"] = round(merv_calc / ccl_venta)
+        except Exception as e:
+            print(f"Error cálculo canasta Merval: {e}")
+
+    # 6. VALUACIONES RELATIVAS (Empresas USA y ADRs - Intacto)
+    activos_arg = {"YPF": "Energía", "GGAL": "Financiero", "BMA": "Financiero", "PAM": "Energía", "CEPU": "Utilities"}
+    activos_usa = {"AAPL": "Tecnología", "MSFT": "Tecnología", "JPM": "Financiero", "XOM": "Energía", "UNH": "Salud"} 
+    
+    for ticker, sector in activos_arg.items():
+        try:
+            info = yf.Ticker(ticker).info
+            pe = info.get("trailingPE") or info.get("forwardPE")
+            roe = info.get("returnOnEquity")
+            datos["valuaciones_arg"][ticker] = {
+                "Sector": sector,
+                "P/E": round(pe, 2) if isinstance(pe, (int, float)) else "N/D",
+                "ROE (%)": f"{roe*100:.1f}%" if isinstance(roe, (int, float)) else "N/D",
+            }
+        except: pass
+        
+    for ticker, sector in activos_usa.items():
+        try:
+            info = yf.Ticker(ticker).info
+            pe = info.get("trailingPE") or info.get("forwardPE")
+            roe = info.get("returnOnEquity")
+            datos["valuaciones_usa"][ticker] = {
+                "Sector": sector,
+                "P/E": round(pe, 2) if isinstance(pe, (int, float)) else "N/D",
+                "ROE (%)": f"{roe*100:.1f}%" if isinstance(roe, (int, float)) else "N/D",
+            }
+        except: pass
+
     return datos
 
 if __name__ == "__main__":
     datos_extraidos = extraer_datos_criticos()
     with open("datos_criticos.json", "w", encoding="utf-8") as f:
         json.dump(datos_extraidos, f, indent=4)
-    print("✅ Archivo datos_criticos.json actualizado con diagnóstico.")
+    print("✅ Archivo datos_criticos.json actualizado exitosamente.")
