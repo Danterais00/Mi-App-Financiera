@@ -38,15 +38,15 @@ def obtener_macro_arg_critica():
             if d_1m: datos["riesgo_pais_1m"] = {"valor": round(float(d_1m["valor"])), "fecha": d_1m["fecha"]}
     except: pass
     
-    # 2. Reservas BCRA (Triple redundancia: BCRA Oficial -> ArgentinaDatos -> Datos.gob.ar)
+    # 2. Reservas BCRA (Restaurada la serie probada 300.1_AP_ACT_RESTER_0_M_21 + respaldos)
     try:
-        r_bcra = requests.get("https://api.bcra.gob.ar/estadisticas/v2.0/datosvariable/1", verify=False, timeout=8)
-        if r_bcra.status_code == 200:
-            res_list = r_bcra.json().get("results", [])
-            if res_list:
-                ultimo = res_list[-1]
-                datos["reservas_m"] = float(ultimo["valor"])
-                datos["reservas_fecha"] = ultimo["fecha"]
+        r_gob = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=300.1_AP_ACT_RESTER_0_M_21&limit=1&sort=desc&format=json", timeout=8)
+        if r_gob.status_code == 200:
+            d_gob = r_gob.json().get("data", [])[0]
+            if d_gob[1]:
+                val_r = float(d_gob[1])
+                datos["reservas_m"] = round(val_r / 1_000_000) if val_r > 1_000_000_000 else round(val_r)
+                datos["reservas_fecha"] = d_gob[0]
     except: pass
 
     if datos["reservas_m"] is None:
@@ -56,18 +56,8 @@ def obtener_macro_arg_critica():
                 res_data = r.json()[-1]
                 val_r = res_data.get("valor") or res_data.get("reservas")
                 if val_r:
-                    datos["reservas_m"] = float(val_r)
+                    datos["reservas_m"] = round(float(val_r))
                     datos["reservas_fecha"] = res_data.get("fecha")
-        except: pass
-
-    if datos["reservas_m"] is None:
-        try:
-            r_gob = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=174.1_RR_II_0_0_22&limit=1&sort=desc&format=json", timeout=8)
-            if r_gob.status_code == 200:
-                d_gob = r_gob.json().get("data", [])[0]
-                if d_gob[1]:
-                    datos["reservas_m"] = float(d_gob[1])
-                    datos["reservas_fecha"] = d_gob[0]
         except: pass
     
     # 3. Inflación Mensual
@@ -86,16 +76,13 @@ def obtener_macro_arg_critica():
             datos["emae_ultimo"] = round(float(d[1]), 2)
     except: pass
 
-    # 5. Dólares (Mapeo exacto de DolarAPI para incluir MEP, CCL, Oficial, Blue, Mayorista)
+    # 5. Dólares (Oficial, Blue, MEP, CCL, Mayorista)
     try:
         rd = requests.get("https://dolarapi.com/v1/dolares", timeout=8)
         if rd.status_code == 200:
             mapa_nombres = {
-                "oficial": "Oficial",
-                "blue": "Blue",
-                "bolsa": "MEP",
-                "contadoconliqui": "CCL",
-                "mayorista": "Mayorista"
+                "oficial": "Oficial", "blue": "Blue", "bolsa": "MEP",
+                "contadoconliqui": "CCL", "mayorista": "Mayorista"
             }
             orden = ["Oficial", "Blue", "MEP", "CCL", "Mayorista"]
             lista_d = []
@@ -110,7 +97,7 @@ def obtener_macro_arg_critica():
             datos["dolares"] = sorted(lista_d, key=lambda x: orden.index(x["nombre"]) if x["nombre"] in orden else 99)
     except: pass
     
-    # 6. Tasas (BADLAR, Plazo Fijo TNA y TAMAR desde API oficial Datos Gob Ar + Argentinadatos)
+    # 6. Tasas (BADLAR, TNA Plazo Fijo 30D y TAMAR)
     try:
         rb = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=89.2_TS_INTELAR_0_D_20&limit=1&sort=desc&format=json", timeout=8)
         if rb.status_code == 200:
@@ -121,10 +108,14 @@ def obtener_macro_arg_critica():
     try:
         rt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazo-fijo", headers=HEADERS, timeout=8)
         if rt.status_code == 200:
-            tasas_pf = [float(b["tnaClientes"]) for b in rt.json() if b.get("tnaClientes")]
+            tasas_pf = []
+            for b in rt.json():
+                v = b.get("tnaClientes") or b.get("tnaNoClientes")
+                if v:
+                    vf = float(v)
+                    tasas_pf.append(vf * 100 if vf < 2 else vf)
             if tasas_pf:
-                prom = sum(tasas_pf) / len(tasas_pf)
-                datos["tasa_tna"] = round(prom * 100, 2) if prom < 2 else round(prom, 2)
+                datos["tasa_tna"] = round(sum(tasas_pf) / len(tasas_pf), 2)
     except: pass
     if datos["tasa_tna"] is None:
         try:
@@ -140,7 +131,7 @@ def obtener_macro_arg_critica():
             datos["tasa_tamar"] = round(float(rtm.json()[-1]["valor"]), 2)
     except: pass
     if datos["tasa_tamar"] is None and datos["tasa_badlar"] is not None:
-        datos["tasa_tamar"] = round(datos["tasa_badlar"] + 1.40, 2)
+        datos["tasa_tamar"] = round(datos["tasa_badlar"] + 3.20, 2)
     
     return datos
 
@@ -236,7 +227,6 @@ if __name__ == "__main__":
     d_m = extraer_merval()
     d_c = obtener_macro_arg_critica()
     
-    # Índice Merval directo desde yfinance (^MERV) o ponderado de respaldo
     try:
         m_hist = yf.Ticker("^MERV").history(period="5d")
         if not m_hist.empty:
