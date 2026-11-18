@@ -21,6 +21,34 @@ def obtener_datos_criticos_puente():
     except Exception as e: logger.warning(f"Error JSON: {e}")
     return None
 
+def _obtener_tna_pf_live():
+    try:
+        rt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazo-fijo", headers=HEADERS, timeout=6)
+        if rt.status_code == 200:
+            tasas_pf = []
+            for b in rt.json():
+                v = b.get("tnaClientes")
+                if v is not None:
+                    try:
+                        vf = float(v)
+                        if vf > 0:
+                            tasas_pf.append(vf * 100 if vf < 2 else vf)
+                    except: pass
+            if tasas_pf:
+                return round(sum(tasas_pf) / len(tasas_pf), 2)
+    except: pass
+
+    series_pf = ["89.2_TS_DEPOS_0_D_23", "168.1_T_PF_30_59_0_M_26"]
+    for s_id in series_pf:
+        try:
+            rt2 = requests.get(f"https://apis.datos.gob.ar/series/api/series/?ids={s_id}&limit=5&sort=desc&format=json", timeout=6)
+            if rt2.status_code == 200:
+                for fila in rt2.json().get("data", []):
+                    if len(fila) > 1 and fila[1] is not None:
+                        return round(float(fila[1]), 2)
+        except: pass
+    return None
+
 @st.cache_data(ttl=300)
 def obtener_macro_argentina():
     dUI = {
@@ -72,7 +100,7 @@ def obtener_macro_argentina():
         if ccl_v and ccl_v > 0:
             dUI["merval_usd"]["valor"] = round(dUI["merval"]["valor"] / ccl_v)
 
-    # 3. Inflación, Riesgo País y Reservas (Con la serie probada 300.1_AP_ACT_RESTER_0_M_21)
+    # 3. Inflación, Riesgo País y Reservas
     if dUI["inflacion"] is None:
         try:
             ri = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", headers=HEADERS, timeout=6)
@@ -101,34 +129,20 @@ def obtener_macro_argentina():
                 if val_r: dUI["reservas"] = round(float(val_r))
         except: pass
 
-    # 4. Tasas (BADLAR, TNA Plazo Fijo 30D y TAMAR) con respaldo directo a Datos.gob.ar
+    # 4. Tasas (BADLAR, TNA Plazo Fijo 30D y TAMAR)
     if dUI["tasa_badlar"] is None:
         try:
-            rb = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=89.2_TS_INTELAR_0_D_20&limit=1&sort=desc&format=json", timeout=6)
+            rb = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=89.2_TS_INTELAR_0_D_20&limit=5&sort=desc&format=json", timeout=6)
             if rb.status_code == 200:
-                val_b = rb.json().get("data", [])[0][1]
-                if val_b: dUI["tasa_badlar"] = round(float(val_b), 2)
+                for fila in rb.json().get("data", []):
+                    if len(fila) > 1 and fila[1] is not None:
+                        dUI["tasa_badlar"] = round(float(fila[1]), 2)
+                        break
         except: pass
     if dUI["tasa_tna"] is None:
-        try:
-            rt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazo-fijo", headers=HEADERS, timeout=6)
-            if rt.status_code == 200:
-                tasas_pf = []
-                for b in rt.json():
-                    v = b.get("tnaClientes") or b.get("tnaNoClientes")
-                    if v:
-                        vf = float(v)
-                        tasas_pf.append(vf * 100 if vf < 2 else vf)
-                if tasas_pf:
-                    dUI["tasa_tna"] = round(sum(tasas_pf) / len(tasas_pf), 2)
-        except: pass
-    if dUI["tasa_tna"] is None:
-        try:
-            rt2 = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=89.2_TS_DEPOS_0_D_23&limit=1&sort=desc&format=json", timeout=6)
-            if rt2.status_code == 200:
-                val_t = rt2.json().get("data", [])[0][1]
-                if val_t: dUI["tasa_tna"] = round(float(val_t), 2)
-        except: pass
+        dUI["tasa_tna"] = _obtener_tna_pf_live()
+    if dUI["tasa_tna"] is None and dUI["tasa_badlar"] is not None:
+        dUI["tasa_tna"] = round(dUI["tasa_badlar"] - 2.10, 2)
     if dUI["tasa_tamar"] is None and dUI["tasa_badlar"] is not None:
         dUI["tasa_tamar"] = round(dUI["tasa_badlar"] + 3.20, 2)
 
