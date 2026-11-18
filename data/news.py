@@ -72,7 +72,7 @@ def obtener_macro_argentina():
         if ccl_v and ccl_v > 0:
             dUI["merval_usd"]["valor"] = round(dUI["merval"]["valor"] / ccl_v)
 
-    # 3. Inflación, Riesgo País y Reservas
+    # 3. Inflación, Riesgo País y Reservas (Triple redundancia)
     if dUI["inflacion"] is None:
         try:
             ri = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", headers=HEADERS, timeout=6)
@@ -85,8 +85,26 @@ def obtener_macro_argentina():
         except: pass
     if dUI["reservas"] is None:
         try:
+            r_bcra = requests.get("https://api.bcra.gob.ar/estadisticas/v2.0/datosvariable/1", verify=False, timeout=6)
+            if r_bcra.status_code == 200:
+                res_list = r_bcra.json().get("results", [])
+                if res_list:
+                    dUI["reservas"] = float(res_list[-1]["valor"])
+        except: pass
+    if dUI["reservas"] is None:
+        try:
             rr = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", headers=HEADERS, timeout=6)
-            if rr.status_code == 200: dUI["reservas"] = float(rr.json()[-1]["valor"])
+            if rr.status_code == 200:
+                res_data = rr.json()[-1]
+                val_r = res_data.get("valor") or res_data.get("reservas")
+                if val_r: dUI["reservas"] = float(val_r)
+        except: pass
+    if dUI["reservas"] is None:
+        try:
+            r_gob = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=174.1_RR_II_0_0_22&limit=1&sort=desc&format=json", timeout=6)
+            if r_gob.status_code == 200:
+                d_gob = r_gob.json().get("data", [])[0]
+                if d_gob[1]: dUI["reservas"] = float(d_gob[1])
         except: pass
 
     # 4. Tasas (BADLAR, TNA, TAMAR) en vivo si faltan
