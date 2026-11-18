@@ -123,7 +123,6 @@ def obtener_valuaciones_mercado():
 
 @st.cache_data(ttl=3600)
 def obtener_datos_gics():
-    # CAMBIO QUIRÚRGICO: Se amplía la historia a 1 año (1y) y se calcula v12
     etfs = {"Tecnología": "XLK", "Financiero": "XLF", "Energía": "XLE", "Salud": "XLV", "Industriales": "XLI", "Cons. Discrecional": "XLY", "Cons. Básico": "XLP", "Utilities": "XLU", "Materiales": "XLB", "Real Estate": "XLRE", "Comunicaciones": "XLC"}
     ds = []
     try:
@@ -153,15 +152,28 @@ def obtener_datos_merval():
     res = []
     for tf, d in cot.items():
         tl = tf.replace(".BA", "")
-        p = d.get("precio"); s2 = d.get("sma20"); r = d.get("rsi"); v = d.get("volumen_m"); pe = d.get("pe"); pb = d.get("pbv")
+        panel = "Principal" if tf in lider else "General"
+        p = d.get("precio"); r = d.get("rsi"); v = d.get("volumen_m"); pe = d.get("pe"); pb = d.get("pbv")
+        
+        # Lógica de Lectura
         lec = "Lateralizando en zona de equilibrio."
-        if v is not None and v < 0.05 and tf not in lider: lec = "🔴 RIESGO DE ILIQUIDEZ EXTREMO."
+        if v is not None and v < 0.05 and panel == "General": lec = "🔴 RIESGO DE ILIQUIDEZ EXTREMO."
         elif r is not None:
             if r > 70: lec = "¡Precaución! RSI en sobrecompra (>70)."
             elif r < 35: lec = "Oportunidad Técnica: Sobreventa (RSI < 35)."
             elif pb and pb < 1: lec = "Subvaluada por fundamentales (P/BV < 1)."
-        res.append({"Ticker": tl, "Panel": "Principal" if tf in lider else "General", "Precio (ARS)": round(p,2) if p else None, "P/E": pe, "P/BV": pb, "Vol. (M)": v, "RSI": r, "Lectura": lec})
-    return sorted(res, key=lambda x: x["RSI"] if x["RSI"] is not None else 999)
+            
+        res.append({
+            "Ticker": tl, 
+            "Panel": panel, 
+            "Precio": round(p,2) if p else "N/D",
+            "P/E": pe if pe else "N/D", 
+            "P/BV": pb if pb else "N/D", 
+            "Vol. (M)": round(v, 2) if v else "N/D", 
+            "RSI": round(r, 2) if r else "N/D", 
+            "Lectura": lec
+        })
+    return sorted(res, key=lambda x: x["RSI"] if isinstance(x["RSI"], (int, float)) else 999)
 
 @st.cache_data(ttl=1800)
 def obtener_noticias_acciones(tickers):
@@ -214,9 +226,10 @@ def generar_analisis_ia(m_arg, m_int, gics):
         for v in val.get("USA", []): p += f"- USA: {v['Activo']} ({v['Sector']}) | P/E: {v['P/E']} | ROE: {v['ROE (%)']} | 1M: {v['1M']}% | 1Y: {v['1Y']}%\n"
         for v in val.get("ARG", []): p += f"- ARG: {v['Activo']} ({v['Sector']}) | P/E: {v['P/E']} | ROE: {v['ROE (%)']} | 1M: {v['1M']}% | 1Y: {v['1Y']}%\n"
             
-        p += "\n**5. SCREENER MERVAL:**\n"
-        ti = [m for m in dm if (m['RSI'] and m['RSI']<38) or (m['RSI'] and m['RSI']>70) or (m['P/BV'] and m['P/BV']<1)][:10]
-        for m in ti: p += f"- {m['Ticker']}: RSI {m['RSI']} | P/BV {m['P/BV']} | {m['Lectura']}\n"
+        p += "\n**5. OPORTUNIDADES MERVAL (FILTRADO SILENCIOSO IA):**\n"
+        # Filtración Backend: Solo enviamos a la IA las de mayor interés (Sobrevendidas, Sobrecompradas o Value)
+        ti = [m for m in dm if (isinstance(m['RSI'], (int, float)) and (m['RSI'] < 38 or m['RSI'] > 70)) or (isinstance(m['P/BV'], (int, float)) and m['P/BV'] < 1)][:12]
+        for m in ti: p += f"- {m['Ticker']} ({m['Panel']}): Precio ${m['Precio']} | P/BV {m['P/BV']} | RSI {m['RSI']} | Vol: {m['Vol. (M)']}M | {m['Lectura']}\n"
         
         return f"<div style='background-color:#0d1117; padding:15px; border-radius:8px;'><pre style='color:#c9d1d9; font-family:monospace;'>{p}</pre></div>"
     except Exception as e: return f"Error: {e}"
