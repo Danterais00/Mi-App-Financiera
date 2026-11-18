@@ -10,7 +10,7 @@ from data.extractor import descargar_datos_mercado
 from models.calculators import calcular_puntajes
 from data.news import (obtener_macro_argentina, obtener_macro_internacional, obtener_noticias_acciones, generar_analisis_ia, obtener_valuaciones_mercado, obtener_datos_gics, obtener_datos_merval, obtener_eventos_macro_eeuu)
 
-APP_VERSION = "v13.0 - Nivel 3 Consolidado a 12 Meses"
+APP_VERSION = "v14.0 - Nivel 4 Simplificado (Líder vs General)"
 inyectar_css()
 
 if 'datos_cargados' not in st.session_state: st.session_state.datos_cargados = False
@@ -181,7 +181,6 @@ if menu_seccion == "Noticias de Mercado":
         st.markdown("### Sectores GICS (Estados Unidos)")
         ds = obtener_datos_gics()
         if ds:
-            # CAMBIO QUIRÚRGICO: Agregada cabecera y celda para 12M
             hg = '<div class="table-container"><table class="custom-table" style="width: 100%;">'
             hg += '<tr><th style="text-align: left;">Sector (ETF)</th><th>Rend. 1 Mes</th><th>Rend. 6 Meses</th><th>Rend. 12 Meses</th><th>Investment Score</th></tr>'
             for s in ds:
@@ -193,17 +192,24 @@ if menu_seccion == "Noticias de Mercado":
                 hg += f"<tr><td class='col-header' style='text-align: left;'>{s['Sector']} ({s['ETF']})</td><td style='color:{v1m_c}; font-weight:bold;'>{s.get('1M (%)', 0):+.2f}%</td><td style='color:{v6m_c}; font-weight:bold;'>{s.get('6M (%)', 0):+.2f}%</td><td style='color:{v12m_c}; font-weight:bold;'>{s.get('12M (%)', 0):+.2f}%</td><td><span style='background-color: {sc_color}20; color: {sc_color}; padding: 4px 10px; border-radius: 12px; font-weight: bold;'>{sc} / 100</span></td></tr>"
             st.markdown(hg + '</table></div>', unsafe_allow_html=True)
     with tab_n4:
-        st.markdown("### 📈 Nivel 4: Screener Dinámico (Merval)")
+        st.markdown("### 📈 Screener del Merval")
         dm = obtener_datos_merval()
         if dm:
+            # División visual limpia sin checkboxes
+            panel_seleccionado = st.radio("Seleccione Panel a visualizar:", ["Panel Principal (Líder)", "Panel General"], horizontal=True)
+            panel_filtro = "Principal" if "Líder" in panel_seleccionado else "General"
+            
             hm = '<div class="table-container"><table class="custom-table" style="width: 100%;">'
-            hm += '<tr><th style="text-align: left;">Ticker</th><th>Panel</th><th>RSI</th><th>P/BV</th><th>Lectura</th></tr>'
-            for m in dm[:15]: hm += f"<tr><td class='col-header' style='text-align: left;'>{m['Ticker']}</td><td>{m['Panel']}</td><td>{m['RSI']}</td><td>{m['P/BV']}</td><td>{m['Lectura']}</td></tr>"
+            hm += '<tr><th style="text-align: left;">Ticker</th><th>Precio (ARS)</th><th>P/E</th><th>P/BV</th><th>RSI</th><th>Volumen (M)</th><th>Lectura del Algoritmo</th></tr>'
+            for m in dm:
+                if m['Panel'] == panel_filtro:
+                    hm += f"<tr><td class='col-header' style='text-align: left;'>{m['Ticker']}</td>"
+                    hm += f"<td>${m['Precio']}</td><td>{m['P/E']}</td><td>{m['P/BV']}</td><td>{m['RSI']}</td><td>{m['Vol. (M)']}</td><td style='font-size: 0.9em;'>{m['Lectura']}</td></tr>"
             st.markdown(hm + '</table></div>', unsafe_allow_html=True)
     with tab_n5:
         st.markdown("### 🤖 Nivel 5: Motor de Recomendación IA")
         if st.button("Generar Recomendaciones Automáticas", type="primary"):
-            with st.spinner("La IA está compilando el contexto financiero..."):
+            with st.spinner("La IA está compilando el contexto financiero (Macro + Sectores + Oportunidades Merval)..."):
                 st.markdown(generar_analisis_ia(obtener_macro_argentina(), obtener_macro_internacional(), obtener_datos_gics()), unsafe_allow_html=True)
 else:
     if not st.session_state.get("datos_cargados"): st.info("👈 Ingresa los tickers y presiona 'Sincronizar Datos' en la barra lateral.")
