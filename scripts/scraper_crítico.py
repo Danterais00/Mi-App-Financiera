@@ -30,58 +30,59 @@ def limpiar_numero_ar(texto):
         return None
 
 def extraer_reservas_automatico():
-    """Extrae las Reservas Internacionales en millones de USD desde portales financieros abiertos (HTTP 200 comprobado)."""
+    """Busca el dato de Reservas en APIs oficiales de búsqueda y portales argentinos."""
     diagnostico = {}
     reservas_detectadas = None
     fuente_ganadora = None
 
-    # 1. Portales financieros argentinos abiertos (limpiando HTML con BeautifulSoup para leer texto puro)
+    # 1. Buscador oficial de Series de Tiempo de Argentina (datos.gob.ar)
+    try:
+        url_search = "https://apis.datos.gob.ar/series/api/search/?q=reservas+internacionales&limit=5"
+        r_s = requests.get(url_search, headers=HEADERS, timeout=12)
+        diagnostico["datos_gob_search"] = f"HTTP {r_s.status_code}"
+        if r_s.status_code == 200:
+            items = r_s.json().get("data", [])
+            ids_encontrados = [it.get("field", {}).get("id") for it in items if it.get("field", {}).get("id")]
+            diagnostico["datos_gob_ids"] = ids_encontrados
+            for sid in ids_encontrados:
+                r_val = requests.get(f"https://apis.datos.gob.ar/series/api/series/?ids={sid}&limit=1&sort=desc&format=json", headers=HEADERS, timeout=10)
+                if r_val.status_code == 200:
+                    d_rows = r_val.json().get("data", [])
+                    if d_rows and len(d_rows[0]) >= 2 and d_rows[0][1] is not None:
+                        val = float(d_rows[0][1])
+                        diagnostico[f"id_{sid}"] = f"{val} ({d_rows[0][0]})"
+                        if reservas_detectadas is None and 15000 <= val <= 150000:
+                            reservas_detectadas = round(val)
+                            fuente_ganadora = f"datos.gob.ar ({sid} - {d_rows[0][0]})"
+                            break
+    except Exception as e:
+        diagnostico["datos_gob_search"] = f"ERR: {type(e).__name__}"
+
+    # 2. Inspección textual de portales financieros argentinos (HTTP 200 comprobado)
     portales = [
         ("cronista_monedas", "https://www.cronista.com/MercadosOnline/monedas.html"),
-        ("cronista_dolar", "https://www.cronista.com/MercadosOnline/dolar.html"),
-        ("infodolar", "https://www.infodolar.com/"),
         ("rava_home", "https://www.rava.com/"),
+        ("infodolar", "https://www.infodolar.com/"),
         ("ambito_economia", "https://www.ambito.com/economia")
     ]
-
     for nombre, url in portales:
         try:
             r = requests.get(url, headers=HEADERS, verify=False, timeout=12)
-            diagnostico[nombre] = f"HTTP {r.status_code}"
             if r.status_code == 200:
-                texto_plano = BeautifulSoup(r.text, 'html.parser').get_text(" ", strip=True)
-                # Buscar "Reservas" seguido de un número de 5 dígitos (ej. 49.464 o 49464) o formato "49,4 mil millones"
-                coincidencias = re.findall(r'Reservas[^0-9]{0,60}([\d]{2}\.[\d]{3}|[\d]{5})', texto_plano, re.IGNORECASE)
-                if coincidencias:
-                    diagnostico[f"{nombre}_matches"] = coincidencias[:3]
-                    for c in coincidencias:
-                        val = limpiar_numero_ar(c)
-                        if val and 15000 <= val <= 120000:
-                            reservas_detectadas = round(val)
-                            fuente_ganadora = nombre
-                            break
-                if reservas_detectadas:
-                    break
-        except Exception as e:
-            diagnostico[nombre] = f"ERR: {type(e).__name__}"
-
-    # 2. Respaldo internacional: API abierta de FRED (con timeout ampliado) o Banco Mundial
-    if reservas_detectadas is None:
-        try:
-            r_wb = requests.get("https://api.worldbank.org/v2/country/ARG/indicator/FI.RES.TOTL.CD?format=json&per_page=3", headers=HEADERS, timeout=12)
-            diagnostico["worldbank"] = f"HTTP {r_wb.status_code}"
-            if r_wb.status_code == 200:
-                js = r_wb.json()
-                if isinstance(js, list) and len(js) > 1:
-                    for item in js[1]:
-                        if item.get("value") is not None:
-                            val_m = round(float(item["value"]) / 1_000_000)
-                            if val_m > 10000:
-                                reservas_detectadas = val_m
-                                fuente_ganadora = f"WorldBank ({item.get('date')})"
+                texto = BeautifulSoup(r.text, 'html.parser').get_text(" ", strip=True)
+                fragmentos = [m.group(0) for m in re.finditer(r'Reservas.{0,80}', texto, re.IGNORECASE)]
+                if fragmentos:
+                    diagnostico[f"{nombre}_snippets"] = fragmentos[:3]
+                    for frag in fragmentos:
+                        nums = re.findall(r'[\d]{2}[\.,][\d]{3}|[\d]{5}', frag)
+                        for n in nums:
+                            val = limpiar_numero_ar(n)
+                            if val and 15000 <= val <= 150000 and reservas_detectadas is None:
+                                reservas_detectadas = round(val)
+                                fuente_ganadora = nombre
                                 break
         except Exception as e:
-            diagnostico["worldbank"] = f"ERR: {type(e).__name__}"
+            diagnostico[nombre] = f"ERR: {type(e).__name__}"
 
     diagnostico["fuente_ganadora"] = fuente_ganadora
     return reservas_detectadas, diagnostico
