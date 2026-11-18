@@ -1,3 +1,4 @@
+import re
 import requests
 import feedparser
 import yfinance as yf
@@ -6,7 +7,6 @@ import streamlit as st
 import logging
 import time
 import urllib3
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -15,14 +15,29 @@ logger = logging.getLogger(__name__)
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'application/json'
+    'Accept': 'application/json, text/plain, */*'
 }
 
-@st.cache_data(ttl=1800)
+def _limpiar_num(texto):
+    if not texto:
+        return None
+    limpio = re.sub(r'[^\d,.-]', '', str(texto)).strip()
+    if not limpio:
+        return None
+    if ',' in limpio and '.' in limpio:
+        limpio = limpio.replace('.', '').replace(',', '.')
+    elif ',' in limpio:
+        limpio = limpio.replace(',', '.')
+    try:
+        return float(limpio)
+    except ValueError:
+        return None
+
+@st.cache_data(ttl=300)
 def obtener_datos_criticos_puente():
     url_json = "https://raw.githubusercontent.com/Danterais00/Mi-App-Financiera/refs/heads/main/datos_criticos.json"
     try:
-        respuesta = requests.get(url_json, timeout=5)
+        respuesta = requests.get(url_json, timeout=6)
         if respuesta.status_code == 200:
             return respuesta.json()
     except Exception as e:
@@ -38,7 +53,7 @@ def obtener_info_ticker_cached(ticker):
     except Exception:
         return {}
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=300)
 def obtener_macro_argentina():
     datos_UI = {
         "dolares": [],
@@ -84,20 +99,30 @@ def obtener_macro_argentina():
     except Exception as e:
         logger.warning(f"Error Riesgo País: {e}")
 
-    # 4. Consultas directas de respaldo en vivo si el puente aún no tiene alguno de los datos
+    # 4. Respaldos en vivo si algún campo del puente quedó vacío
     if datos_UI["tasa_badlar"] is None:
         try:
-            res_bad = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/badlar", headers=HEADERS, timeout=10)
-            if res_bad.status_code == 200 and len(res_bad.json()) > 0:
-                val = float(res_bad.json()[-1].get("valor", 0))
-                if val > 0:
-                    datos_UI["tasa_badlar"] = round(val * 100, 2) if val < 2 else round(val, 2)
+            res_amb_bad = requests.get("https://mercados.ambito.com//tasas/badlar/variacion", headers=HEADERS, timeout=8)
+            if res_amb_bad.status_code == 200:
+                val_b = _limpiar_num(res_amb_bad.json().get("ultimo", ""))
+                if val_b and 3 <= val_b <= 150:
+                    datos_UI["tasa_badlar"] = round(val_b, 2)
+        except Exception:
+            pass
+
+    if datos_UI["tasa_tamar"] is None:
+        try:
+            res_amb_tam = requests.get("https://mercados.ambito.com//tasas/tamar/variacion", headers=HEADERS, timeout=8)
+            if res_amb_tam.status_code == 200:
+                val_tm = _limpiar_num(res_amb_tam.json().get("ultimo", ""))
+                if val_tm and 3 <= val_tm <= 150:
+                    datos_UI["tasa_tamar"] = round(val_tm, 2)
         except Exception:
             pass
 
     if datos_UI["tasa_tna"] is None:
         try:
-            res_tna = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias", headers=HEADERS, timeout=10)
+            res_tna = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias", headers=HEADERS, timeout=8)
             if res_tna.status_code == 200 and len(res_tna.json()) > 0:
                 val = float(res_tna.json()[-1].get("valor", 0))
                 if val > 0:
@@ -105,37 +130,19 @@ def obtener_macro_argentina():
         except Exception:
             pass
 
-    if datos_UI["tasa_tamar"] is None:
-        try:
-            res_vars = requests.get("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias", headers=HEADERS, verify=False, timeout=8)
-            if res_vars.status_code == 200:
-                payload = res_vars.json()
-                lista_vars = payload.get("results", payload) if isinstance(payload, dict) else payload
-                for v in lista_vars:
-                    desc = str(v.get("descripcion", "")).lower()
-                    if "tamar" in desc and ("tna" in desc or "privados" in desc):
-                        r_tm = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{v['idVariable']}?limit=1", headers=HEADERS, verify=False, timeout=8)
-                        if r_tm.status_code == 200 and r_tm.json().get("results"):
-                            val_tm = float(r_tm.json()["results"][-1]["valor"])
-                            if 5 <= val_tm <= 150:
-                                datos_UI["tasa_tamar"] = round(val_tm, 2)
-                                break
-        except Exception:
-            pass
-
     if datos_UI["reservas"] is None:
         try:
-            res_res = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", headers=HEADERS, timeout=10)
-            if res_res.status_code == 200 and len(res_res.json()) > 0:
-                val_r = float(res_res.json()[-1].get("valor", 0))
-                if val_r > 0:
+            res_amb_res = requests.get("https://mercados.ambito.com//bcra/reservas/variacion", headers=HEADERS, timeout=8)
+            if res_amb_res.status_code == 200:
+                val_r = _limpiar_num(res_amb_res.json().get("ultimo", ""))
+                if val_r and val_r > 1000:
                     datos_UI["reservas"] = round(val_r)
         except Exception:
             pass
 
     if datos_UI["bono_al30"]["valor"] is None:
         try:
-            res_al30 = requests.get("https://data912.com/live/arg_bonds", headers=HEADERS, timeout=10)
+            res_al30 = requests.get("https://data912.com/live/arg_bonds", headers=HEADERS, timeout=8)
             if res_al30.status_code == 200:
                 for b in res_al30.json():
                     if b.get("symbol") == "AL30" or b.get("ticker") == "AL30":
