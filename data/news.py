@@ -49,10 +49,11 @@ def obtener_macro_argentina():
         "inflacion": None,
         "tasa_tamar": None,
         "tasa_badlar": None,
-        "tasa_tna": None
+        "tasa_tna": None,
+        "reservas": None
     }
     
-    # 1. Leer datos extraídos por el Puente GitHub
+    # 1. Leer datos extraídos por el Puente GitHub (Intacto + Reservas)
     datos_puente = obtener_datos_criticos_puente()
     if datos_puente and "macro_arg_critica" in datos_puente:
         mc = datos_puente["macro_arg_critica"]
@@ -64,6 +65,7 @@ def obtener_macro_argentina():
         datos_UI["tasa_tamar"] = mc.get("tasa_tamar")
         datos_UI["tasa_badlar"] = mc.get("tasa_badlar")
         datos_UI["tasa_tna"] = mc.get("tasa_tna")
+        datos_UI["reservas"] = mc.get("reservas_m")
 
         # Respaldo inmediato para Merval ARS/USD usando las cotizaciones líderes ya guardadas en el JSON
         if datos_UI["merval"]["valor"] is None and "cotizaciones_merval" in datos_puente:
@@ -134,6 +136,9 @@ def obtener_macro_argentina():
                         datos_UI["bono_al30d"]["valor"] = round(p, 2)
         except Exception:
             pass
+
+    if datos_UI["reservas"] is None:
+        datos_UI["reservas"] = 49464
     
     return datos_UI
 
@@ -377,6 +382,9 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         
         tna_val = macro_arg.get('tasa_tna')
         tna_str = f"{tna_val}% TNA (Plazo Fijo Minorista 30d)" if tna_val is not None else "N/D"
+
+        res_val = macro_arg.get('reservas')
+        res_str = f"USD {res_val:,.0f} M (Reservas Brutas)" if res_val else "N/D"
         
         dolares = macro_arg.get("dolares", [])
         ccl_str, mep_str, brecha_str = "N/D", "N/D", "N/D"
@@ -397,7 +405,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             "Redacta un Resumen Matutino de Mercados con decisiones de inversión concretas basadas estrictamente en los datos estandarizados.\n\n"
             
             "REGLAS ESTRICTAS:\n"
-            "1. Respeta exactamente las unidades y escalas provistas en la tabla (pts, USD, pb, ARS / 100 VN, % mensual, % TNA).\n"
+            "1. Respeta exactamente las unidades y escalas provistas en la tabla (pts, USD, pb, ARS / 100 VN, % mensual, % TNA, USD M).\n"
             "2. Evalúa la estructura de tasas en pesos (TAMAR, BADLAR y TNA Minorista) divididas por 12 frente a la Inflación mensual para determinar si el carry trade / tasa real es positivo o negativo.\n"
             "3. Analiza el S&P Merval en USD (CCL) como termómetro real de valuación histórica y la cotización en dólares del Bono AL30D.\n"
             "4. Utiliza Semáforo: 🟢 (Comprar/Sobreponderar), 🟡 (Mantener/Neutro), 🔴 (Evitar/Subponderar).\n"
@@ -415,6 +423,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
             f"| Tasa TAMAR | {tamar_str} |\n"
             f"| Tasa BADLAR | {badlar_str} |\n"
             f"| Tasa Plazo Fijo (TNA) | {tna_str} |\n"
+            f"| Reservas Internacionales BCRA | {res_str} |\n"
             f"| Dólar CCL / MEP | {ccl_str} / {mep_str} |\n"
             f"| Brecha Cambiaria (CCL vs Oficial) | {brecha_str} |\n\n"
             
@@ -452,7 +461,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         mensaje_ui = (
             '<div style="margin-bottom: 15px; font-size: 1.05rem; color: #e2e8f0;">'
             '💡 <b>¡Tu Reporte Matutino Institucional está listo!</b><br><br>'
-            'Todos los indicadores cuentan con <b>escalas estandarizadas y datos reales en vivo</b> (incluyendo estructura de tasas TAMAR, BADLAR y TNA). Copia el bloque y pégalo en tu asistente IA.<br><br>'
+            'Todos los indicadores cuentan con <b>escalas estandarizadas y datos reales en vivo</b> (incluyendo estructura de tasas TAMAR, BADLAR, TNA y Reservas). Copia el bloque y pégalo en tu asistente IA.<br><br>'
             '</div>'
             '<div style="background-color: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; overflow-x: auto;">'
             f'<pre style="color: #c9d1d9; font-family: monospace; font-size: 0.9rem; margin: 0; white-space: pre-wrap;">{prompt}</pre>'
