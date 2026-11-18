@@ -2,7 +2,6 @@ import json
 import re
 import yfinance as yf
 import requests
-from bs4 import BeautifulSoup
 from datetime import datetime
 import urllib3
 
@@ -10,8 +9,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8',
-    'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8'
+    'Accept': 'application/json, text/plain, */*'
 }
 
 def limpiar_numero_ar(texto):
@@ -29,71 +27,29 @@ def limpiar_numero_ar(texto):
     except ValueError:
         return None
 
-def extraer_reservas_automatico():
-    """Busca el dato de Reservas en APIs oficiales de búsqueda y portales argentinos."""
-    diagnostico = {}
-    reservas_detectadas = None
-    fuente_ganadora = None
-
-    # 1. Buscador oficial de Series de Tiempo de Argentina (datos.gob.ar)
+def extraer_reservas_oficial():
+    """Extrae las Reservas Internacionales del BCRA en Millones de USD desde la API Oficial datos.gob.ar (HTTP 200 comprobado)."""
     try:
-        url_search = "https://apis.datos.gob.ar/series/api/search/?q=reservas+internacionales&limit=5"
-        r_s = requests.get(url_search, headers=HEADERS, timeout=12)
-        diagnostico["datos_gob_search"] = f"HTTP {r_s.status_code}"
-        if r_s.status_code == 200:
-            items = r_s.json().get("data", [])
-            ids_encontrados = [it.get("field", {}).get("id") for it in items if it.get("field", {}).get("id")]
-            diagnostico["datos_gob_ids"] = ids_encontrados
-            for sid in ids_encontrados:
-                r_val = requests.get(f"https://apis.datos.gob.ar/series/api/series/?ids={sid}&limit=1&sort=desc&format=json", headers=HEADERS, timeout=10)
-                if r_val.status_code == 200:
-                    d_rows = r_val.json().get("data", [])
-                    if d_rows and len(d_rows[0]) >= 2 and d_rows[0][1] is not None:
-                        val = float(d_rows[0][1])
-                        diagnostico[f"id_{sid}"] = f"{val} ({d_rows[0][0]})"
-                        if reservas_detectadas is None and 15000 <= val <= 150000:
-                            reservas_detectadas = round(val)
-                            fuente_ganadora = f"datos.gob.ar ({sid} - {d_rows[0][0]})"
-                            break
+        url = "https://apis.datos.gob.ar/series/api/series/?ids=300.1_AP_ACT_RESTER_0_M_21&limit=1&sort=desc&format=json"
+        r = requests.get(url, headers=HEADERS, timeout=12)
+        if r.status_code == 200:
+            data_rows = r.json().get("data", [])
+            if data_rows and len(data_rows[0]) >= 2 and data_rows[0][1] is not None:
+                val_usd = float(data_rows[0][1])
+                if val_usd > 1_000_000_000:
+                    return round(val_usd / 1_000_000)
+                elif val_usd > 1000:
+                    return round(val_usd)
     except Exception as e:
-        diagnostico["datos_gob_search"] = f"ERR: {type(e).__name__}"
-
-    # 2. Inspección textual de portales financieros argentinos (HTTP 200 comprobado)
-    portales = [
-        ("cronista_monedas", "https://www.cronista.com/MercadosOnline/monedas.html"),
-        ("rava_home", "https://www.rava.com/"),
-        ("infodolar", "https://www.infodolar.com/"),
-        ("ambito_economia", "https://www.ambito.com/economia")
-    ]
-    for nombre, url in portales:
-        try:
-            r = requests.get(url, headers=HEADERS, verify=False, timeout=12)
-            if r.status_code == 200:
-                texto = BeautifulSoup(r.text, 'html.parser').get_text(" ", strip=True)
-                fragmentos = [m.group(0) for m in re.finditer(r'Reservas.{0,80}', texto, re.IGNORECASE)]
-                if fragmentos:
-                    diagnostico[f"{nombre}_snippets"] = fragmentos[:3]
-                    for frag in fragmentos:
-                        nums = re.findall(r'[\d]{2}[\.,][\d]{3}|[\d]{5}', frag)
-                        for n in nums:
-                            val = limpiar_numero_ar(n)
-                            if val and 15000 <= val <= 150000 and reservas_detectadas is None:
-                                reservas_detectadas = round(val)
-                                fuente_ganadora = nombre
-                                break
-        except Exception as e:
-            diagnostico[nombre] = f"ERR: {type(e).__name__}"
-
-    diagnostico["fuente_ganadora"] = fuente_ganadora
-    return reservas_detectadas, diagnostico
+        print(f"Error extrayendo Reservas desde datos.gob.ar: {e}")
+    return None
 
 def extraer_datos_criticos():
     print("Iniciando extracción de datos críticos desde GitHub Actions...")
-    reservas_val, diag_reservas = extraer_reservas_automatico()
+    reservas_val = extraer_reservas_oficial()
 
     datos = {
         "ultima_actualizacion": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "diagnostico_reservas": diag_reservas,
         "dolar_futuro_rofex": [],
         "cotizaciones_merval": {},
         "valuaciones_usa": {},
