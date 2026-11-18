@@ -42,7 +42,7 @@ def obtener_macro_argentina():
         dUI["merval_usd"]["valor"] = mc.get("merval_usd")
         if mc.get("riesgo_pais_actual"): dUI["riesgo_pais"] = mc["riesgo_pais_actual"]
 
-    # 1. Dólares (Asegura Oficial, Blue, MEP, CCL, Mayorista)
+    # 1. Dólares (Oficial, Blue, MEP, CCL, Mayorista)
     if len(dUI["dolares"]) < 5:
         try:
             rd = requests.get("https://dolarapi.com/v1/dolares", timeout=6)
@@ -60,7 +60,7 @@ def obtener_macro_argentina():
                 dUI["dolares"] = sorted(lista_d, key=lambda x: orden.index(x["nombre"]) if x["nombre"] in orden else 99)
         except: pass
 
-    # 2. Merval ARS y USD en vivo si falta
+    # 2. Merval ARS y USD en vivo
     if dUI["merval"]["valor"] is None:
         try:
             m_hist = yf.Ticker("^MERV").history(period="5d")
@@ -72,7 +72,7 @@ def obtener_macro_argentina():
         if ccl_v and ccl_v > 0:
             dUI["merval_usd"]["valor"] = round(dUI["merval"]["valor"] / ccl_v)
 
-    # 3. Inflación, Riesgo País y Reservas (Triple redundancia)
+    # 3. Inflación, Riesgo País y Reservas (Con la serie probada 300.1_AP_ACT_RESTER_0_M_21)
     if dUI["inflacion"] is None:
         try:
             ri = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", headers=HEADERS, timeout=6)
@@ -85,11 +85,12 @@ def obtener_macro_argentina():
         except: pass
     if dUI["reservas"] is None:
         try:
-            r_bcra = requests.get("https://api.bcra.gob.ar/estadisticas/v2.0/datosvariable/1", verify=False, timeout=6)
-            if r_bcra.status_code == 200:
-                res_list = r_bcra.json().get("results", [])
-                if res_list:
-                    dUI["reservas"] = float(res_list[-1]["valor"])
+            r_gob = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=300.1_AP_ACT_RESTER_0_M_21&limit=1&sort=desc&format=json", timeout=6)
+            if r_gob.status_code == 200:
+                d_gob = r_gob.json().get("data", [])[0]
+                if d_gob[1]:
+                    val_r = float(d_gob[1])
+                    dUI["reservas"] = round(val_r / 1_000_000) if val_r > 1_000_000_000 else round(val_r)
         except: pass
     if dUI["reservas"] is None:
         try:
@@ -97,17 +98,10 @@ def obtener_macro_argentina():
             if rr.status_code == 200:
                 res_data = rr.json()[-1]
                 val_r = res_data.get("valor") or res_data.get("reservas")
-                if val_r: dUI["reservas"] = float(val_r)
-        except: pass
-    if dUI["reservas"] is None:
-        try:
-            r_gob = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=174.1_RR_II_0_0_22&limit=1&sort=desc&format=json", timeout=6)
-            if r_gob.status_code == 200:
-                d_gob = r_gob.json().get("data", [])[0]
-                if d_gob[1]: dUI["reservas"] = float(d_gob[1])
+                if val_r: dUI["reservas"] = round(float(val_r))
         except: pass
 
-    # 4. Tasas (BADLAR, TNA, TAMAR) en vivo si faltan
+    # 4. Tasas (BADLAR, TNA Plazo Fijo 30D y TAMAR) con respaldo directo a Datos.gob.ar
     if dUI["tasa_badlar"] is None:
         try:
             rb = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=89.2_TS_INTELAR_0_D_20&limit=1&sort=desc&format=json", timeout=6)
@@ -119,13 +113,24 @@ def obtener_macro_argentina():
         try:
             rt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazo-fijo", headers=HEADERS, timeout=6)
             if rt.status_code == 200:
-                tasas_pf = [float(b["tnaClientes"]) for b in rt.json() if b.get("tnaClientes")]
+                tasas_pf = []
+                for b in rt.json():
+                    v = b.get("tnaClientes") or b.get("tnaNoClientes")
+                    if v:
+                        vf = float(v)
+                        tasas_pf.append(vf * 100 if vf < 2 else vf)
                 if tasas_pf:
-                    prom = sum(tasas_pf) / len(tasas_pf)
-                    dUI["tasa_tna"] = round(prom * 100, 2) if prom < 2 else round(prom, 2)
+                    dUI["tasa_tna"] = round(sum(tasas_pf) / len(tasas_pf), 2)
+        except: pass
+    if dUI["tasa_tna"] is None:
+        try:
+            rt2 = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=89.2_TS_DEPOS_0_D_23&limit=1&sort=desc&format=json", timeout=6)
+            if rt2.status_code == 200:
+                val_t = rt2.json().get("data", [])[0][1]
+                if val_t: dUI["tasa_tna"] = round(float(val_t), 2)
         except: pass
     if dUI["tasa_tamar"] is None and dUI["tasa_badlar"] is not None:
-        dUI["tasa_tamar"] = round(dUI["tasa_badlar"] + 1.40, 2)
+        dUI["tasa_tamar"] = round(dUI["tasa_badlar"] + 3.20, 2)
 
     # 5. Bono AL30
     try:
