@@ -1,6 +1,8 @@
 import json
+import re
 import yfinance as yf
 import requests
+from bs4 import BeautifulSoup
 from datetime import datetime
 import urllib3
 
@@ -8,8 +10,58 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*'
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8',
+    'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8'
 }
+
+def limpiar_numero_ar(texto):
+    """Convierte formatos argentinos (ej: '23,45' o '49.464,00') a float estándar."""
+    if not texto:
+        return None
+    limpio = re.sub(r'[^\d,.-]', '', str(texto)).strip()
+    if not limpio:
+        return None
+    if ',' in limpio and '.' in limpio:
+        limpio = limpio.replace('.', '').replace(',', '.')
+    elif ',' in limpio:
+        limpio = limpio.replace(',', '.')
+    try:
+        return float(limpio)
+    except ValueError:
+        return None
+
+def extraer_bcra_html():
+    """Extrae Reservas, TAMAR y BADLAR desde la tabla pública de Principales Variables del BCRA."""
+    resultado = {"reservas_m": None, "tasa_tamar": None, "tasa_badlar": None}
+    urls_bcra = [
+        "https://www.bcra.gob.ar/PublicacionesEstadisticas/Principales_variables.asp",
+        "https://bcra.gob.ar/PublicacionesEstadisticas/Principales_variables.asp"
+    ]
+    for url in urls_bcra:
+        try:
+            res = requests.get(url, headers=HEADERS, verify=False, timeout=15)
+            if res.status_code == 200 and len(res.text) > 1000:
+                soup = BeautifulSoup(res.text, 'html.parser')
+                for fila in soup.find_all('tr'):
+                    celdas = [c.get_text(" ", strip=True) for c in fila.find_all(['td', 'th'])]
+                    if len(celdas) >= 2:
+                        desc = celdas[0].lower()
+                        val = limpiar_numero_ar(celdas[-1])
+                        if val is None or val <= 0:
+                            continue
+                        if "reservas internacionales" in desc and resultado["reservas_m"] is None:
+                            resultado["reservas_m"] = round(val)
+                        elif "tamar" in desc and ("n.a." in desc or "privados" in desc or "total" in desc) and resultado["tasa_tamar"] is None:
+                            if 3 <= val <= 150:
+                                resultado["tasa_tamar"] = round(val, 2)
+                        elif "badlar" in desc and ("privados" in desc or "n.a." in desc) and resultado["tasa_badlar"] is None:
+                            if 3 <= val <= 150:
+                                resultado["tasa_badlar"] = round(val, 2)
+                if any(v is not None for v in resultado.values()):
+                    break
+        except Exception as e:
+            print(f"Error scraping BCRA HTML ({url}): {e}")
+    return resultado
 
 def extraer_datos_criticos():
     print("Iniciando extracción de datos críticos desde GitHub Actions...")
@@ -55,9 +107,9 @@ def extraer_datos_criticos():
         res_m = requests.get(url_ambito_merv, headers=HEADERS, timeout=10)
         if res_m.status_code == 200:
             data_m = res_m.json()
-            val_str = str(data_m.get("ultimo", "")).replace(".", "").replace(",", ".")
-            if val_str:
-                merv_ars = round(float(val_str))
+            merv_val = limpiar_numero_ar(data_m.get("ultimo", ""))
+            if merv_val:
+                merv_ars = round(merv_val)
                 datos["macro_arg_critica"]["merval_ars"] = merv_ars
                 if ccl_venta and ccl_venta > 0:
                     datos["macro_arg_critica"]["merval_usd"] = round(merv_ars / ccl_venta)
@@ -69,52 +121,75 @@ def extraer_datos_criticos():
         url_al30 = "https://mercados.ambito.com//bonos/en-pesos/AL30/variacion"
         res_b = requests.get(url_al30, headers=HEADERS, timeout=10)
         if res_b.status_code == 200:
-            data_b = res_b.json()
-            val_b = str(data_b.get("ultimo", "")).replace(".", "").replace(",", ".")
-            if val_b:
-                precio_b = float(val_b)
+            precio_b = limpiar_numero_ar(res_b.json().get("ultimo", ""))
+            if precio_b:
                 datos["macro_arg_critica"]["bono_al30"] = round(precio_b * 100, 2) if precio_b < 2000 else round(precio_b, 2)
     except Exception as e:
         print(f"Error Ámbito AL30: {e}")
 
-    if datos["macro_arg_critica"]["bono_al30"] is None:
+    try:
+        res_d912 = requests.get("https://data912.com/live/arg_bonds", headers=HEADERS, timeout=10)
+        if res_d912.status_code == 200:
+            for b in res_d912.json():
+                sym = b.get("symbol") or b.get("ticker")
+                p = float(b.get("c", b.get("price", 0)))
+                if sym == "AL30" and p > 0 and datos["macro_arg_critica"]["bono_al30"] is None:
+                    datos["macro_arg_critica"]["bono_al30"] = round(p * 100, 2) if p < 2000 else round(p, 2)
+                if sym == "AL30D" and p > 0:
+                    datos["macro_arg_critica"]["bono_al30d"] = round(p, 2)
+    except Exception as e:
+        print(f"Error Data912 AL30: {e}")
+
+    # 4. RESERVAS, TAMAR Y BADLAR (Vía Tabla HTML Oficial BCRA + Respaldos Ámbito / ArgentinaDatos)
+    bcra_datos = extraer_bcra_html()
+    datos["macro_arg_critica"]["reservas_m"] = bcra_datos["reservas_m"]
+    datos["macro_arg_critica"]["tasa_tamar"] = bcra_datos["tasa_tamar"]
+    datos["macro_arg_critica"]["tasa_badlar"] = bcra_datos["tasa_badlar"]
+
+    # Respaldo BADLAR vía Ámbito Financiero
+    if datos["macro_arg_critica"]["tasa_badlar"] is None:
         try:
-            res_d912 = requests.get("https://data912.com/live/arg_bonds", headers=HEADERS, timeout=10)
-            if res_d912.status_code == 200:
-                for b in res_d912.json():
-                    if b.get("symbol") == "AL30" or b.get("ticker") == "AL30":
-                        p = float(b.get("c", b.get("price", 0)))
-                        if p > 0:
-                            datos["macro_arg_critica"]["bono_al30"] = round(p * 100, 2) if p < 2000 else round(p, 2)
-                    if b.get("symbol") == "AL30D" or b.get("ticker") == "AL30D":
-                        pd_val = float(b.get("c", b.get("price", 0)))
-                        if pd_val > 0:
-                            datos["macro_arg_critica"]["bono_al30d"] = round(pd_val, 2)
+            res_amb_bad = requests.get("https://mercados.ambito.com//tasas/badlar/variacion", headers=HEADERS, timeout=10)
+            if res_amb_bad.status_code == 200:
+                val_b = limpiar_numero_ar(res_amb_bad.json().get("ultimo", ""))
+                if val_b and 3 <= val_b <= 150:
+                    datos["macro_arg_critica"]["tasa_badlar"] = round(val_b, 2)
         except Exception as e:
-            print(f"Error Data912 AL30: {e}")
+            print(f"Error Ámbito BADLAR: {e}")
 
-    # 4. RESERVAS BCRA (En Millones de USD enteros)
-    try:
-        res_res = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", headers=HEADERS, timeout=10)
-        if res_res.status_code == 200 and len(res_res.json()) > 0:
-            val_res = float(res_res.json()[-1].get("valor", 0))
-            if val_res > 0:
-                datos["macro_arg_critica"]["reservas_m"] = round(val_res)
-    except Exception as e:
-        print(f"Error Reservas ArgentinaDatos: {e}")
+    # Respaldo TAMAR vía Ámbito Financiero
+    if datos["macro_arg_critica"]["tasa_tamar"] is None:
+        try:
+            res_amb_tam = requests.get("https://mercados.ambito.com//tasas/tamar/variacion", headers=HEADERS, timeout=10)
+            if res_amb_tam.status_code == 200:
+                val_tm = limpiar_numero_ar(res_amb_tam.json().get("ultimo", ""))
+                if val_tm and 3 <= val_tm <= 150:
+                    datos["macro_arg_critica"]["tasa_tamar"] = round(val_tm, 2)
+        except Exception as e:
+            print(f"Error Ámbito TAMAR: {e}")
 
-    # 5. TASAS OFICIALES (TAMAR, BADLAR y TNA Plazo Fijo 30 días)
-    # 5A. BADLAR vía ArgentinaDatos
-    try:
-        res_badlar = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/badlar", headers=HEADERS, timeout=10)
-        if res_badlar.status_code == 200 and len(res_badlar.json()) > 0:
-            val_b = float(res_badlar.json()[-1].get("valor", 0))
-            if val_b > 0:
-                datos["macro_arg_critica"]["tasa_badlar"] = round(val_b * 100, 2) if val_b < 2 else round(val_b, 2)
-    except Exception as e:
-        print(f"Error BADLAR ArgentinaDatos: {e}")
+    # Respaldo Reservas vía Ámbito Financiero / ArgentinaDatos
+    if datos["macro_arg_critica"]["reservas_m"] is None:
+        try:
+            res_amb_res = requests.get("https://mercados.ambito.com//bcra/reservas/variacion", headers=HEADERS, timeout=10)
+            if res_amb_res.status_code == 200:
+                val_r = limpiar_numero_ar(res_amb_res.json().get("ultimo", ""))
+                if val_r and val_r > 1000:
+                    datos["macro_arg_critica"]["reservas_m"] = round(val_r)
+        except Exception:
+            pass
 
-    # 5B. TNA Plazo Fijo 30 días vía ArgentinaDatos
+    if datos["macro_arg_critica"]["reservas_m"] is None:
+        try:
+            res_res = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", headers=HEADERS, timeout=10)
+            if res_res.status_code == 200 and len(res_res.json()) > 0:
+                val_res = float(res_res.json()[-1].get("valor", 0))
+                if val_res > 0:
+                    datos["macro_arg_critica"]["reservas_m"] = round(val_res)
+        except Exception:
+            pass
+
+    # 5. TNA PLAZO FIJO 30 DÍAS (ArgentinaDatos depositos30Dias + promedio plazoFijo)
     try:
         res_tna = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias", headers=HEADERS, timeout=10)
         if res_tna.status_code == 200 and len(res_tna.json()) > 0:
@@ -122,62 +197,15 @@ def extraer_datos_criticos():
             if val_t > 0:
                 datos["macro_arg_critica"]["tasa_tna"] = round(val_t * 100, 2) if val_t < 2 else round(val_t, 2)
     except Exception as e:
-        print(f"Error TNA ArgentinaDatos: {e}")
+        print(f"Error TNA depositos30Dias: {e}")
 
-    # 5C. TAMAR (y respaldos de BADLAR/TNA/Reservas) vía API Oficial BCRA v4.0
-    try:
-        res_vars = requests.get("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias", headers=HEADERS, verify=False, timeout=12)
-        if res_vars.status_code == 200:
-            payload = res_vars.json()
-            lista_vars = payload.get("results", payload) if isinstance(payload, dict) else payload
-            if isinstance(lista_vars, list):
-                for v in lista_vars:
-                    desc = str(v.get("descripcion", "")).lower()
-                    id_var = v.get("idVariable")
-                    if not id_var:
-                        continue
-                    
-                    # Buscar TAMAR (Bancos privados / total en TNA)
-                    if "tamar" in desc and "privados" in desc and "tna" in desc and datos["macro_arg_critica"]["tasa_tamar"] is None:
-                        r_tamar = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id_var}?limit=1", headers=HEADERS, verify=False, timeout=10)
-                        if r_tamar.status_code == 200:
-                            res_list = r_tamar.json().get("results", [])
-                            if res_list:
-                                datos["macro_arg_critica"]["tasa_tamar"] = round(float(res_list[-1]["valor"]), 2)
-                    
-                    # Respaldo BADLAR si falló ArgentinaDatos
-                    if "badlar" in desc and "privados" in desc and "tna" in desc and datos["macro_arg_critica"]["tasa_badlar"] is None:
-                        r_bad = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id_var}?limit=1", headers=HEADERS, verify=False, timeout=10)
-                        if r_bad.status_code == 200:
-                            res_list = r_bad.json().get("results", [])
-                            if res_list:
-                                datos["macro_arg_critica"]["tasa_badlar"] = round(float(res_list[-1]["valor"]), 2)
-
-                    # Respaldo Reservas si falló ArgentinaDatos
-                    if "reservas internacionales" in desc and datos["macro_arg_critica"]["reservas_m"] is None:
-                        r_res = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id_var}?limit=1", headers=HEADERS, verify=False, timeout=10)
-                        if r_res.status_code == 200:
-                            res_list = r_res.json().get("results", [])
-                            if res_list:
-                                datos["macro_arg_critica"]["reservas_m"] = round(float(res_list[-1]["valor"]))
-    except Exception as e:
-        print(f"Error API BCRA v4.0: {e}")
-
-    # Si TAMAR no estuvo disponible por descripción específica, intentar búsqueda amplia por "tamar" en BCRA
-    if datos["macro_arg_critica"]["tasa_tamar"] is None:
+    if datos["macro_arg_critica"]["tasa_tna"] is None:
         try:
-            res_vars = requests.get("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias", headers=HEADERS, verify=False, timeout=10)
-            if res_vars.status_code == 200:
-                payload = res_vars.json()
-                lista_vars = payload.get("results", payload) if isinstance(payload, dict) else payload
-                for v in lista_vars:
-                    if "tamar" in str(v.get("descripcion", "")).lower():
-                        r_tamar = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{v['idVariable']}?limit=1", headers=HEADERS, verify=False, timeout=10)
-                        if r_tamar.status_code == 200 and r_tamar.json().get("results"):
-                            val_tm = float(r_tamar.json()["results"][-1]["valor"])
-                            if 5 <= val_tm <= 150: # Validar que sea TNA y no TEA
-                                datos["macro_arg_critica"]["tasa_tamar"] = round(val_tm, 2)
-                                break
+            res_pf = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", headers=HEADERS, timeout=10)
+            if res_pf.status_code == 200 and isinstance(res_pf.json(), list):
+                tasas_bancos = [float(b["tnaClientes"]) * 100 for b in res_pf.json() if b.get("tnaClientes")]
+                if tasas_bancos:
+                    datos["macro_arg_critica"]["tasa_tna"] = round(sum(tasas_bancos) / len(tasas_bancos), 2)
         except Exception:
             pass
 
@@ -238,8 +266,8 @@ def extraer_datos_criticos():
                 datos["macro_arg_critica"]["merval_ars"] = merv_calc
                 if ccl_venta and ccl_venta > 0:
                     datos["macro_arg_critica"]["merval_usd"] = round(merv_calc / ccl_venta)
-        except Exception as e:
-            print(f"Error cálculo canasta Merval: {e}")
+        except Exception:
+            pass
 
     # 7. VALUACIONES RELATIVAS (Empresas USA y ADRs)
     activos_arg = {"YPF": "Energía", "GGAL": "Financiero", "BMA": "Financiero", "PAM": "Energía", "CEPU": "Utilities"}
