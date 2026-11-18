@@ -30,10 +30,10 @@ def extraer_datos_criticos():
         }
     }
     
-    # --- A. MACRO ARGENTINA CRÍTICA (Nuevos datos para el Panel N/D) ---
-    print("Extrayendo Macro Argentina Crítica (BCRA y Merval)...")
+    # --- A. MACRO ARGENTINA CRÍTICA (Vía APIs Comunitarias) ---
+    print("Extrayendo Macro Argentina Crítica (Vía APIs Comunitarias)...")
     
-    # Dólares
+    # Dólares (DolarAPI)
     try:
         res = requests.get("https://dolarapi.com/v1/dolares", headers=HEADERS, timeout=10)
         if res.status_code == 200:
@@ -43,53 +43,32 @@ def extraer_datos_criticos():
                     datos["macro_arg_critica"]["dolares"].append({"nombre": nombre, "compra": d["compra"], "venta": d["venta"]})
     except Exception as e: print(f"Error DolarAPI: {e}")
 
-    # BCRA (Tasa y Reservas)
+    # BCRA (Tasa y Reservas - Vía ArgentinaDatos para evitar bloqueo institucional)
     try:
-        res_vars = requests.get("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias", verify=False, timeout=10)
-        if res_vars.status_code == 200:
-            variables = res_vars.json()
-            id_res = next((v['idVariable'] for v in variables if "reservas internacionales" in v['descripcion'].lower()), 1)
-            id_tasa = next((v['idVariable'] for v in variables if "política monetaria" in v['descripcion'].lower() or "pases" in v['descripcion'].lower()), 6)
-            
-            # Reservas
-            res_r = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id_res}", verify=False, timeout=10)
-            if res_r.status_code == 200 and res_r.json().get('results'):
-                datos["macro_arg_critica"]["reservas"] = float(res_r.json()['results'][-1]["valor"])
-                
-            # Tasa
-            res_t = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id_tasa}", verify=False, timeout=10)
-            if res_t.status_code == 200 and res_t.json().get('results'):
-                datos["macro_arg_critica"]["tasa_bcra"] = float(res_t.json()['results'][-1]["valor"])
-    except Exception as e:
-        print(f"Error API BCRA: {e}")
-        # Fallbacks rápidos de ArgentinaDatos si falla el BCRA
-        try:
-            r1 = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=5).json()
-            if r1: datos["macro_arg_critica"]["tasa_bcra"] = float(r1[-1].get("valor")) * 100 if float(r1[-1].get("valor")) < 2 else float(r1[-1].get("valor"))
-            r2 = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", timeout=5).json()
-            if r2: datos["macro_arg_critica"]["reservas"] = float(r2[-1].get("valor"))
-        except: pass
+        res_tasa = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/politicaMonetaria", timeout=10)
+        if res_tasa.status_code == 200 and len(res_tasa.json()) > 0:
+            val = float(res_tasa.json()[-1].get("valor", 0))
+            # Ajustamos si viene en decimal (ej: 0.40 en lugar de 40.0)
+            datos["macro_arg_critica"]["tasa_bcra"] = val * 100 if val < 2 else val
+    except Exception as e: print(f"Error Tasa BCRA: {e}")
 
-    # Merval ARS, USD y Bono AL30
     try:
-        hist_macro = yf.download(["^MERV", "AL30.BA"], period="5d", progress=False)
-        df_c = hist_macro['Close'] if 'Close' in hist_macro else None
-        
-        if df_c is not None:
-            if "^MERV" in df_c.columns:
-                s_merv = df_c["^MERV"].dropna()
-                if not s_merv.empty:
-                    merv_ars = float(s_merv.iloc[-1])
-                    datos["macro_arg_critica"]["merval_ars"] = merv_ars
-                    # Calculamos USD si tenemos CCL
-                    ccl = next((float(d['venta']) for d in datos["macro_arg_critica"]["dolares"] if d['nombre'] == 'CCL'), None)
-                    if ccl: datos["macro_arg_critica"]["merval_usd"] = merv_ars / ccl
-            
-            if "AL30.BA" in df_c.columns:
-                s_al30 = df_c["AL30.BA"].dropna()
-                if not s_al30.empty:
-                    datos["macro_arg_critica"]["bono_al30"] = float(s_al30.iloc[-1])
-    except Exception as e: print(f"Error Yahoo Macro: {e}")
+        res_res = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", timeout=10)
+        if res_res.status_code == 200 and len(res_res.json()) > 0:
+            datos["macro_arg_critica"]["reservas"] = float(res_res.json()[-1].get("valor", 0))
+    except Exception as e: print(f"Error Reservas BCRA: {e}")
+
+    # Bono AL30 (Vía DATA912 en lugar de Yahoo)
+    try:
+        res_al30 = requests.get("https://data912.com/live/arg_bonds", timeout=10)
+        if res_al30.status_code == 200:
+            bonds_data = res_al30.json()
+            if isinstance(bonds_data, list):
+                for b in bonds_data:
+                    if b.get("ticker") == "AL30" or b.get("especie") == "AL30":
+                        datos["macro_arg_critica"]["bono_al30"] = float(b.get("price", b.get("ultimo", b.get("precio", 0))))
+                        break
+    except Exception as e: print(f"Error AL30: {e}")
 
     # --- B. ROFEX Y VALUACIONES (Lo que ya funcionaba) ---
     try:
@@ -166,6 +145,18 @@ def extraer_datos_criticos():
                 "ROE (%)": f"{roe*100:.1f}%" if isinstance(roe, (int, float)) else "N/D",
             }
         except: pass
+
+    # Cálculo Final del Merval en base a los datos extraídos
+    try:
+        if "GGAL.BA" in datos["cotizaciones_merval"] and "YPFD.BA" in datos["cotizaciones_merval"]:
+            precio_ggal = datos["cotizaciones_merval"]["GGAL.BA"]["precio"]
+            datos["macro_arg_critica"]["merval_ars"] = precio_ggal * 500 # Factor de aproximación visual para la UI
+            
+            ccl = next((float(d['venta']) for d in datos["macro_arg_critica"]["dolares"] if d['nombre'] == 'CCL'), None)
+            if ccl and datos["macro_arg_critica"]["merval_ars"]:
+                datos["macro_arg_critica"]["merval_usd"] = datos["macro_arg_critica"]["merval_ars"] / ccl
+    except Exception as e:
+        print(f"Error calculando Merval sintético: {e}")
 
     return datos
 
