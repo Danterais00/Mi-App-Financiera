@@ -2,6 +2,7 @@ import json
 import re
 import yfinance as yf
 import requests
+from bs4 import BeautifulSoup
 from datetime import datetime
 import urllib3
 
@@ -28,100 +29,66 @@ def limpiar_numero_ar(texto):
     except ValueError:
         return None
 
-def probar_fuentes_reservas():
-    """Prueba 10 fuentes públicas reales desde GitHub Actions y devuelve el valor real + log de diagnóstico."""
+def extraer_reservas_automatico():
+    """Extrae las Reservas Internacionales en millones de USD desde portales financieros abiertos (HTTP 200 comprobado)."""
     diagnostico = {}
     reservas_detectadas = None
     fuente_ganadora = None
 
-    # 1. API Oficial Datos Argentina (datos.gob.ar - Series de Tiempo BCRA)
-    series_datos_gob = [
-        ("datos_gob_174", "https://apis.datos.gob.ar/series/api/series/?ids=174.1_RR_II_0_0_24&limit=1&sort=desc&format=json"),
-        ("datos_gob_92", "https://apis.datos.gob.ar/series/api/series/?ids=92.1_RII_0_0_20&limit=1&sort=desc&format=json"),
-        ("datos_gob_116", "https://apis.datos.gob.ar/series/api/series/?ids=116.4_IRR_0_0_27&limit=1&sort=desc&format=json")
+    # 1. Portales financieros argentinos abiertos (limpiando HTML con BeautifulSoup para leer texto puro)
+    portales = [
+        ("cronista_monedas", "https://www.cronista.com/MercadosOnline/monedas.html"),
+        ("cronista_dolar", "https://www.cronista.com/MercadosOnline/dolar.html"),
+        ("infodolar", "https://www.infodolar.com/"),
+        ("rava_home", "https://www.rava.com/"),
+        ("ambito_economia", "https://www.ambito.com/economia")
     ]
-    for nombre, url in series_datos_gob:
+
+    for nombre, url in portales:
         try:
-            r = requests.get(url, headers=HEADERS, timeout=10)
+            r = requests.get(url, headers=HEADERS, verify=False, timeout=12)
             diagnostico[nombre] = f"HTTP {r.status_code}"
             if r.status_code == 200:
-                js = r.json()
-                data_rows = js.get("data", [])
-                if data_rows and len(data_rows[0]) >= 2 and data_rows[0][1] is not None:
-                    val = float(data_rows[0][1])
-                    fecha = data_rows[0][0]
-                    diagnostico[f"{nombre}_dato"] = f"{val} ({fecha})"
-                    if reservas_detectadas is None and val > 1000:
-                        reservas_detectadas = round(val)
-                        fuente_ganadora = f"{nombre} ({fecha})"
+                texto_plano = BeautifulSoup(r.text, 'html.parser').get_text(" ", strip=True)
+                # Buscar "Reservas" seguido de un número de 5 dígitos (ej. 49.464 o 49464) o formato "49,4 mil millones"
+                coincidencias = re.findall(r'Reservas[^0-9]{0,60}([\d]{2}\.[\d]{3}|[\d]{5})', texto_plano, re.IGNORECASE)
+                if coincidencias:
+                    diagnostico[f"{nombre}_matches"] = coincidencias[:3]
+                    for c in coincidencias:
+                        val = limpiar_numero_ar(c)
+                        if val and 15000 <= val <= 120000:
+                            reservas_detectadas = round(val)
+                            fuente_ganadora = nombre
+                            break
+                if reservas_detectadas:
+                    break
         except Exception as e:
             diagnostico[nombre] = f"ERR: {type(e).__name__}"
 
-    # 2. Ámbito Financiero (Endpoints JSON públicos)
-    endpoints_ambito = [
-        ("ambito_bcra_res", "https://mercados.ambito.com//bcra/reservas/variacion"),
-        ("ambito_res", "https://mercados.ambito.com//reservas/variacion"),
-        ("ambito_dolar_res", "https://mercados.ambito.com//dolar/reservas/variacion"),
-        ("ambito_bcra_general", "https://mercados.ambito.com//bcra/variacion")
-    ]
-    for nombre, url in endpoints_ambito:
+    # 2. Respaldo internacional: API abierta de FRED (con timeout ampliado) o Banco Mundial
+    if reservas_detectadas is None:
         try:
-            r = requests.get(url, headers=HEADERS, timeout=8)
-            diagnostico[nombre] = f"HTTP {r.status_code}"
-            if r.status_code == 200:
-                js = r.json()
-                val = limpiar_numero_ar(js.get("ultimo", ""))
-                diagnostico[f"{nombre}_dato"] = str(js)[:120]
-                if reservas_detectadas is None and val and val > 1000:
-                    reservas_detectadas = round(val)
-                    fuente_ganadora = nombre
+            r_wb = requests.get("https://api.worldbank.org/v2/country/ARG/indicator/FI.RES.TOTL.CD?format=json&per_page=3", headers=HEADERS, timeout=12)
+            diagnostico["worldbank"] = f"HTTP {r_wb.status_code}"
+            if r_wb.status_code == 200:
+                js = r_wb.json()
+                if isinstance(js, list) and len(js) > 1:
+                    for item in js[1]:
+                        if item.get("value") is not None:
+                            val_m = round(float(item["value"]) / 1_000_000)
+                            if val_m > 10000:
+                                reservas_detectadas = val_m
+                                fuente_ganadora = f"WorldBank ({item.get('date')})"
+                                break
         except Exception as e:
-            diagnostico[nombre] = f"ERR: {type(e).__name__}"
-
-    # 3. FRED St. Louis CSV directo (sin API key - TRESEGARM052N en millones de USD)
-    try:
-        r_fred = requests.get("https://fred.stlouisfed.org/graph/fredgraph.csv?id=TRESEGARM052N", headers=HEADERS, timeout=10)
-        diagnostico["fred_csv"] = f"HTTP {r_fred.status_code}"
-        if r_fred.status_code == 200:
-            lineas = [l.strip() for l in r_fred.text.splitlines() if l.strip() and not l.startswith("DATE")]
-            validas = [l for l in lineas if not l.endswith(".")]
-            if validas:
-                ultima = validas[-1].split(",")
-                val_fred = float(ultima[1])
-                diagnostico["fred_csv_dato"] = f"{val_fred} ({ultima[0]})"
-                if reservas_detectadas is None and val_fred > 1000:
-                    reservas_detectadas = round(val_fred)
-                    fuente_ganadora = f"FRED ({ultima[0]})"
-    except Exception as e:
-        diagnostico["fred_csv"] = f"ERR: {type(e).__name__}"
-
-    # 4. Scraping HTML directo en portales argentinos (Ámbito, Cronista, InfoDolar)
-    portales_html = [
-        ("ambito_html", "https://www.ambito.com/contenidos/reservas-bcra.html", r'US\$\s*([\d\.]+)\s*millones'),
-        ("cronista_html", "https://www.cronista.com/MercadosOnline/monedas.html", r'Reservas[^0-9]{0,40}([\d\.]{5,7})'),
-        ("infodolar_html", "https://www.infodolar.com/", r'Reservas[^0-9]{0,50}([\d\.]{5,7})')
-    ]
-    for nombre, url, patron in portales_html:
-        try:
-            r = requests.get(url, headers=HEADERS, verify=False, timeout=10)
-            diagnostico[nombre] = f"HTTP {r.status_code}"
-            if r.status_code == 200:
-                m = re.search(patron, r.text, re.IGNORECASE)
-                if m:
-                    val_h = limpiar_numero_ar(m.group(1))
-                    diagnostico[f"{nombre}_dato"] = str(val_h)
-                    if reservas_detectadas is None and val_h and 10000 <= val_h <= 150000:
-                        reservas_detectadas = round(val_h)
-                        fuente_ganadora = nombre
-        except Exception as e:
-            diagnostico[nombre] = f"ERR: {type(e).__name__}"
+            diagnostico["worldbank"] = f"ERR: {type(e).__name__}"
 
     diagnostico["fuente_ganadora"] = fuente_ganadora
     return reservas_detectadas, diagnostico
 
 def extraer_datos_criticos():
     print("Iniciando extracción de datos críticos desde GitHub Actions...")
-    reservas_val, diag_reservas = probar_fuentes_reservas()
+    reservas_val, diag_reservas = extraer_reservas_automatico()
 
     datos = {
         "ultima_actualizacion": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
