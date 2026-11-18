@@ -67,6 +67,15 @@ def extraer_datos_criticos():
                 if sym == "AL30" and p > 0: datos["macro_arg_critica"]["bono_al30"] = round(p * 100, 2) if p < 2000 else round(p, 2)
                 if sym == "AL30D" and p > 0: datos["macro_arg_critica"]["bono_al30d"] = round(p, 2)
     except: pass
+    
+    # Respaldo Ámbito para AL30 si falló data912
+    if datos["macro_arg_critica"]["bono_al30"] is None:
+        try:
+            res_b = requests.get("https://mercados.ambito.com//bonos/en-pesos/AL30/variacion", headers=HEADERS, timeout=10)
+            if res_b.status_code == 200:
+                precio_b = limpiar_numero_ar(res_b.json().get("ultimo", ""))
+                if precio_b: datos["macro_arg_critica"]["bono_al30"] = round(precio_b * 100, 2) if precio_b < 2000 else round(precio_b, 2)
+        except: pass
 
     # 3. TASAS
     try:
@@ -110,8 +119,20 @@ def extraer_datos_criticos():
                         datos["cotizaciones_merval"][t] = {"precio": p_act, "sma20": sma20, "rsi": round(rsi, 2), "volumen_m": round(vol/1e6, 2) if vol else None, "pe": round(pe, 2) if pe else None, "pbv": round(pb, 2) if pb else None}
     except: pass
 
-    # MERVAL ARS/USD
-    if len(datos["cotizaciones_merval"]) > 0:
+    # MERVAL ARS/USD (Restaurado el código original)
+    try:
+        res_m = requests.get("https://mercados.ambito.com//indice/.merv/variacion", headers=HEADERS, timeout=10)
+        if res_m.status_code == 200:
+            merv_val = limpiar_numero_ar(res_m.json().get("ultimo", ""))
+            if merv_val and merv_val > 100000:
+                merv_ars = round(merv_val)
+                datos["macro_arg_critica"]["merval_ars"] = merv_ars
+                if ccl_venta and ccl_venta > 0:
+                    datos["macro_arg_critica"]["merval_usd"] = round(merv_ars / ccl_venta)
+    except: pass
+
+    # Respaldo canasta Merval si falla Ámbito
+    if datos["macro_arg_critica"]["merval_ars"] is None and len(datos["cotizaciones_merval"]) > 0:
         p_ggal = datos["cotizaciones_merval"].get("GGAL.BA", {}).get("precio", 0)
         p_ypfd = datos["cotizaciones_merval"].get("YPFD.BA", {}).get("precio", 0)
         p_pamp = datos["cotizaciones_merval"].get("PAMP.BA", {}).get("precio", 0)
@@ -145,7 +166,7 @@ def extraer_datos_criticos():
                     v1 = round(((act / float(s.iloc[-21])) - 1) * 100, 1)
                     v6 = round(((act / float(s.iloc[-126])) - 1) * 100, 1)
                     v12 = round(((act / float(s.iloc[0])) - 1) * 100, 1)
-            datos["valuaciones_usa"][t] = {"Sector": sector, "P/E": round(pe, 2) if pe else "N/D", "ROE (%)": f"{roe*100:.1f}%" if roe else "N/D", "1M": v1, "6M": v6, "1Y": v12}
+            datos["valuaciones_usa"][t] = {"Sector": sector, "P/E": round(pe, 2) if isinstance(pe, (int, float)) else "N/D", "ROE (%)": f"{roe*100:.1f}%" if isinstance(roe, (int, float)) else "N/D", "1M": v1, "6M": v6, "1Y": v12}
         except: pass
         
     for t, sector in lideres_arg.items():
@@ -161,7 +182,7 @@ def extraer_datos_criticos():
                     v1 = round(((act / float(s.iloc[-21])) - 1) * 100, 1)
                     v6 = round(((act / float(s.iloc[-126])) - 1) * 100, 1)
                     v12 = round(((act / float(s.iloc[0])) - 1) * 100, 1)
-            datos["valuaciones_arg"][t] = {"Sector": sector, "P/E": round(pe, 2) if pe else "N/D", "ROE (%)": f"{roe*100:.1f}%" if roe else "N/D", "1M": v1, "6M": v6, "1Y": v12}
+            datos["valuaciones_arg"][t] = {"Sector": sector, "P/E": round(pe, 2) if isinstance(pe, (int, float)) else "N/D", "ROE (%)": f"{roe*100:.1f}%" if isinstance(roe, (int, float)) else "N/D", "1M": v1, "6M": v6, "1Y": v12}
         except: pass
 
     return datos
