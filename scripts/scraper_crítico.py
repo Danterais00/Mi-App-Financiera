@@ -1,11 +1,9 @@
 import json
 import requests
-import feedparser
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 import urllib3
-import xml.etree.ElementTree as ET
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 HEADERS = {'User-Agent': 'Mozilla/5.0'}
@@ -14,10 +12,22 @@ def buscar_dato_historico(datos, dias_atras):
     fecha_buscada = (datetime.now() - timedelta(days=dias_atras)).strftime("%Y-%m-%d")
     return next((d for d in reversed(datos) if d["fecha"] <= fecha_buscada), None)
 
+def calcular_momentums_hist(serie_precios):
+    v1, v6, v12 = None, None, None
+    if len(serie_precios) >= 21: v1 = round(float(((serie_precios.iloc[-1] / serie_precios.iloc[-21]) - 1) * 100), 2)
+    if len(serie_precios) >= 126: v6 = round(float(((serie_precios.iloc[-1] / serie_precios.iloc[-126]) - 1) * 100), 2)
+    if len(serie_precios) >= 250: v12 = round(float(((serie_precios.iloc[-1] / serie_precios.iloc[0]) - 1) * 100), 2)
+    return v1, v6, v12
+
 def obtener_macro_arg_critica():
-    datos = {"reservas_m": None, "reservas_fecha": None, "tasa_bcra": None, "dolares": [], "riesgo_pais_actual": None, "riesgo_pais_1m": None, "inflacion_mensual": None, "inflacion_interanual": None, "emae_ultimo": None, "emae_fecha": None}
+    datos = {
+        "reservas_m": None, "reservas_fecha": None, 
+        "tasa_tamar": None, "tasa_badlar": None, "tasa_tna": None, 
+        "dolares": [], "riesgo_pais_actual": None, "riesgo_pais_1m": None, 
+        "inflacion_mensual": None, "emae_ultimo": None, "emae_fecha": None
+    }
     
-    # Riesgo País Histórico (Validado)
+    # Riesgo País Histórico
     try:
         r = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", headers=HEADERS, timeout=8)
         if r.status_code == 200:
@@ -27,7 +37,7 @@ def obtener_macro_arg_critica():
             if d_1m: datos["riesgo_pais_1m"] = {"valor": d_1m["valor"], "fecha": d_1m["fecha"]}
     except: pass
     
-    # Reservas (Nueva Fuente Validada)
+    # Reservas BCRA (Fuente actualizada)
     try:
         r = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", headers=HEADERS, timeout=8)
         if r.status_code == 200:
@@ -36,16 +46,14 @@ def obtener_macro_arg_critica():
             datos["reservas_fecha"] = res_data["fecha"]
     except: pass
     
-    # Inflación (Mensual e Interanual)
+    # Inflación Mensual
     try:
         r = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", headers=HEADERS, timeout=8)
         if r.status_code == 200:
-            inf_data = r.json()
-            datos["inflacion_mensual"] = float(inf_data[-1]["valor"])
-            datos["inflacion_interanual"] = float(inf_data[-1].get("interanual", 0))
+            datos["inflacion_mensual"] = float(r.json()[-1]["valor"])
     except: pass
 
-    # EMAE (Actividad - Con sello de tiempo)
+    # EMAE (Actividad Económica)
     try:
         r = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=143.3_NO_PR_2004_A_21&limit=1&sort=desc&format=json", timeout=8)
         if r.status_code == 200:
@@ -54,58 +62,86 @@ def obtener_macro_arg_critica():
             datos["emae_ultimo"] = d[1]
     except: pass
 
-    # Dólares y Tasa
+    # Dólares
     try:
         rd = requests.get("https://dolarapi.com/v1/dolares", timeout=8)
         if rd.status_code == 200:
             datos["dolares"] = [{"nombre": d["nombre"], "compra": d["compra"], "venta": d["venta"]} for d in rd.json() if d["nombre"] in ["Oficial", "Blue", "CCL", "MEP", "Mayorista"]]
     except: pass
     
+    # Tasas (TNA Plazo Fijo, BADLAR, TAMAR)
     try:
         rt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazo-fijo", headers=HEADERS, timeout=8)
         if rt.status_code == 200:
             bna = next((b for b in rt.json() if "nacion" in b["entidad"].lower()), None)
-            if bna: datos["tasa_bcra"] = float(bna["tnaClientes"])
+            if bna: datos["tasa_tna"] = round(float(bna["tnaClientes"]) * 100, 2) if float(bna["tnaClientes"]) < 2 else round(float(bna["tnaClientes"]), 2)
+    except: pass
+    try:
+        rb = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/badlar", headers=HEADERS, timeout=8)
+        if rb.status_code == 200: datos["tasa_badlar"] = round(float(rb.json()[-1]["valor"]), 2)
+    except: pass
+    try:
+        rtm = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/tamar", headers=HEADERS, timeout=8)
+        if rtm.status_code == 200: datos["tasa_tamar"] = round(float(rtm.json()[-1]["valor"]), 2)
     except: pass
     
     return datos
 
-def calcular_momentums_hist(serie_precios):
-    v1, v6, v12 = None, None, None
-    if len(serie_precios) >= 21: v1 = float(((serie_precios.iloc[-1] / serie_precios.iloc[-21]) - 1) * 100)
-    if len(serie_precios) >= 126: v6 = float(((serie_precios.iloc[-1] / serie_precios.iloc[-126]) - 1) * 100)
-    if len(serie_precios) >= 250: v12 = float(((serie_precios.iloc[-1] / serie_precios.iloc[0]) - 1) * 100)
-    return v1, v6, v12
-
-def obtener_macro_int_critica():
-    tm = {"S&P 500 (Global)": "^GSPC", "Nasdaq (Tech)": "^IXIC", "Oro (Refugio)": "GC=F", "Petróleo Crudo (WTI)": "CL=F", "DXY (Índice Dólar)": "DX-Y.NYB", "VIX (Miedo)": "^VIX", "Bono 10Y EE.UU (%)": "^TNX"}
-    datos = {}
+def extraer_valuaciones():
+    lideres_usa = {
+        "MSFT": "Tecnología", "GOOGL": "Comunicaciones", "JPM": "Financiero",
+        "XOM": "Energía", "LLY": "Salud", "CAT": "Industriales",
+        "AMZN": "Cons. Discrecional", "PG": "Cons. Básico", "NEE": "Utilities",
+        "LIN": "Materiales", "PLD": "Real Estate"
+    }
+    lideres_arg = {
+        "GGAL": "Financiero", "BMA": "Financiero", "YPF": "Energía",
+        "PAM": "Energía", "VIST": "Energía", "TGS": "Energía",
+        "CEPU": "Utilities", "EDN": "Utilities", "LOMA": "Materiales",
+        "CRESY": "Agro/Real Estate", "IRS": "Real Estate", "MELI": "Tecnología"
+    }
+    
+    val_usa, val_arg = {}, {}
+    todos = list(lideres_usa.keys()) + list(lideres_arg.keys())
+    
     try:
-        hd = yf.download(list(tm.values()), period="1y", progress=False)
-        if not hd.empty and 'Close' in hd:
-            dc = hd['Close']
-            for n, t in tm.items():
-                if t in dc.columns:
-                    s = dc[t].dropna()
-                    if len(s) >= 2:
-                        act = float(s.iloc[-1])
-                        v1, v6, v12 = calcular_momentums_hist(s)
-                        datos[n] = {"valor": act, "var_diaria": float(((act/s.iloc[-2])-1)*100), "var_1m": v1, "var_6m": v6, "var_1y": v12}
-    except: pass
-    return datos
+        hist = yf.download(todos, period="1y", progress=False)['Close']
+    except:
+        hist = pd.DataFrame()
+
+    for t in todos:
+        try:
+            info = yf.Ticker(t).info
+            pe = info.get("trailingPE")
+            roe = info.get("returnOnEquity")
+            pe_str = f"{pe:.1f}" if isinstance(pe, (int, float)) else "N/D"
+            roe_str = f"{roe*100:.1f}%" if isinstance(roe, (int, float)) else "N/D"
+            
+            v1, v6, v12 = None, None, None
+            if not hist.empty and t in hist.columns:
+                v1, v6, v12 = calcular_momentums_hist(hist[t].dropna())
+                
+            registro = {
+                "Sector": lideres_usa.get(t) or lideres_arg.get(t),
+                "P/E": pe_str, "ROE (%)": roe_str,
+                "1M": v1, "6M": v6, "1Y": v12
+            }
+            if t in lideres_usa: val_usa[t] = registro
+            else: val_arg[t] = registro
+        except: pass
+        
+    return val_usa, val_arg
 
 def extraer_merval():
-    # Volúmenes en pesos (Dinero real, no nominales)
     lider = ["ALUA.BA", "BBAR.BA", "BMA.BA", "BYMA.BA", "CEPU.BA", "COME.BA", "CRES.BA", "CVH.BA", "EDN.BA", "GGAL.BA", "IRSA.BA", "LOMA.BA", "MIRG.BA", "PAMP.BA", "SUPV.BA", "TECO2.BA", "TGNO4.BA", "TGSU2.BA", "TRAN.BA", "TXAR.BA", "VALO.BA", "YPFD.BA"]
     general = ["AGRO.BA", "AUSO.BA", "BHIP.BA", "CAPX.BA", "CGPA2.BA", "GCLA.BA", "HAVA.BA", "MORI.BA", "OEST.BA", "SAMI.BA"]
     tkrs = lider + general
     datos = {}
     
-    # 1Y histórico para Momentums del Merval (Para evitar Alucinaciones de la IA)
     try:
-        hist = yf.download(tkrs, period="1y", progress=False)
-        precios_hist = hist['Close'] if not hist.empty and 'Close' in hist else pd.DataFrame()
-    except: precios_hist = pd.DataFrame()
+        hist_1y = yf.download(tkrs, period="1y", progress=False)['Close']
+    except:
+        hist_1y = pd.DataFrame()
 
     for i in range(0, len(tkrs), 10):
         lote = tkrs[i:i+10]
@@ -119,18 +155,15 @@ def extraer_merval():
                 if p is None and not hist.empty: p = float(hist["Close"].iloc[-1])
                 if p is not None and p > 0:
                     vol_nominal = info.get("averageVolume", info.get("regularMarketVolume", 0))
-                    vol_pesos_m = (vol_nominal * p) / 1_000_000  # VOLUMEN EN MILLONES DE PESOS REALES
+                    vol_pesos_m = (vol_nominal * p) / 1_000_000
                     
-                    # Momentum Histórico
                     v1, v6, v12 = None, None, None
-                    if not precios_hist.empty and t in precios_hist.columns:
-                        s_hist = precios_hist[t].dropna()
-                        v1, v6, v12 = calcular_momentums_hist(s_hist)
+                    if not hist_1y.empty and t in hist_1y.columns:
+                        v1, v6, v12 = calcular_momentums_hist(hist_1y[t].dropna())
 
                     datos[t] = {
                         "precio": p, "pe": info.get("trailingPE"), "pbv": info.get("priceToBook"),
-                        "volumen_pesos_m": vol_pesos_m,
-                        "var_1m": v1, "var_6m": v6
+                        "volumen_pesos_m": vol_pesos_m, "var_1m": v1, "var_6m": v6
                     }
                     if len(hist) >= 14:
                         delta = hist['Close'].diff()
@@ -145,6 +178,12 @@ if __name__ == "__main__":
     t_stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     d_m = extraer_merval()
     d_c = obtener_macro_arg_critica()
-    d_i = obtener_macro_int_critica()
-    out = {"timestamp": t_stamp, "cotizaciones_merval": d_m, "macro_arg_critica": d_c, "macro_int_critica": d_i}
+    v_usa, v_arg = extraer_valuaciones()
+    out = {
+        "timestamp": t_stamp, 
+        "cotizaciones_merval": d_m, 
+        "macro_arg_critica": d_c,
+        "valuaciones_usa": v_usa,
+        "valuaciones_arg": v_arg
+    }
     with open("datos_criticos.json", "w", encoding="utf-8") as f: json.dump(out, f, indent=4)
