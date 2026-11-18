@@ -32,7 +32,6 @@ def obtener_macro_argentina():
         dUI["merval"]["valor"] = mc.get("merval_ars"); dUI["merval_usd"]["valor"] = mc.get("merval_usd")
         dUI["bono_al30"]["valor"] = mc.get("bono_al30"); dUI["bono_al30d"]["valor"] = mc.get("bono_al30d")
         
-        # Respaldo Merval desde cotizaciones si falla la nube
         if dUI["merval"]["valor"] is None and "cotizaciones_merval" in dp:
             cot = dp["cotizaciones_merval"]
             p_ggal = cot.get("GGAL.BA", {}).get("precio", 0)
@@ -124,22 +123,26 @@ def obtener_valuaciones_mercado():
 
 @st.cache_data(ttl=3600)
 def obtener_datos_gics():
+    # CAMBIO QUIRÚRGICO: Se amplía la historia a 1 año (1y) y se calcula v12
     etfs = {"Tecnología": "XLK", "Financiero": "XLF", "Energía": "XLE", "Salud": "XLV", "Industriales": "XLI", "Cons. Discrecional": "XLY", "Cons. Básico": "XLP", "Utilities": "XLU", "Materiales": "XLB", "Real Estate": "XLRE", "Comunicaciones": "XLC"}
     ds = []
     try:
-        hd = yf.download(list(etfs.values()), period="6mo", progress=False)
+        hd = yf.download(list(etfs.values()), period="1y", progress=False)
         dfc = hd['Close'] if not hd.empty and 'Close' in hd else pd.DataFrame()
     except: dfc = pd.DataFrame()
     for s, t in etfs.items():
-        v1, v6 = 0.0, 0.0
+        v1, v6, v12 = 0.0, 0.0, 0.0
         if not dfc.empty and t in dfc.columns:
             sr = dfc[t].dropna()
             if len(sr) >= 20:
-                pa = sr.iloc[-1]
-                v1 = ((pa / sr.iloc[-21]) - 1)*100 if len(sr)>=21 else 0
-                v6 = ((pa / sr.iloc[0]) - 1)*100
+                pa = float(sr.iloc[-1])
+                if len(sr) >= 21: v1 = ((pa / float(sr.iloc[-21])) - 1) * 100
+                if len(sr) >= 126: v6 = ((pa / float(sr.iloc[-126])) - 1) * 100
+                else: v6 = ((pa / float(sr.iloc[0])) - 1) * 100
+                if len(sr) >= 250: v12 = ((pa / float(sr.iloc[0])) - 1) * 100
+                else: v12 = ((pa / float(sr.iloc[0])) - 1) * 100
         sc = max(0, min(100, int(50.0 + (v6 * 1.5))))
-        ds.append({"Sector": s, "ETF": t, "1M (%)": v1, "6M (%)": v6, "Score": sc})
+        ds.append({"Sector": s, "ETF": t, "1M (%)": v1, "6M (%)": v6, "12M (%)": v12, "Score": sc})
     return sorted(ds, key=lambda x: x["Score"], reverse=True)
 
 @st.cache_data(ttl=3600)
