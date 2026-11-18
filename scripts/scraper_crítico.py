@@ -38,14 +38,37 @@ def obtener_macro_arg_critica():
             if d_1m: datos["riesgo_pais_1m"] = {"valor": round(float(d_1m["valor"])), "fecha": d_1m["fecha"]}
     except: pass
     
-    # 2. Reservas BCRA (Fuente validada argentinadatos)
+    # 2. Reservas BCRA (Triple redundancia: BCRA Oficial -> ArgentinaDatos -> Datos.gob.ar)
     try:
-        r = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", headers=HEADERS, timeout=8)
-        if r.status_code == 200:
-            res_data = r.json()[-1]
-            datos["reservas_m"] = float(res_data["valor"])
-            datos["reservas_fecha"] = res_data["fecha"]
+        r_bcra = requests.get("https://api.bcra.gob.ar/estadisticas/v2.0/datosvariable/1", verify=False, timeout=8)
+        if r_bcra.status_code == 200:
+            res_list = r_bcra.json().get("results", [])
+            if res_list:
+                ultimo = res_list[-1]
+                datos["reservas_m"] = float(ultimo["valor"])
+                datos["reservas_fecha"] = ultimo["fecha"]
     except: pass
+
+    if datos["reservas_m"] is None:
+        try:
+            r = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", headers=HEADERS, timeout=8)
+            if r.status_code == 200:
+                res_data = r.json()[-1]
+                val_r = res_data.get("valor") or res_data.get("reservas")
+                if val_r:
+                    datos["reservas_m"] = float(val_r)
+                    datos["reservas_fecha"] = res_data.get("fecha")
+        except: pass
+
+    if datos["reservas_m"] is None:
+        try:
+            r_gob = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=174.1_RR_II_0_0_22&limit=1&sort=desc&format=json", timeout=8)
+            if r_gob.status_code == 200:
+                d_gob = r_gob.json().get("data", [])[0]
+                if d_gob[1]:
+                    datos["reservas_m"] = float(d_gob[1])
+                    datos["reservas_fecha"] = d_gob[0]
+        except: pass
     
     # 3. Inflación Mensual
     try:
@@ -88,7 +111,6 @@ def obtener_macro_arg_critica():
     except: pass
     
     # 6. Tasas (BADLAR, Plazo Fijo TNA y TAMAR desde API oficial Datos Gob Ar + Argentinadatos)
-    # BADLAR Bancos Privados (Serie oficial BCRA: 89.2_TS_INTELAR_0_D_20)
     try:
         rb = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=89.2_TS_INTELAR_0_D_20&limit=1&sort=desc&format=json", timeout=8)
         if rb.status_code == 200:
@@ -96,7 +118,6 @@ def obtener_macro_arg_critica():
             if val_b: datos["tasa_badlar"] = round(float(val_b), 2)
     except: pass
 
-    # TNA Plazo Fijo 30 días (Serie oficial BCRA: 89.2_TS_DEPOS_0_D_23 o Argentinadatos)
     try:
         rt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazo-fijo", headers=HEADERS, timeout=8)
         if rt.status_code == 200:
@@ -113,14 +134,12 @@ def obtener_macro_arg_critica():
                 if val_t: datos["tasa_tna"] = round(float(val_t), 2)
         except: pass
 
-    # TAMAR (Tasa Mayorista > $1.000M - Argentinadatos o diferencial técnico sobre BADLAR)
     try:
         rtm = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/tamar", headers=HEADERS, timeout=8)
         if rtm.status_code == 200:
             datos["tasa_tamar"] = round(float(rtm.json()[-1]["valor"]), 2)
     except: pass
     if datos["tasa_tamar"] is None and datos["tasa_badlar"] is not None:
-        # Spread histórico institucional TAMAR vs BADLAR (+1.40 pp) si el endpoint público cae
         datos["tasa_tamar"] = round(datos["tasa_badlar"] + 1.40, 2)
     
     return datos
