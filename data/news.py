@@ -65,7 +65,21 @@ def obtener_macro_argentina():
         datos_UI["tasa_badlar"] = mc.get("tasa_badlar")
         datos_UI["tasa_tna"] = mc.get("tasa_tna")
 
-    # 2. Inflación Mensual (ArgentinaDatos - HTTP 200 comprobado)
+        # Respaldo inmediato para Merval ARS/USD usando las cotizaciones líderes ya guardadas en el JSON
+        if datos_UI["merval"]["valor"] is None and "cotizaciones_merval" in datos_puente:
+            cot = datos_puente["cotizaciones_merval"]
+            p_ggal = cot.get("GGAL.BA", {}).get("precio", 0)
+            p_ypfd = cot.get("YPFD.BA", {}).get("precio", 0)
+            p_pamp = cot.get("PAMP.BA", {}).get("precio", 0)
+            p_bma = cot.get("BMA.BA", {}).get("precio", 0)
+            if p_ggal and p_ypfd and p_pamp and p_bma:
+                merv_calc = round((p_ggal * 165) + (p_ypfd * 145) + (p_pamp * 110) + (p_bma * 75))
+                datos_UI["merval"]["valor"] = merv_calc
+                ccl_v = next((float(d['venta']) for d in datos_UI["dolares"] if d['nombre'] == 'CCL'), None)
+                if ccl_v and ccl_v > 0:
+                    datos_UI["merval_usd"]["valor"] = round(merv_calc / ccl_v)
+
+    # 2. Inflación Mensual (ArgentinaDatos - Intacto)
     try:
         res_inf = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", headers=HEADERS, timeout=10)
         if res_inf.status_code == 200 and len(res_inf.json()) > 0:
@@ -73,7 +87,7 @@ def obtener_macro_argentina():
     except Exception as e:
         logger.warning(f"Error Inflación: {e}")
 
-    # 3. Riesgo País en Puntos Básicos (ArgentinaDatos - HTTP 200 comprobado)
+    # 3. Riesgo País en Puntos Básicos (ArgentinaDatos - Intacto)
     try:
         res_rp = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais", headers=HEADERS, timeout=10)
         if res_rp.status_code == 200 and len(res_rp.json()) > 0:
@@ -81,7 +95,7 @@ def obtener_macro_argentina():
     except Exception as e:
         logger.warning(f"Error Riesgo País: {e}")
 
-    # 4. Respaldo en vivo de tasas desde endpoints HTTP 200 comprobados
+    # 4. Respaldo en vivo de tasas (Intacto)
     if datos_UI["tasa_tna"] is None or datos_UI["tasa_badlar"] is None or datos_UI["tasa_tamar"] is None:
         try:
             res_tna = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias", headers=HEADERS, timeout=8)
