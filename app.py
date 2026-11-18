@@ -110,7 +110,6 @@ def render_nivel1_macro():
         tamar = macro_arg_data.get("tasa_tamar")
         badlar = macro_arg_data.get("tasa_badlar")
         tna = macro_arg_data.get("tasa_tna")
-        res_bcra = macro_arg_data.get("reservas")
         dolares = macro_arg_data.get("dolares", [])
         
         texto_rp_val = f"{rp.get('valor')} pb" if rp.get('valor') is not None else 'N/D'
@@ -119,12 +118,11 @@ def render_nivel1_macro():
         texto_tamar = f"{tamar:.1f}%" if tamar is not None else "N/D"
         texto_badlar = f"{badlar:.1f}%" if badlar is not None else "N/D"
         texto_tna = f"{tna:.1f}%" if tna is not None else "N/D"
-        texto_reservas = f"USD {res_bcra:,.0f}M" if res_bcra is not None else "N/D"
         
         texto_merv_usd = f"USD {macro_arg_data.get('merval_usd', {}).get('valor', 0):,.0f}" if macro_arg_data.get('merval_usd', {}).get('valor') else 'N/D'
         texto_al30 = f"${macro_arg_data.get('bono_al30', {}).get('valor', 0):,.2f}" if macro_arg_data.get('bono_al30', {}).get('valor') else 'N/D'
         
-        # Grilla de 2 filas x 4 columnas (8 indicadores macroeconómicos)
+        # Grilla limpia de 2 filas x 4 columnas (8 indicadores verificados y en vivo)
         html_caja = (
             f"<div style='background-color: #12161f; padding: 15px; border-radius: 8px; border: 1px solid #2a2e39; margin-bottom:15px; display: flex; justify-content: space-between; flex-wrap: wrap;'>"
             # Fila 1
@@ -137,8 +135,6 @@ def render_nivel1_macro():
             f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TASA TAMAR</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_tamar}</h4></div>"
             f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TASA BADLAR</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_badlar}</h4></div>"
             f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TNA (PF 30D)</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_tna}</h4></div>"
-            # Fila 3 (Reservas ancho completo)
-            f"<div style='width: 100%; padding-top: 10px; margin-top: 10px; border-top: 1px solid #2a2e39; display: flex; justify-content: space-between; align-items: center;'><span style='color:#a3a8b8; font-size:0.75rem; font-weight:bold;'>RESERVAS INTERNACIONALES (BCRA)</span><span style='color:#2ecca6; font-size: 1rem; font-weight:bold;'>{texto_reservas}</span></div>"
             f"</div>"
         )
         st.markdown(html_caja, unsafe_allow_html=True)
