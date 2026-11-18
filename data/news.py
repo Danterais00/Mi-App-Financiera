@@ -53,7 +53,7 @@ def obtener_macro_argentina():
         "reservas": None
     }
     
-    # 1. Leer datos extraídos por el Puente GitHub (Intacto + Reservas)
+    # 1. Leer datos extraídos por el Puente GitHub (Los 8 indicadores existentes - Intactos)
     datos_puente = obtener_datos_criticos_puente()
     if datos_puente and "macro_arg_critica" in datos_puente:
         mc = datos_puente["macro_arg_critica"]
@@ -67,7 +67,7 @@ def obtener_macro_argentina():
         datos_UI["tasa_tna"] = mc.get("tasa_tna")
         datos_UI["reservas"] = mc.get("reservas_m")
 
-        # Respaldo inmediato para Merval ARS/USD usando las cotizaciones líderes ya guardadas en el JSON
+        # Respaldo inmediato para Merval ARS/USD usando cotizaciones líderes del JSON
         if datos_UI["merval"]["valor"] is None and "cotizaciones_merval" in datos_puente:
             cot = datos_puente["cotizaciones_merval"]
             p_ggal = cot.get("GGAL.BA", {}).get("precio", 0)
@@ -137,8 +137,18 @@ def obtener_macro_argentina():
         except Exception:
             pass
 
+    # 5. Respaldo automático en vivo para Reservas Internacionales (API Oficial datos.gob.ar)
     if datos_UI["reservas"] is None:
-        datos_UI["reservas"] = 49464
+        try:
+            url_res = "https://apis.datos.gob.ar/series/api/series/?ids=300.1_AP_ACT_RESTER_0_M_21&limit=1&sort=desc&format=json"
+            r_res = requests.get(url_res, headers=HEADERS, timeout=10)
+            if r_res.status_code == 200:
+                rows = r_res.json().get("data", [])
+                if rows and len(rows[0]) >= 2 and rows[0][1] is not None:
+                    val_usd = float(rows[0][1])
+                    datos_UI["reservas"] = round(val_usd / 1_000_000) if val_usd > 1_000_000_000 else round(val_usd)
+        except Exception as e:
+            logger.warning(f"Error Reservas datos.gob.ar: {e}")
     
     return datos_UI
 
@@ -461,7 +471,7 @@ def generar_analisis_ia(macro_arg, macro_int, datos_gics):
         mensaje_ui = (
             '<div style="margin-bottom: 15px; font-size: 1.05rem; color: #e2e8f0;">'
             '💡 <b>¡Tu Reporte Matutino Institucional está listo!</b><br><br>'
-            'Todos los indicadores cuentan con <b>escalas estandarizadas y datos reales en vivo</b> (incluyendo estructura de tasas TAMAR, BADLAR, TNA y Reservas). Copia el bloque y pégalo en tu asistente IA.<br><br>'
+            'Todos los indicadores cuentan con <b>escalas estandarizadas y datos reales en vivo</b> (incluyendo estructura de tasas TAMAR, BADLAR, TNA y Reservas oficiales). Copia el bloque y pégalo en tu asistente IA.<br><br>'
             '</div>'
             '<div style="background-color: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; overflow-x: auto;">'
             f'<pre style="color: #c9d1d9; font-family: monospace; font-size: 0.9rem; margin: 0; white-space: pre-wrap;">{prompt}</pre>'
