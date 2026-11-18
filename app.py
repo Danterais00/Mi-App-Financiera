@@ -19,8 +19,7 @@ from data.news import (
     obtener_eventos_macro_eeuu
 )
 
-APP_VERSION = "v15.0 - CIO Engine (Validado & Reintegrado)"
-
+APP_VERSION = "v15.1 - CIO Engine (Full Restored)"
 inyectar_css()
 
 if 'datos_cargados' not in st.session_state:
@@ -91,11 +90,32 @@ def get_val(df, metric, ticker):
         return float(val) if not pd.isna(val) else None
     except: return None
 
+@st.fragment
+def render_noticias_cartera():
+    st.subheader("📰 Titulares Recientes de tu Cartera")
+    if st.session_state.get("datos_cargados"):
+        with st.spinner("Rastreando agencias de noticias..."):
+            noticias = obtener_noticias_acciones(st.session_state.tickers)
+            for ticker, headlines in noticias.items():
+                if headlines:
+                    st.markdown(f"#### 🔵 {ticker}")
+                    for h in headlines:
+                        st.markdown((
+                            f"<div style='background-color: #171b26; padding: 12px; border-radius: 6px; border-left: 4px solid #4d8bf0; margin-bottom:10px;'>"
+                            f"<a href='{h['link']}' target='_blank' style='color: #e2e8f0; text-decoration: none; font-weight: 600; font-size: 0.95rem;'>{h['titulo']}</a>"
+                            f"<p style='margin: 5px 0 0 0; color: #8ba1b6; font-size: 0.75rem;'>{h['fecha']}</p>"
+                            f"</div>"
+                        ), unsafe_allow_html=True)
+                    st.write("")
+    else: st.info("👈 Ingresa los tickers arriba y presiona 'Sincronizar Datos'.")
 
 # --- RENDERIZADO PRINCIPAL ---
 if menu_seccion == "Noticias de Mercado":
     st.header("Terminal de Decisiones de Inversión")
-    tab_n1, tab_n2, tab_n3, tab_n4, tab_n5 = st.tabs(["🌍 Nivel 1: Macro", "📊 Nivel 2: Valuaciones", "🏢 Nivel 3: Sectores GICS", "📈 Nivel 4: Merval", "🤖 Nivel 5: IA Cuantitativa"])
+    tab_n1, tab_n2, tab_n3, tab_n4, tab_n5, tab_noticias = st.tabs([
+        "🌍 Nivel 1: Macro", "📊 Nivel 2: Valuaciones", "🏢 Nivel 3: Sectores GICS", 
+        "📈 Nivel 4: Merval", "🤖 Nivel 5: IA Cuantitativa", "📰 Noticias Cartera"
+    ])
     
     with tab_n1: 
         st.markdown("### Contexto Macroeconómico")
@@ -110,14 +130,18 @@ if menu_seccion == "Noticias de Mercado":
             rp = macro_arg_data.get("riesgo_pais") or {}
             merv = macro_arg_data.get("merval") or {}
             inf = macro_arg_data.get("inflacion")
-            tasa = macro_arg_data.get("tasa_bcra")
+            tamar = macro_arg_data.get("tasa_tamar")
+            badlar = macro_arg_data.get("tasa_badlar")
+            tna = macro_arg_data.get("tasa_tna")
             res_bcra = macro_arg_data.get("reservas")
             dolares = macro_arg_data.get("dolares", [])
             
             texto_rp_val = f"{rp.get('valor')} pb" if rp.get('valor') is not None else 'N/D'
             texto_merv_val = f"{merv.get('valor'):,.0f}" if merv.get('valor') is not None else 'N/D'
             texto_inf = f"{inf:.1f}%" if inf is not None else "N/D"
-            texto_tasa = f"{tasa:.1f}%" if tasa is not None else "N/D"
+            texto_tamar = f"{tamar:.1f}%" if tamar is not None else "N/D"
+            texto_badlar = f"{badlar:.1f}%" if badlar is not None else "N/D"
+            texto_tna = f"{tna:.1f}%" if tna is not None else "N/D"
             texto_reservas = f"USD {res_bcra:,.0f} M" if res_bcra is not None else "N/D"
             texto_merv_usd = f"USD {macro_arg_data.get('merval_usd', {}).get('valor', 0):,.0f}" if macro_arg_data.get('merval_usd', {}).get('valor') else 'N/D'
             texto_al30 = f"${macro_arg_data.get('bono_al30', {}).get('valor', 0):,.2f}" if macro_arg_data.get('bono_al30', {}).get('valor') else 'N/D'
@@ -128,9 +152,11 @@ if menu_seccion == "Noticias de Mercado":
                 f"<div style='width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>MERVAL (USD)</p><h4 style='margin:5px 0; color:#2ecca6; font-size: 0.95rem;'>{texto_merv_usd}</h4></div>"
                 f"<div style='width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>RIESGO PAÍS</p><h4 style='margin:5px 0; color:#fff; font-size: 0.95rem;'>{texto_rp_val}</h4></div>"
                 f"<div style='width: 24%; border-left: 1px solid #2a2e39; padding-left: 8px; margin-bottom: 10px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>BONO AL30</p><h4 style='margin:5px 0; color:#fff; font-size: 0.95rem;'>{texto_al30}</h4></div>"
-                f"<div style='width: 32%; padding-top: 10px; border-top: 1px solid #2a2e39;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>INFLACIÓN</p><h4 style='margin:5px 0; color:#fff; font-size: 0.95rem;'>{texto_inf}</h4></div>"
-                f"<div style='width: 33%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TASA POL. MONETARIA</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_tasa}</h4></div>"
-                f"<div style='width: 33%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>RESERVAS (BCRA)</p><h4 style='margin:5px 0; color:#2ecca6; font-size: 0.95rem;'>{texto_reservas}</h4></div>"
+                f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>INFLACIÓN</p><h4 style='margin:5px 0; color:#fff; font-size: 0.95rem;'>{texto_inf}</h4></div>"
+                f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TASA TAMAR</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_tamar}</h4></div>"
+                f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TASA BADLAR</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_badlar}</h4></div>"
+                f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TNA (PF 30D)</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_tna}</h4></div>"
+                f"<div style='width: 100%; padding-top: 10px; margin-top: 10px; border-top: 1px solid #2a2e39; display: flex; justify-content: space-between; align-items: center;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>RESERVAS INTERNACIONALES (BCRA)</p><h4 style='margin:0; color:#2ecca6; font-size: 0.95rem;'>{texto_reservas}</h4></div>"
                 f"</div>"
             )
             st.markdown(html_caja, unsafe_allow_html=True)
@@ -181,7 +207,7 @@ if menu_seccion == "Noticias de Mercado":
         with st.spinner("Descargando P/E, ROE y Momentum Histórico..."):
             val_data = obtener_valuaciones_mercado()
             def render_tabla_lideres(datos):
-                if not datos: return ""
+                if not datos: return "<p style='color:#8ba1b6;'>Ejecuta el actualizador en GitHub Actions para poblar esta tabla.</p>"
                 h = '<div class="table-container"><table class="custom-table" style="width: 100%; font-size: 0.9rem;">'
                 h += '<tr><th style="text-align:left;">Ticker</th><th style="text-align:left;">Sector</th><th>P/E</th><th>ROE</th><th>1M</th><th>6M</th><th>1Y</th></tr>'
                 for d in datos:
@@ -189,9 +215,7 @@ if menu_seccion == "Noticias de Mercado":
                         if v is None: return "<span style='color:#8ba1b6;'>N/D</span>"
                         try: return f"<span style='color:{'#2ecca6' if float(v)>0 else '#ff6b6b'}; font-weight:bold;'>{float(v):+.1f}%</span>"
                         except: return "<span style='color:#8ba1b6;'>N/D</span>"
-                    pe_sh = f"{d['P/E']:.1f}" if isinstance(d['P/E'], (int, float)) else "N/D"
-                    roe_sh = f"{d['ROE (%)']:.1f}%" if isinstance(d['ROE (%)'], (int, float)) else "N/D"
-                    h += f"<tr><td class='col-header' style='text-align:left;'>{d['Activo']}</td><td style='text-align:left;'>{d['Sector']}</td><td>{pe_sh}</td><td>{roe_sh}</td><td>{fc(d.get('1M'))}</td><td>{fc(d.get('6M'))}</td><td>{fc(d.get('1Y'))}</td></tr>"
+                    h += f"<tr><td class='col-header' style='text-align:left;'>{d['Activo']}</td><td style='text-align:left;'>{d['Sector']}</td><td>{d['P/E']}</td><td>{d['ROE (%)']}</td><td>{fc(d.get('1M'))}</td><td>{fc(d.get('6M'))}</td><td>{fc(d.get('1Y'))}</td></tr>"
                 return h + '</table></div>'
 
             c1, c2 = st.columns(2)
@@ -225,15 +249,19 @@ if menu_seccion == "Noticias de Mercado":
             panel_filtro = "Principal" if "Líder" in panel_seleccionado else "General"
             
             hm = '<div class="table-container"><table class="custom-table" style="width: 100%;">'
-            hm += '<tr><th style="text-align: left;">Ticker</th><th>Precio (ARS)</th><th>P/E</th><th>P/BV</th><th>RSI</th><th>Volumen_ARS (M)</th><th>Lectura del Algoritmo</th></tr>'
+            hm += '<tr><th style="text-align: left;">Ticker</th><th>Precio (ARS)</th><th>P/E</th><th>P/BV</th><th>RSI</th><th>Volumen (ARS)</th><th>Lectura del Algoritmo</th></tr>'
             for m in dm:
                 if m['Panel'] == panel_filtro:
-                    pe_s = f"{m['P/E']:.2f}" if m['P/E'] else "N/D"
-                    pb_s = f"{m['P/BV']:.2f}" if m['P/BV'] else "N/D"
-                    v_s = f"${m['Vol_ARS_M']:.1f} M" if m['Vol_ARS_M'] else "N/D"
+                    pe_s = f"{m['P/E']:.2f}" if isinstance(m['P/E'], (int, float)) else "N/D"
+                    pb_s = f"{m['P/BV']:.2f}" if isinstance(m['P/BV'], (int, float)) else "N/D"
+                    v_s = f"${m['Vol_ARS_M']:.1f} M" if isinstance(m['Vol_ARS_M'], (int, float)) else "N/D"
+                    p_s = f"${m['Precio']}" if m['Precio'] else "N/D"
+                    r_s = f"{m['RSI']}" if m['RSI'] else "N/D"
                     hm += f"<tr><td class='col-header' style='text-align: left;'>{m['Ticker']}</td>"
-                    hm += f"<td>${m['Precio']}</td><td>{pe_s}</td><td>{pb_s}</td><td>{m['RSI']}</td><td>{v_s}</td><td style='font-size: 0.9em;'>{m['Lectura']}</td></tr>"
+                    hm += f"<td>{p_s}</td><td>{pe_s}</td><td>{pb_s}</td><td>{r_s}</td><td>{v_s}</td><td style='font-size: 0.9em;'>{m['Lectura']}</td></tr>"
             st.markdown(hm + '</table></div>', unsafe_allow_html=True)
+        else:
+            st.info("Ejecuta el actualizador en GitHub Actions para cargar las cotizaciones del Merval.")
 
     with tab_n5:
         st.markdown("### 🤖 Nivel 5: Motor de Recomendación IA")
@@ -241,8 +269,11 @@ if menu_seccion == "Noticias de Mercado":
             with st.spinner("La IA está compilando el contexto financiero (Macro + Sectores + Oportunidades Merval)..."):
                 st.markdown(generar_analisis_ia(obtener_macro_argentina(), obtener_macro_internacional(), obtener_datos_gics()), unsafe_allow_html=True)
 
+    with tab_noticias:
+        render_noticias_cartera()
+
 else:
-    # --- RESTO DEL DASHBOARD (Restaurado e Intacto) ---
+    # --- RESTO DEL DASHBOARD (5 Secciones Restauradas) ---
     if st.session_state.get("datos_cargados"):
         dft = st.session_state.df_total
         if menu_seccion == "Datos y Valuación":
@@ -431,7 +462,7 @@ else:
                         fwd_pe = get_val(dft, "Forward P/E", ticker); peg = get_val(dft, "PEG Ratio", ticker)
                         evebitda = get_val(dft, "EV/EBITDA", ticker); div_yield = get_val(dft, "Div Yield (%)", ticker)
                         payout = get_val(dft, "Payout Ratio (%)", ticker); consenso = get_val(dft, "Consenso (1-5)", ticker)
-                        short_int = get_val(dft, "Short Interest (%)", ticker); deuda = get_val(dft, "Debt/Equity", ticker)
+                        deuda = get_val(dft, "Debt/Equity", ticker)
                         if es_agresivo:
                             fun_parts = []
                             if roe and roe > 0.15: fun_parts.append(f"ROE sobresaliente del <strong>{roe*100:.1f}%</strong>")
