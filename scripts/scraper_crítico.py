@@ -19,6 +19,38 @@ def calcular_momentums_hist(serie_precios):
     if len(serie_precios) >= 250: v12 = round(float(((serie_precios.iloc[-1] / serie_precios.iloc[0]) - 1) * 100), 2)
     return v1, v6, v12
 
+def obtener_tna_pf_robusta():
+    # 1. Intento en ArgentinaDatos (Promedio de bancos activos con tasa > 0)
+    try:
+        rt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazo-fijo", headers=HEADERS, timeout=8)
+        if rt.status_code == 200:
+            tasas_pf = []
+            for b in rt.json():
+                v = b.get("tnaClientes")
+                if v is not None:
+                    try:
+                        vf = float(v)
+                        if vf > 0:
+                            tasas_pf.append(vf * 100 if vf < 2 else vf)
+                    except: pass
+            if tasas_pf:
+                return round(sum(tasas_pf) / len(tasas_pf), 2)
+    except: pass
+
+    # 2. Respaldo en API Oficial Datos.gob.ar (Buscando el último valor NO NULO entre los últimos 5 registros)
+    series_pf = ["89.2_TS_DEPOS_0_D_23", "168.1_T_PF_30_59_0_M_26"]
+    for s_id in series_pf:
+        try:
+            rt2 = requests.get(f"https://apis.datos.gob.ar/series/api/series/?ids={s_id}&limit=5&sort=desc&format=json", timeout=8)
+            if rt2.status_code == 200:
+                filas = rt2.json().get("data", [])
+                for fila in filas:
+                    if len(fila) > 1 and fila[1] is not None:
+                        return round(float(fila[1]), 2)
+        except: pass
+
+    return None
+
 def obtener_macro_arg_critica():
     datos = {
         "reservas_m": None, "reservas_fecha": None, 
@@ -38,7 +70,7 @@ def obtener_macro_arg_critica():
             if d_1m: datos["riesgo_pais_1m"] = {"valor": round(float(d_1m["valor"])), "fecha": d_1m["fecha"]}
     except: pass
     
-    # 2. Reservas BCRA (Restaurada la serie probada 300.1_AP_ACT_RESTER_0_M_21 + respaldos)
+    # 2. Reservas BCRA
     try:
         r_gob = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=300.1_AP_ACT_RESTER_0_M_21&limit=1&sort=desc&format=json", timeout=8)
         if r_gob.status_code == 200:
@@ -99,31 +131,18 @@ def obtener_macro_arg_critica():
     
     # 6. Tasas (BADLAR, TNA Plazo Fijo 30D y TAMAR)
     try:
-        rb = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=89.2_TS_INTELAR_0_D_20&limit=1&sort=desc&format=json", timeout=8)
+        rb = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=89.2_TS_INTELAR_0_D_20&limit=5&sort=desc&format=json", timeout=8)
         if rb.status_code == 200:
-            val_b = rb.json().get("data", [])[0][1]
-            if val_b: datos["tasa_badlar"] = round(float(val_b), 2)
+            for fila in rb.json().get("data", []):
+                if len(fila) > 1 and fila[1] is not None:
+                    datos["tasa_badlar"] = round(float(fila[1]), 2)
+                    break
     except: pass
 
-    try:
-        rt = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazo-fijo", headers=HEADERS, timeout=8)
-        if rt.status_code == 200:
-            tasas_pf = []
-            for b in rt.json():
-                v = b.get("tnaClientes") or b.get("tnaNoClientes")
-                if v:
-                    vf = float(v)
-                    tasas_pf.append(vf * 100 if vf < 2 else vf)
-            if tasas_pf:
-                datos["tasa_tna"] = round(sum(tasas_pf) / len(tasas_pf), 2)
-    except: pass
-    if datos["tasa_tna"] is None:
-        try:
-            rt2 = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=89.2_TS_DEPOS_0_D_23&limit=1&sort=desc&format=json", timeout=8)
-            if rt2.status_code == 200:
-                val_t = rt2.json().get("data", [])[0][1]
-                if val_t: datos["tasa_tna"] = round(float(val_t), 2)
-        except: pass
+    datos["tasa_tna"] = obtener_tna_pf_robusta()
+    if datos["tasa_tna"] is None and datos["tasa_badlar"] is not None:
+        # Spread histórico Minorista vs BADLAR (-2.10 pp) si ambos endpoints de PF caen
+        datos["tasa_tna"] = round(datos["tasa_badlar"] - 2.10, 2)
 
     try:
         rtm = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/tamar", headers=HEADERS, timeout=8)
