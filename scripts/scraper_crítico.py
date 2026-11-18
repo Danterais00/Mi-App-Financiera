@@ -24,7 +24,9 @@ def extraer_datos_criticos():
             "merval_usd": None,
             "bono_al30": None,
             "bono_al30d": None,
-            "tasa_referencia": None,
+            "tasa_tamar": None,
+            "tasa_badlar": None,
+            "tasa_tna": None,
             "reservas_m": None,
             "dolares": []
         }
@@ -47,7 +49,7 @@ def extraer_datos_criticos():
 
     ccl_venta = next((d['venta'] for d in datos["macro_arg_critica"]["dolares"] if d['nombre'] == 'CCL'), None)
 
-    # 2. MERVAL REAL (ARS y USD) vía Endpoint Público Ámbito / Yahoo
+    # 2. MERVAL REAL (ARS y USD) vía Endpoint Público Ámbito
     try:
         url_ambito_merv = "https://mercados.ambito.com//indice/.merv/variacion"
         res_m = requests.get(url_ambito_merv, headers=HEADERS, timeout=10)
@@ -62,7 +64,7 @@ def extraer_datos_criticos():
     except Exception as e:
         print(f"Error Ámbito Merval: {e}")
 
-    # 3. BONO AL30 (ARS y USD) vía Endpoint Público Ámbito / Data912
+    # 3. BONO AL30 (ARS y USD) vía Ámbito / Data912
     try:
         url_al30 = "https://mercados.ambito.com//bonos/en-pesos/AL30/variacion"
         res_b = requests.get(url_al30, headers=HEADERS, timeout=10)
@@ -71,7 +73,6 @@ def extraer_datos_criticos():
             val_b = str(data_b.get("ultimo", "")).replace(".", "").replace(",", ".")
             if val_b:
                 precio_b = float(val_b)
-                # Estandarizar siempre a lámina de 100 VN
                 datos["macro_arg_critica"]["bono_al30"] = round(precio_b * 100, 2) if precio_b < 2000 else round(precio_b, 2)
     except Exception as e:
         print(f"Error Ámbito AL30: {e}")
@@ -102,15 +103,83 @@ def extraer_datos_criticos():
     except Exception as e:
         print(f"Error Reservas ArgentinaDatos: {e}")
 
-    # 5. TASA DE REFERENCIA DE MERCADO (TNA % - Plazo Fijo / BADLAR / TAMAR)
+    # 5. TASAS OFICIALES (TAMAR, BADLAR y TNA Plazo Fijo 30 días)
+    # 5A. BADLAR vía ArgentinaDatos
     try:
-        res_pf = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias", headers=HEADERS, timeout=10)
-        if res_pf.status_code == 200 and len(res_pf.json()) > 0:
-            val_t = float(res_pf.json()[-1].get("valor", 0))
-            if val_t > 0:
-                datos["macro_arg_critica"]["tasa_referencia"] = round(val_t * 100, 1) if val_t < 2 else round(val_t, 1)
+        res_badlar = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/badlar", headers=HEADERS, timeout=10)
+        if res_badlar.status_code == 200 and len(res_badlar.json()) > 0:
+            val_b = float(res_badlar.json()[-1].get("valor", 0))
+            if val_b > 0:
+                datos["macro_arg_critica"]["tasa_badlar"] = round(val_b * 100, 2) if val_b < 2 else round(val_b, 2)
     except Exception as e:
-        print(f"Error Tasa ArgentinaDatos: {e}")
+        print(f"Error BADLAR ArgentinaDatos: {e}")
+
+    # 5B. TNA Plazo Fijo 30 días vía ArgentinaDatos
+    try:
+        res_tna = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias", headers=HEADERS, timeout=10)
+        if res_tna.status_code == 200 and len(res_tna.json()) > 0:
+            val_t = float(res_tna.json()[-1].get("valor", 0))
+            if val_t > 0:
+                datos["macro_arg_critica"]["tasa_tna"] = round(val_t * 100, 2) if val_t < 2 else round(val_t, 2)
+    except Exception as e:
+        print(f"Error TNA ArgentinaDatos: {e}")
+
+    # 5C. TAMAR (y respaldos de BADLAR/TNA/Reservas) vía API Oficial BCRA v4.0
+    try:
+        res_vars = requests.get("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias", headers=HEADERS, verify=False, timeout=12)
+        if res_vars.status_code == 200:
+            payload = res_vars.json()
+            lista_vars = payload.get("results", payload) if isinstance(payload, dict) else payload
+            if isinstance(lista_vars, list):
+                for v in lista_vars:
+                    desc = str(v.get("descripcion", "")).lower()
+                    id_var = v.get("idVariable")
+                    if not id_var:
+                        continue
+                    
+                    # Buscar TAMAR (Bancos privados / total en TNA)
+                    if "tamar" in desc and "privados" in desc and "tna" in desc and datos["macro_arg_critica"]["tasa_tamar"] is None:
+                        r_tamar = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id_var}?limit=1", headers=HEADERS, verify=False, timeout=10)
+                        if r_tamar.status_code == 200:
+                            res_list = r_tamar.json().get("results", [])
+                            if res_list:
+                                datos["macro_arg_critica"]["tasa_tamar"] = round(float(res_list[-1]["valor"]), 2)
+                    
+                    # Respaldo BADLAR si falló ArgentinaDatos
+                    if "badlar" in desc and "privados" in desc and "tna" in desc and datos["macro_arg_critica"]["tasa_badlar"] is None:
+                        r_bad = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id_var}?limit=1", headers=HEADERS, verify=False, timeout=10)
+                        if r_bad.status_code == 200:
+                            res_list = r_bad.json().get("results", [])
+                            if res_list:
+                                datos["macro_arg_critica"]["tasa_badlar"] = round(float(res_list[-1]["valor"]), 2)
+
+                    # Respaldo Reservas si falló ArgentinaDatos
+                    if "reservas internacionales" in desc and datos["macro_arg_critica"]["reservas_m"] is None:
+                        r_res = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{id_var}?limit=1", headers=HEADERS, verify=False, timeout=10)
+                        if r_res.status_code == 200:
+                            res_list = r_res.json().get("results", [])
+                            if res_list:
+                                datos["macro_arg_critica"]["reservas_m"] = round(float(res_list[-1]["valor"]))
+    except Exception as e:
+        print(f"Error API BCRA v4.0: {e}")
+
+    # Si TAMAR no estuvo disponible por descripción específica, intentar búsqueda amplia por "tamar" en BCRA
+    if datos["macro_arg_critica"]["tasa_tamar"] is None:
+        try:
+            res_vars = requests.get("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias", headers=HEADERS, verify=False, timeout=10)
+            if res_vars.status_code == 200:
+                payload = res_vars.json()
+                lista_vars = payload.get("results", payload) if isinstance(payload, dict) else payload
+                for v in lista_vars:
+                    if "tamar" in str(v.get("descripcion", "")).lower():
+                        r_tamar = requests.get(f"https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/{v['idVariable']}?limit=1", headers=HEADERS, verify=False, timeout=10)
+                        if r_tamar.status_code == 200 and r_tamar.json().get("results"):
+                            val_tm = float(r_tamar.json()["results"][-1]["valor"])
+                            if 5 <= val_tm <= 150: # Validar que sea TNA y no TEA
+                                datos["macro_arg_critica"]["tasa_tamar"] = round(val_tm, 2)
+                                break
+        except Exception:
+            pass
 
     # 6. COTIZACIONES MERVAL (Screener Técnico y Fundamental Panel Líder)
     lider = ["ALUA.BA", "BBAR.BA", "BMA.BA", "BYMA.BA", "CEPU.BA", "COME.BA", "CRES.BA", 
@@ -157,10 +226,9 @@ def extraer_datos_criticos():
     except Exception as e:
         print(f"Error descargando Merval: {e}")
 
-    # Respaldo dinámico para Merval ARS si Ámbito falló (usando canasta ponderada real de líderes, nunca estático)
+    # Respaldo dinámico para Merval ARS si Ámbito falló
     if datos["macro_arg_critica"]["merval_ars"] is None and len(datos["cotizaciones_merval"]) > 0:
         try:
-            # Factor calibrado con la ponderación actual del índice S&P Merval
             p_ggal = datos["cotizaciones_merval"].get("GGAL.BA", {}).get("precio", 0)
             p_ypfd = datos["cotizaciones_merval"].get("YPFD.BA", {}).get("precio", 0)
             p_pamp = datos["cotizaciones_merval"].get("PAMP.BA", {}).get("precio", 0)
