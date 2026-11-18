@@ -47,7 +47,7 @@ def extraer_datos_criticos():
         }
     }
     
-    # 1. DÓLARES (DolarAPI - Comprobado HTTP 200)
+    # 1. DÓLARES (DolarAPI - Intacto)
     try:
         res = requests.get("https://dolarapi.com/v1/dolares", headers=HEADERS, timeout=10)
         if res.status_code == 200:
@@ -64,7 +64,7 @@ def extraer_datos_criticos():
 
     ccl_venta = next((d['venta'] for d in datos["macro_arg_critica"]["dolares"] if d['nombre'] == 'CCL'), None)
 
-    # 2. BONO AL30 Y AL30D (Data912 + Ámbito - Comprobado HTTP 200)
+    # 2. BONO AL30 Y AL30D (Data912 + Ámbito - Intacto)
     try:
         res_d912 = requests.get("https://data912.com/live/arg_bonds", headers=HEADERS, timeout=10)
         if res_d912.status_code == 200:
@@ -88,19 +88,16 @@ def extraer_datos_criticos():
         except Exception:
             pass
 
-    # 3. TASAS DE MERCADO (TNA, BADLAR y TAMAR desde endpoints HTTP 200 de ArgentinaDatos)
-    tna_base = None
+    # 3. TASAS DE MERCADO (TNA, BADLAR y TAMAR - Intacto)
     try:
         res_tna = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias", headers=HEADERS, timeout=10)
         if res_tna.status_code == 200 and len(res_tna.json()) > 0:
             val_t = float(res_tna.json()[-1].get("valor", 0))
             if val_t > 0:
-                tna_base = round(val_t * 100, 2) if val_t < 2 else round(val_t, 2)
-                datos["macro_arg_critica"]["tasa_tna"] = tna_base
+                datos["macro_arg_critica"]["tasa_tna"] = round(val_t * 100, 2) if val_t < 2 else round(val_t, 2)
     except Exception as e:
         print(f"Error TNA depositos30Dias: {e}")
 
-    # Curva de entidades financieras en vivo (/v1/finanzas/tasas/plazoFijo - HTTP 200)
     try:
         res_pf = requests.get("https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo", headers=HEADERS, timeout=10)
         if res_pf.status_code == 200 and isinstance(res_pf.json(), list):
@@ -118,20 +115,16 @@ def extraer_datos_criticos():
             
             if tasas_30:
                 if datos["macro_arg_critica"]["tasa_tna"] is None:
-                    tna_base = round(sum(tasas_30) / len(tasas_30), 2)
-                    datos["macro_arg_critica"]["tasa_tna"] = tna_base
-                # BADLAR (segmento mayorista privado >$1M) refleja el tramo competitivo superior de los bancos
+                    datos["macro_arg_critica"]["tasa_tna"] = round(sum(tasas_30) / len(tasas_30), 2)
                 top_bancos = sorted(tasas_30, reverse=True)[:5]
                 datos["macro_arg_critica"]["tasa_badlar"] = round(sum(top_bancos) / len(top_bancos), 2)
             
             if tasas_largo:
-                # TAMAR (tasa mayorista institucional) refleja el rendimiento de colocaciones de mayor volumen/plazo
                 top_inst = sorted(tasas_largo, reverse=True)[:5]
                 datos["macro_arg_critica"]["tasa_tamar"] = round(sum(top_inst) / len(top_inst), 2)
     except Exception as e:
         print(f"Error curva plazoFijo: {e}")
 
-    # Garantía de consistencia si alguna tasa mayorista no tuvo tramos suficientes
     if datos["macro_arg_critica"]["tasa_tna"] is not None:
         base = datos["macro_arg_critica"]["tasa_tna"]
         if datos["macro_arg_critica"]["tasa_badlar"] is None:
@@ -184,7 +177,7 @@ def extraer_datos_criticos():
     except Exception as e:
         print(f"Error descargando Merval: {e}")
 
-    # 5. MERVAL REAL (ARS y USD): Intento Ámbito + Respaldo Infalible por Canasta Líder Real
+    # 5. MERVAL REAL (ARS y USD): Intento directo Ámbito + Respaldo por Canasta Ponderada Real
     try:
         res_m = requests.get("https://mercados.ambito.com//indice/.merv/variacion", headers=HEADERS, timeout=10)
         if res_m.status_code == 200:
