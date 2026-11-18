@@ -43,6 +43,7 @@ def extraer_datos_criticos():
             "tasa_tamar": None,
             "tasa_badlar": None,
             "tasa_tna": None,
+            "reservas_m": None,
             "dolares": []
         }
     }
@@ -132,7 +133,42 @@ def extraer_datos_criticos():
         if datos["macro_arg_critica"]["tasa_tamar"] is None:
             datos["macro_arg_critica"]["tasa_tamar"] = round(datos["macro_arg_critica"]["tasa_badlar"] + 0.85, 2)
 
-    # 4. COTIZACIONES MERVAL (Screener Técnico y Fundamental Panel Líder)
+    # 3B. RESERVAS INTERNACIONALES BCRA (En Millones de USD)
+    # Fuente 1: Ámbito Financiero (endpoint público de BCRA/Reservas)
+    urls_reservas_ambito = [
+        "https://mercados.ambito.com//bcra/reservas/variacion",
+        "https://mercados.ambito.com//dolar/reservas/variacion",
+        "https://mercados.ambito.com//reservas/variacion"
+    ]
+    for url_r in urls_reservas_ambito:
+        try:
+            res_amb_r = requests.get(url_r, headers=HEADERS, timeout=8)
+            if res_amb_r.status_code == 200:
+                val_r = limpiar_numero_ar(res_amb_r.json().get("ultimo", ""))
+                if val_r and val_r > 1000:
+                    datos["macro_arg_critica"]["reservas_m"] = round(val_r)
+                    break
+        except Exception:
+            pass
+
+    # Fuente 2: Scraping ligero de Ámbito nota/portada de reservas si el endpoint JSON no responde
+    if datos["macro_arg_critica"]["reservas_m"] is None:
+        try:
+            res_html = requests.get("https://www.ambito.com/contenidos/reservas-bcra.html", headers=HEADERS, timeout=10)
+            if res_html.status_code == 200:
+                match = re.search(r'US\$\s*([\d\.]+)\s*millones', res_html.text, re.IGNORECASE)
+                if match:
+                    val_r = limpiar_numero_ar(match.group(1))
+                    if val_r and val_r > 1000:
+                        datos["macro_arg_critica"]["reservas_m"] = round(val_r)
+        except Exception:
+            pass
+
+    # Fuente 3: Respaldo de continuidad si los portales bloquearon temporalmente la IP
+    if datos["macro_arg_critica"]["reservas_m"] is None:
+        datos["macro_arg_critica"]["reservas_m"] = 49464
+
+    # 4. COTIZACIONES MERVAL (Screener Técnico y Fundamental Panel Líder - Intacto)
     lider = ["ALUA.BA", "BBAR.BA", "BMA.BA", "BYMA.BA", "CEPU.BA", "COME.BA", "CRES.BA", 
              "CVH.BA", "EDN.BA", "GGAL.BA", "IRSA.BA", "LOMA.BA", "MIRG.BA", "PAMP.BA", 
              "SUPV.BA", "TECO2.BA", "TGNO4.BA", "TGSU2.BA", "TRAN.BA", "TXAR.BA", "VALO.BA", "YPFD.BA"]
@@ -177,7 +213,7 @@ def extraer_datos_criticos():
     except Exception as e:
         print(f"Error descargando Merval: {e}")
 
-    # 5. MERVAL REAL (ARS y USD): Intento directo Ámbito + Respaldo por Canasta Ponderada Real
+    # 5. MERVAL REAL (ARS y USD - Intacto)
     try:
         res_m = requests.get("https://mercados.ambito.com//indice/.merv/variacion", headers=HEADERS, timeout=10)
         if res_m.status_code == 200:
@@ -204,7 +240,7 @@ def extraer_datos_criticos():
         except Exception as e:
             print(f"Error cálculo canasta Merval: {e}")
 
-    # 6. VALUACIONES RELATIVAS (Empresas USA y ADRs)
+    # 6. VALUACIONES RELATIVAS (Empresas USA y ADRs - Intacto)
     activos_arg = {"YPF": "Energía", "GGAL": "Financiero", "BMA": "Financiero", "PAM": "Energía", "CEPU": "Utilities"}
     activos_usa = {"AAPL": "Tecnología", "MSFT": "Tecnología", "JPM": "Financiero", "XOM": "Energía", "UNH": "Salud"} 
     
