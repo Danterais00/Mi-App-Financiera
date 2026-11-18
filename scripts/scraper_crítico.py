@@ -9,7 +9,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*'
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8',
+    'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8'
 }
 
 def limpiar_numero_ar(texto):
@@ -27,10 +28,104 @@ def limpiar_numero_ar(texto):
     except ValueError:
         return None
 
+def probar_fuentes_reservas():
+    """Prueba 10 fuentes públicas reales desde GitHub Actions y devuelve el valor real + log de diagnóstico."""
+    diagnostico = {}
+    reservas_detectadas = None
+    fuente_ganadora = None
+
+    # 1. API Oficial Datos Argentina (datos.gob.ar - Series de Tiempo BCRA)
+    series_datos_gob = [
+        ("datos_gob_174", "https://apis.datos.gob.ar/series/api/series/?ids=174.1_RR_II_0_0_24&limit=1&sort=desc&format=json"),
+        ("datos_gob_92", "https://apis.datos.gob.ar/series/api/series/?ids=92.1_RII_0_0_20&limit=1&sort=desc&format=json"),
+        ("datos_gob_116", "https://apis.datos.gob.ar/series/api/series/?ids=116.4_IRR_0_0_27&limit=1&sort=desc&format=json")
+    ]
+    for nombre, url in series_datos_gob:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=10)
+            diagnostico[nombre] = f"HTTP {r.status_code}"
+            if r.status_code == 200:
+                js = r.json()
+                data_rows = js.get("data", [])
+                if data_rows and len(data_rows[0]) >= 2 and data_rows[0][1] is not None:
+                    val = float(data_rows[0][1])
+                    fecha = data_rows[0][0]
+                    diagnostico[f"{nombre}_dato"] = f"{val} ({fecha})"
+                    if reservas_detectadas is None and val > 1000:
+                        reservas_detectadas = round(val)
+                        fuente_ganadora = f"{nombre} ({fecha})"
+        except Exception as e:
+            diagnostico[nombre] = f"ERR: {type(e).__name__}"
+
+    # 2. Ámbito Financiero (Endpoints JSON públicos)
+    endpoints_ambito = [
+        ("ambito_bcra_res", "https://mercados.ambito.com//bcra/reservas/variacion"),
+        ("ambito_res", "https://mercados.ambito.com//reservas/variacion"),
+        ("ambito_dolar_res", "https://mercados.ambito.com//dolar/reservas/variacion"),
+        ("ambito_bcra_general", "https://mercados.ambito.com//bcra/variacion")
+    ]
+    for nombre, url in endpoints_ambito:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=8)
+            diagnostico[nombre] = f"HTTP {r.status_code}"
+            if r.status_code == 200:
+                js = r.json()
+                val = limpiar_numero_ar(js.get("ultimo", ""))
+                diagnostico[f"{nombre}_dato"] = str(js)[:120]
+                if reservas_detectadas is None and val and val > 1000:
+                    reservas_detectadas = round(val)
+                    fuente_ganadora = nombre
+        except Exception as e:
+            diagnostico[nombre] = f"ERR: {type(e).__name__}"
+
+    # 3. FRED St. Louis CSV directo (sin API key - TRESEGARM052N en millones de USD)
+    try:
+        r_fred = requests.get("https://fred.stlouisfed.org/graph/fredgraph.csv?id=TRESEGARM052N", headers=HEADERS, timeout=10)
+        diagnostico["fred_csv"] = f"HTTP {r_fred.status_code}"
+        if r_fred.status_code == 200:
+            lineas = [l.strip() for l in r_fred.text.splitlines() if l.strip() and not l.startswith("DATE")]
+            validas = [l for l in lineas if not l.endswith(".")]
+            if validas:
+                ultima = validas[-1].split(",")
+                val_fred = float(ultima[1])
+                diagnostico["fred_csv_dato"] = f"{val_fred} ({ultima[0]})"
+                if reservas_detectadas is None and val_fred > 1000:
+                    reservas_detectadas = round(val_fred)
+                    fuente_ganadora = f"FRED ({ultima[0]})"
+    except Exception as e:
+        diagnostico["fred_csv"] = f"ERR: {type(e).__name__}"
+
+    # 4. Scraping HTML directo en portales argentinos (Ámbito, Cronista, InfoDolar)
+    portales_html = [
+        ("ambito_html", "https://www.ambito.com/contenidos/reservas-bcra.html", r'US\$\s*([\d\.]+)\s*millones'),
+        ("cronista_html", "https://www.cronista.com/MercadosOnline/monedas.html", r'Reservas[^0-9]{0,40}([\d\.]{5,7})'),
+        ("infodolar_html", "https://www.infodolar.com/", r'Reservas[^0-9]{0,50}([\d\.]{5,7})')
+    ]
+    for nombre, url, patron in portales_html:
+        try:
+            r = requests.get(url, headers=HEADERS, verify=False, timeout=10)
+            diagnostico[nombre] = f"HTTP {r.status_code}"
+            if r.status_code == 200:
+                m = re.search(patron, r.text, re.IGNORECASE)
+                if m:
+                    val_h = limpiar_numero_ar(m.group(1))
+                    diagnostico[f"{nombre}_dato"] = str(val_h)
+                    if reservas_detectadas is None and val_h and 10000 <= val_h <= 150000:
+                        reservas_detectadas = round(val_h)
+                        fuente_ganadora = nombre
+        except Exception as e:
+            diagnostico[nombre] = f"ERR: {type(e).__name__}"
+
+    diagnostico["fuente_ganadora"] = fuente_ganadora
+    return reservas_detectadas, diagnostico
+
 def extraer_datos_criticos():
     print("Iniciando extracción de datos críticos desde GitHub Actions...")
+    reservas_val, diag_reservas = probar_fuentes_reservas()
+
     datos = {
         "ultima_actualizacion": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "diagnostico_reservas": diag_reservas,
         "dolar_futuro_rofex": [],
         "cotizaciones_merval": {},
         "valuaciones_usa": {},
@@ -43,7 +138,7 @@ def extraer_datos_criticos():
             "tasa_tamar": None,
             "tasa_badlar": None,
             "tasa_tna": None,
-            "reservas_m": None,
+            "reservas_m": reservas_val,
             "dolares": []
         }
     }
@@ -132,41 +227,6 @@ def extraer_datos_criticos():
             datos["macro_arg_critica"]["tasa_badlar"] = round(base + 1.25, 2)
         if datos["macro_arg_critica"]["tasa_tamar"] is None:
             datos["macro_arg_critica"]["tasa_tamar"] = round(datos["macro_arg_critica"]["tasa_badlar"] + 0.85, 2)
-
-    # 3B. RESERVAS INTERNACIONALES BCRA (En Millones de USD)
-    # Fuente 1: Ámbito Financiero (endpoint público de BCRA/Reservas)
-    urls_reservas_ambito = [
-        "https://mercados.ambito.com//bcra/reservas/variacion",
-        "https://mercados.ambito.com//dolar/reservas/variacion",
-        "https://mercados.ambito.com//reservas/variacion"
-    ]
-    for url_r in urls_reservas_ambito:
-        try:
-            res_amb_r = requests.get(url_r, headers=HEADERS, timeout=8)
-            if res_amb_r.status_code == 200:
-                val_r = limpiar_numero_ar(res_amb_r.json().get("ultimo", ""))
-                if val_r and val_r > 1000:
-                    datos["macro_arg_critica"]["reservas_m"] = round(val_r)
-                    break
-        except Exception:
-            pass
-
-    # Fuente 2: Scraping ligero de Ámbito nota/portada de reservas si el endpoint JSON no responde
-    if datos["macro_arg_critica"]["reservas_m"] is None:
-        try:
-            res_html = requests.get("https://www.ambito.com/contenidos/reservas-bcra.html", headers=HEADERS, timeout=10)
-            if res_html.status_code == 200:
-                match = re.search(r'US\$\s*([\d\.]+)\s*millones', res_html.text, re.IGNORECASE)
-                if match:
-                    val_r = limpiar_numero_ar(match.group(1))
-                    if val_r and val_r > 1000:
-                        datos["macro_arg_critica"]["reservas_m"] = round(val_r)
-        except Exception:
-            pass
-
-    # Fuente 3: Respaldo de continuidad si los portales bloquearon temporalmente la IP
-    if datos["macro_arg_critica"]["reservas_m"] is None:
-        datos["macro_arg_critica"]["reservas_m"] = 49464
 
     # 4. COTIZACIONES MERVAL (Screener Técnico y Fundamental Panel Líder - Intacto)
     lider = ["ALUA.BA", "BBAR.BA", "BMA.BA", "BYMA.BA", "CEPU.BA", "COME.BA", "CRES.BA", 
