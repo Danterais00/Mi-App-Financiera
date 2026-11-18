@@ -19,7 +19,7 @@ from data.news import (
     obtener_eventos_macro_eeuu
 )
 
-APP_VERSION = "v15.1 - CIO Engine (Full Restored)"
+APP_VERSION = "v15.3 - CIO Engine (Full Advisors Alignment)"
 inyectar_css()
 
 if 'datos_cargados' not in st.session_state:
@@ -201,30 +201,30 @@ if menu_seccion == "Noticias de Mercado":
                 for ev in eventos_eeuu: html_ev += f"<tr><td class='col-header' style='text-align: left;'>{ev['Evento']}</td><td>{ev['Fecha/Hora']}</td><td>{ev['Proyección']}</td><td>{ev['Actual']}</td></tr>"
                 html_ev += '</table></div>'
                 st.markdown(html_ev, unsafe_allow_html=True)
+            else:
+                st.info("No hay eventos de alto impacto programados para los próximos días.")
 
     with tab_n2:
-        st.markdown("### Mercado y Valuaciones Relativas")
-        with st.spinner("Descargando P/E, ROE y Momentum Histórico..."):
+        st.markdown("### Mercado y Valuaciones Relativas (Métricas Avanzadas)")
+        with st.spinner("Descargando P/E, Forward P/E, EV/EBITDA, FCF Yield, Deuda y Momentum..."):
             val_data = obtener_valuaciones_mercado()
             def render_tabla_lideres(datos):
                 if not datos: return "<p style='color:#8ba1b6;'>Ejecuta el actualizador en GitHub Actions para poblar esta tabla.</p>"
-                h = '<div class="table-container"><table class="custom-table" style="width: 100%; font-size: 0.9rem;">'
-                h += '<tr><th style="text-align:left;">Ticker</th><th style="text-align:left;">Sector</th><th>P/E</th><th>ROE</th><th>1M</th><th>6M</th><th>1Y</th></tr>'
+                h = '<div class="table-container"><table class="custom-table" style="width: 100%; font-size: 0.85rem;">'
+                h += '<tr><th style="text-align:left;">Ticker</th><th style="text-align:left;">Sector</th><th>P/E</th><th>Fwd P/E</th><th>EV/EBITDA</th><th>FCF Yield</th><th>Debt/Eq</th><th>ROE</th><th>1M</th><th>1Y</th></tr>'
                 for d in datos:
                     def fc(v):
                         if v is None: return "<span style='color:#8ba1b6;'>N/D</span>"
                         try: return f"<span style='color:{'#2ecca6' if float(v)>0 else '#ff6b6b'}; font-weight:bold;'>{float(v):+.1f}%</span>"
                         except: return "<span style='color:#8ba1b6;'>N/D</span>"
-                    h += f"<tr><td class='col-header' style='text-align:left;'>{d['Activo']}</td><td style='text-align:left;'>{d['Sector']}</td><td>{d['P/E']}</td><td>{d['ROE (%)']}</td><td>{fc(d.get('1M'))}</td><td>{fc(d.get('6M'))}</td><td>{fc(d.get('1Y'))}</td></tr>"
+                    h += f"<tr><td class='col-header' style='text-align:left;'>{d['Activo']}</td><td style='text-align:left;'>{d['Sector']}</td><td>{d['P/E']}</td><td>{d.get('Forward P/E','N/D')}</td><td>{d.get('EV/EBITDA','N/D')}</td><td>{d.get('FCF Yield','N/D')}</td><td>{d.get('Debt/Equity','N/D')}</td><td>{d['ROE (%)']}</td><td>{fc(d.get('1M'))}</td><td>{fc(d.get('1Y'))}</td></tr>"
                 return h + '</table></div>'
 
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("🇺🇸 Líderes GICS (Estados Unidos)")
-                st.markdown(render_tabla_lideres(val_data.get("USA", [])), unsafe_allow_html=True)
-            with c2:
-                st.subheader("🇦🇷 Principales ADRs (Argentina)")
-                st.markdown(render_tabla_lideres(val_data.get("ARG", [])), unsafe_allow_html=True)
+            st.subheader("🇺🇸 Líderes GICS (Estados Unidos)")
+            st.markdown(render_tabla_lideres(val_data.get("USA", [])), unsafe_allow_html=True)
+            st.write("")
+            st.subheader("🇦🇷 Principales ADRs (Argentina)")
+            st.markdown(render_tabla_lideres(val_data.get("ARG", [])), unsafe_allow_html=True)
 
     with tab_n3: 
         st.markdown("### Sectores GICS (Estados Unidos)")
@@ -249,7 +249,7 @@ if menu_seccion == "Noticias de Mercado":
             panel_filtro = "Principal" if "Líder" in panel_seleccionado else "General"
             
             hm = '<div class="table-container"><table class="custom-table" style="width: 100%;">'
-            hm += '<tr><th style="text-align: left;">Ticker</th><th>Precio (ARS)</th><th>P/E</th><th>P/BV</th><th>RSI</th><th>Volumen (ARS)</th><th>Lectura del Algoritmo</th></tr>'
+            hm += '<tr><th style="text-align: left;">Ticker</th><th>Precio (ARS)</th><th>P/E</th><th>P/BV</th><th>RSI</th><th>Volumen 20d (ARS)</th><th>Lectura del Algoritmo</th></tr>'
             for m in dm:
                 if m['Panel'] == panel_filtro:
                     pe_s = f"{m['P/E']:.2f}" if isinstance(m['P/E'], (int, float)) else "N/D"
@@ -266,14 +266,23 @@ if menu_seccion == "Noticias de Mercado":
     with tab_n5:
         st.markdown("### 🤖 Nivel 5: Motor de Recomendación IA")
         if st.button("Generar Recomendaciones Automáticas", type="primary"):
-            with st.spinner("La IA está compilando el contexto financiero (Macro + Sectores + Oportunidades Merval)..."):
-                st.markdown(generar_analisis_ia(obtener_macro_argentina(), obtener_macro_internacional(), obtener_datos_gics()), unsafe_allow_html=True)
+            with st.spinner("La IA está compilando el contexto financiero (Perfil + Cartera + Macro + Sectores + Merval)..."):
+                tickers_activos = st.session_state.get("tickers", []) if st.session_state.get("datos_cargados") else []
+                st.markdown(
+                    generar_analisis_ia(
+                        obtener_macro_argentina(), 
+                        obtener_macro_internacional(), 
+                        obtener_datos_gics(),
+                        estrategia=modo_estrategia,
+                        tickers_cartera=tickers_activos
+                    ), 
+                    unsafe_allow_html=True
+                )
 
     with tab_noticias:
         render_noticias_cartera()
 
 else:
-    # --- RESTO DEL DASHBOARD (5 Secciones Restauradas) ---
     if st.session_state.get("datos_cargados"):
         dft = st.session_state.df_total
         if menu_seccion == "Datos y Valuación":
