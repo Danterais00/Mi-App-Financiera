@@ -1,5 +1,5 @@
 {
-    "ultima_actualizacion": "2026-11-18 14:06:55",
+    "ultima_actualizacion": "2026-11-18 14:16:53",
     "dolar_futuro_rofex": [],
     "cotizaciones_merval": {
         "ALUA.BA": {
@@ -31,7 +31,7 @@
             "sma20": 214.0875,
             "rsi": 23.94,
             "volumen_m": 5.02,
-            "pe": 7.75,
+            "pe": 7.89,
             "pbv": 2.0
         },
         "CEPU.BA": {
@@ -57,14 +57,6 @@
             "volumen_m": 0.28,
             "pe": 6.82,
             "pbv": 0.71
-        },
-        "CVH.BA": {
-            "precio": 8610.0,
-            "sma20": 8858.0,
-            "rsi": 37.07,
-            "volumen_m": 0.02,
-            "pe": 4.68,
-            "pbv": 0.43
         },
         "EDN.BA": {
             "precio": 1116.0,
@@ -103,7 +95,7 @@
             "sma20": 1761.5,
             "rsi": 41.09,
             "volumen_m": 0.05,
-            "pe": 54.19,
+            "pe": 54.52,
             "pbv": 0.75
         },
         "PAMP.BA": {
@@ -111,7 +103,7 @@
             "sma20": 4647.75,
             "rsi": 32.58,
             "volumen_m": 1.0,
-            "pe": 5.87,
+            "pe": 6.06,
             "pbv": 0.91
         },
         "SUPV.BA": {
@@ -151,7 +143,7 @@
             "sma20": 2135.5,
             "rsi": 18.47,
             "volumen_m": 0.56,
-            "pe": 2.78,
+            "pe": 2.71,
             "pbv": 0.79
         },
         "TXAR.BA": {
@@ -404,8 +396,8 @@
     "macro_arg_critica": {
         "merval_ars": 2855012,
         "merval_usd": 1681,
-        "bono_al30": 82440.0,
-        "bono_al30d": 51.48,
+        "bono_al30": 82510.0,
+        "bono_al30d": 51.49,
         "tasa_tamar": null,
         "tasa_badlar": null,
         "tasa_tna": 21.94,
