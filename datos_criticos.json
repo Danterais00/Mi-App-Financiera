@@ -1,5 +1,5 @@
 {
-    "ultima_actualizacion": "2026-11-18 00:08:57",
+    "ultima_actualizacion": "2026-11-18 00:30:12",
     "dolar_futuro_rofex": [
         {
             "vencimiento": "Ene-25",
@@ -20,7 +20,7 @@
             "sma20": 6307.25,
             "rsi": 32.33,
             "volumen_m": 0.24,
-            "pe": 8.47,
+            "pe": 9.11,
             "pbv": 0.82
         },
         "BMA.BA": {
@@ -36,7 +36,7 @@
             "sma20": 214.0875,
             "rsi": 23.94,
             "volumen_m": 4.92,
-            "pe": 7.74,
+            "pe": 7.39,
             "pbv": 2.0
         },
         "CEPU.BA": {
@@ -92,7 +92,7 @@
             "sma20": 2081.6279113769533,
             "rsi": 41.86,
             "volumen_m": 0.08,
-            "pe": 7.69,
+            "pe": 8.01,
             "pbv": 0.7
         },
         "LOMA.BA": {
@@ -108,15 +108,15 @@
             "sma20": 1761.5,
             "rsi": 41.09,
             "volumen_m": 0.05,
-            "pe": 100.54,
-            "pbv": 0.62
+            "pe": 50.99,
+            "pbv": 0.75
         },
         "PAMP.BA": {
             "precio": 4235.0,
             "sma20": 4647.75,
             "rsi": 32.58,
             "volumen_m": 0.99,
-            "pe": 5.87,
+            "pe": 5.88,
             "pbv": 0.91
         },
         "SUPV.BA": {
@@ -132,7 +132,7 @@
             "sma20": 3676.25,
             "rsi": 42.82,
             "volumen_m": 0.17,
-            "pe": 7.78,
+            "pe": 7.99,
             "pbv": 0.87
         },
         "TGNO4.BA": {
@@ -148,7 +148,7 @@
             "sma20": 7818.0,
             "rsi": 33.61,
             "volumen_m": 0.21,
-            "pe": 8.57,
+            "pe": 9.12,
             "pbv": 1.22
         },
         "TRAN.BA": {
@@ -156,8 +156,8 @@
             "sma20": 2135.5,
             "rsi": 18.47,
             "volumen_m": 0.55,
-            "pe": 2.77,
-            "pbv": 0.96
+            "pe": 2.7,
+            "pbv": 0.79
         },
         "TXAR.BA": {
             "precio": 685.5,
@@ -172,7 +172,7 @@
             "sma20": 521.675,
             "rsi": 48.52,
             "volumen_m": 1.36,
-            "pe": 9.01,
+            "pe": 8.99,
             "pbv": 1.33
         },
         "YPFD.BA": {
@@ -204,6 +204,14 @@
             "sma20": 212.2,
             "rsi": 19.51,
             "volumen_m": 0.35,
+            "pe": null,
+            "pbv": null
+        },
+        "BOLT.BA": {
+            "precio": 62.79999923706055,
+            "sma20": 63.12999954223633,
+            "rsi": 49.29,
+            "volumen_m": 0.38,
             "pe": null,
             "pbv": null
         },
@@ -397,5 +405,29 @@
             "P/E": 4.78,
             "ROE (%)": "18.4%"
         }
+    },
+    "macro_arg_critica": {
+        "merval_ars": null,
+        "merval_usd": null,
+        "bono_al30": null,
+        "tasa_bcra": null,
+        "reservas": null,
+        "dolares": [
+            {
+                "nombre": "Oficial",
+                "compra": 1525,
+                "venta": 1575
+            },
+            {
+                "nombre": "MEP",
+                "compra": 1591.5,
+                "venta": 1603.3
+            },
+            {
+                "nombre": "CCL",
+                "compra": 1694.2,
+                "venta": 1697.2
+            }
+        ]
     }
 }
