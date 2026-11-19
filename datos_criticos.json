@@ -1,98 +1,25 @@
 {
-    "timestamp": "2026-11-19 00:36:59",
-    "fuentes": {
-        "1_catalogo_datos_gob": {
-            "status": "OK",
-            "series": [
-                {
-                    "id": "182.1_VARIACION_LES_0_M_43",
-                    "titulo": "variacion_contable_reservas_internacionales",
-                    "ultimo_dato_fecha": "2026-08-01",
-                    "frecuencia": "R/P1M"
-                },
-                {
-                    "id": "300.1_AP_ACT_RESTER_0_M_21",
-                    "titulo": "ap_act_reservas_inter",
-                    "ultimo_dato_fecha": "2025-10-01",
-                    "frecuencia": "R/P1M"
-                },
-                {
-                    "id": "300.2_AP_ACT_RESTER_0_A_21",
-                    "titulo": "ap_act_reservas_inter",
-                    "ultimo_dato_fecha": "2024-01-01",
-                    "frecuencia": "R/P1Y"
-                },
-                {
-                    "id": "86.1_RIB_1991_A_22",
-                    "titulo": "reservas_internac_bcra",
-                    "ultimo_dato_fecha": "2001-01-01",
-                    "frecuencia": "R/P1Y"
-                },
-                {
-                    "id": "300.1_AP_ACT_RESTER_0_M_59",
-                    "titulo": "ap_act_reservas_inter_instrumentos_derivados_reservas_inter",
-                    "ultimo_dato_fecha": "2025-10-01",
-                    "frecuencia": "R/P1M"
-                },
-                {
-                    "id": "174.1_RRVAS_IDOS_0_0_36",
-                    "titulo": "reservas_internacionales_bcra_saldos",
-                    "ultimo_dato_fecha": "2026-04-01",
-                    "frecuencia": "R/P1M"
-                },
-                {
-                    "id": "182.1_VARIACION_NES_0_M_48",
-                    "titulo": "variacion_reservas_internacionales_transacciones",
-                    "ultimo_dato_fecha": "2026-08-01",
-                    "frecuencia": "R/P1M"
-                },
-                {
-                    "id": "300.2_AP_ACT_RESTER_0_A_59",
-                    "titulo": "ap_act_reservas_inter_instrumentos_derivados_reservas_inter",
-                    "ultimo_dato_fecha": "2024-01-01",
-                    "frecuencia": "R/P1Y"
-                },
-                {
-                    "id": "335.1_VARIACION_VAS__18",
-                    "titulo": "variacion_reservas",
-                    "ultimo_dato_fecha": "2009-01-01",
-                    "frecuencia": "R/P1Y"
-                },
-                {
-                    "id": "300.2_AP_ACT_RESSAS_0_A_29",
-                    "titulo": "ap_act_reservas_inter_divisas",
-                    "ultimo_dato_fecha": "2024-01-01",
-                    "frecuencia": "R/P1Y"
-                }
-            ]
+    "timestamp": "2026-11-19 00:43:55",
+    "pruebas": {
+        "bcra_v4_monetarias": {
+            "status": 200,
+            "body": "{\"status\":200,\"metadata\":{\"resultset\":{\"count\":7599,\"offset\":0,\"limit\":2}},\"results\":[{\"idVariable\":1,\"detalle\":[{\"fecha\":\"2026-11-16\",\"valor\":49474.00000000000},{\"fecha\":\"2026-11-13\",\"valor\":49600.00000000000}]}]}"
         },
-        "2_bcra_0": {
-            "status": 410,
-            "body": "{\"status\":410,\"errorMessages\":[\"Método correspondiente a la v2 ha sido deprecado.\"]}"
+        "bcra_v4_listado": {
+            "status": 200,
+            "body": "{\"status\":200,\"metadata\":{\"resultset\":{\"count\":1610,\"offset\":0,\"limit\":1000}},\"results\":[{\"idVariable\":1,\"descripcion\":\"Reservas internacionales\",\"categoria\":\"Principales Variables\",\"tipoSerie\":\"Saldos\",\"periodicidad\":\"D\",\"unidadExpresion\":\"En millones de USD\",\"moneda\":\"ME\",\"primerFechaInformada\":\"1996-01-03\",\"ultFechaInformada\":\"2026-11-16\",\"ultValorInformado\":49474.00000000000},{\"idVariable\":4,\"descripcion\":\"Tipo de cambio minorista (promedio v"
         },
-        "2_bcra_1": {
-            "status": 410,
-            "body": "{\"status\":410,\"errorMessages\":[\"Método correspondiente a la v3 ha sido deprecado.\"]}"
-        },
-        "3_alt_0": {
-            "url": "https://api.argentinadatos.com/v1/finanzas/indices/reservas",
+        "ambito_bcra": {
             "status": 404,
-            "body": "{\"error\":\"Not found\"}"
+            "body": "{\"error\":\"404\",\"trace\":\"#0 \\/var\\/www\\/html.mercados.indalo\\/vendor\\/slim\\/slim\\/Slim\\/Handlers\\/Strategies\\/RequestResponse.php(43): Closure->{closure}(Object(Slim\\\\Http\\\\ServerRequest), Object(Slim\\\\Http\\\\Response), Array)\\n#1 \\/var\\/www\\/html.mercados.indalo\\/vendor\\/slim\\/slim\\/Slim\\/Routing\\/Route.php(384): Slim\\\\Handlers\\\\Strategies\\\\RequestResponse->__invoke(Object(Closure), Object(Slim\\\\Http\\\\ServerRequest), Object(Slim\\\\Http\\\\Response), "
         },
-        "3_alt_1": {
-            "url": "https://api.argentinadatos.com/v1/bcra/reservas",
+        "ambito_dolar_res": {
             "status": 404,
-            "body": "{\"error\":\"Not found\"}"
+            "body": "{\"error\":\"404\",\"trace\":\"#0 \\/var\\/www\\/html.mercados.indalo\\/vendor\\/slim\\/slim\\/Slim\\/Handlers\\/Strategies\\/RequestResponse.php(43): Closure->{closure}(Object(Slim\\\\Http\\\\ServerRequest), Object(Slim\\\\Http\\\\Response), Array)\\n#1 \\/var\\/www\\/html.mercados.indalo\\/vendor\\/slim\\/slim\\/Slim\\/Routing\\/Route.php(384): Slim\\\\Handlers\\\\Strategies\\\\RequestResponse->__invoke(Object(Closure), Object(Slim\\\\Http\\\\ServerRequest), Object(Slim\\\\Http\\\\Response), "
         },
-        "3_alt_2": {
-            "url": "https://mercados.ambito.com//reservas/variacion-diaria",
-            "status": 404,
-            "body": "{\"error\":\"404\",\"trace\":\"#0 \\/var\\/www\\/html.mercados.indalo\\/vendor\\/slim\\/slim\\/Slim\\/Handlers\\/Strategies\\/RequestResponse.php(43): Closure->{closure}(Object(Slim\\\\Http\\\\ServerRequest), Object(Slim\\\\Http\\\\Response), Array)\\n#1 \\/var\\/www\\/html.mercados.indalo\\/vendor\\/slim\\/slim\\/Slim\\/Routing\\/Ro"
-        },
-        "3_alt_3": {
-            "url": "https://mercados.ambito.com//variaciones-mercado/general",
-            "status": 404,
-            "body": "{\"error\":\"404\",\"trace\":\"#0 \\/var\\/www\\/html.mercados.indalo\\/vendor\\/slim\\/slim\\/Slim\\/Handlers\\/Strategies\\/RequestResponse.php(43): Closure->{closure}(Object(Slim\\\\Http\\\\ServerRequest), Object(Slim\\\\Http\\\\Response), Array)\\n#1 \\/var\\/www\\/html.mercados.indalo\\/vendor\\/slim\\/slim\\/Slim\\/Routing\\/Ro"
+        "bcra_web_principales": {
+            "status": 200,
+            "body": "<!DOCTYPE html>\n<html lang=\"es-ES\" prefix=\"og: https://ogp.me/ns#\">\n<head>\n\t<meta charset=\"UTF-8\" />\n<meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n\t<link rel=\"pingback\" href=\"https://www.bcra.gob.ar/xmlrpc.php\" />\n\n\t<script type=\"text/javascript\">\n\t\tdocument.documentElement.className = 'js';\n\t</script>\n\t\n\t<link rel=\"alternate\" hreflang=\"en\" href=\"https://www.bcra.gob.ar/en/statistics-indicators/\" />\n<link rel=\"alternate\" hreflang=\"es\" hre"
         }
     }
 }
