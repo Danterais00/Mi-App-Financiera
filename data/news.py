@@ -11,7 +11,10 @@ from datetime import datetime
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-HEADERS = {'User-Agent': 'Mozilla/5.0'}
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*'
+}
 
 @st.cache_data(ttl=300)
 def obtener_datos_criticos_puente():
@@ -103,7 +106,7 @@ def obtener_macro_argentina():
         if ccl_v and ccl_v > 0:
             dUI["merval_usd"]["valor"] = round(dUI["merval"]["valor"] / ccl_v)
 
-    # 3. Inflación, Riesgo País y Reservas
+    # 3. Inflación, Riesgo País y Reservas (API BCRA v4.0 Monetarias Variable 1)
     if dUI["inflacion"] is None:
         try:
             ri = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", headers=HEADERS, timeout=6)
@@ -116,20 +119,11 @@ def obtener_macro_argentina():
         except: pass
     if dUI["reservas"] is None:
         try:
-            r_gob = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=300.1_AP_ACT_RESTER_0_M_21&limit=1&sort=desc&format=json", timeout=6)
-            if r_gob.status_code == 200:
-                d_gob = r_gob.json().get("data", [])[0]
-                if d_gob[1]:
-                    val_r = float(d_gob[1])
-                    dUI["reservas"] = round(val_r / 1_000_000) if val_r > 1_000_000_000 else round(val_r)
-        except: pass
-    if dUI["reservas"] is None:
-        try:
-            rr = requests.get("https://api.argentinadatos.com/v1/finanzas/bcra/reservas", headers=HEADERS, timeout=6)
-            if rr.status_code == 200:
-                res_data = rr.json()[-1]
-                val_r = res_data.get("valor") or res_data.get("reservas")
-                if val_r: dUI["reservas"] = round(float(val_r))
+            r_bcra = requests.get("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/1?limit=2", headers=HEADERS, verify=False, timeout=8)
+            if r_bcra.status_code == 200:
+                results = r_bcra.json().get("results", [])
+                if results and results[0].get("detalle"):
+                    dUI["reservas"] = round(float(results[0]["detalle"][0]["valor"]))
         except: pass
 
     # 4. Tasas
@@ -149,15 +143,20 @@ def obtener_macro_argentina():
     if dUI["tasa_tamar"] is None and dUI["tasa_badlar"] is not None:
         dUI["tasa_tamar"] = round(dUI["tasa_badlar"] + 3.20, 2)
 
-    # 5. Bono AL30 en vivo
-    try:
-        res_al30 = requests.get("https://data912.com/live/arg_bonds", headers=HEADERS, timeout=6)
-        if res_al30.status_code == 200:
-            for b in res_al30.json():
-                sym = b.get("symbol") or b.get("ticker")
-                p = float(b.get("c", b.get("price", 0)))
-                if sym == "AL30" and p > 0: dUI["bono_al30"]["valor"] = round(p * 100, 2) if p < 2000 else round(p, 2)
-    except: pass
+    # 5. Bono AL30 (Data912 historical fallback en vivo)
+    if dUI["bono_al30"]["valor"] is None or dUI["bono_al30"]["var_1m"] is None:
+        try:
+            r_d9 = requests.get("https://data912.com/historical/bonds/AL30", headers=HEADERS, timeout=6)
+            if r_d9.status_code == 200:
+                hist = r_d9.json()
+                if hist:
+                    act = float(hist[-1]["c"])
+                    dUI["bono_al30"]["valor"] = round(act * 100, 2) if act < 2000 else round(act, 2)
+                    if len(hist) >= 21:
+                        prev = float(hist[-21]["c"])
+                        if prev > 0:
+                            dUI["bono_al30"]["var_1m"] = round(((act / prev) - 1) * 100, 2)
+        except: pass
         
     return dUI
 
@@ -181,11 +180,11 @@ def obtener_macro_internacional():
                 if t in dc.columns:
                     s = dc[t].dropna()
                     if len(s) >= 2:
-                        act = float(s.iloc[-1])
-                        datos[n].update({"valor": act, "var_diaria": float(((act/s.iloc[-2])-1)*100)})
-                        if len(s)>=21: datos[n]["var_1m"] = float(((act/s.iloc[-21])-1)*100)
-                        if len(s)>=126: datos[n]["var_6m"] = float(((act/s.iloc[-126])-1)*100)
-                        if len(s)>=250: datos[n]["var_1y"] = float(((act/s.iloc[0])-1)*100)
+                        act = round(float(s.iloc[-1]), 2)
+                        datos[n].update({"valor": act, "var_diaria": round(float(((act/s.iloc[-2])-1)*100), 2)})
+                        if len(s)>=21: datos[n]["var_1m"] = round(float(((act/s.iloc[-21])-1)*100), 2)
+                        if len(s)>=126: datos[n]["var_6m"] = round(float(((act/s.iloc[-126])-1)*100), 2)
+                        if len(s)>=250: datos[n]["var_1y"] = round(float(((act/s.iloc[0])-1)*100), 2)
     except: pass
     return datos
 
@@ -208,7 +207,7 @@ def obtener_eventos_macro_eeuu():
                             fv = float(forcast.replace('%','').replace('B','').replace('K','').replace('M',''))
                             c_act = "#2ecca6" if av > fv else "#ff6b6b" if av < fv else "#ffd54f"
                         except: pass
-                    if len(evs)<10: evs.append({"Evento": tit, "Fecha/Hora": f"{e.find('date').text} {e.find('time').text}", "Actual": f"<span style='color:{c_act}; font-weight:bold;'>{act}</span>" if act else "-", "Proyección": forcast if forcast else "-"})
+                    if len(evs)<10: evs.append({"Evento": tit, "Fecha/Hora": f"{e.find('date').text} {e.find('time').text}", "Actual": f"<span style='color:{c_act}; font-weight:bold;'>{act}</span>" if act else "-", "Actual_Raw": act if act else "Pendiente", "Proyección": forcast if forcast else "-"})
     except: pass
     return evs
 
@@ -251,9 +250,9 @@ def obtener_datos_gics():
             sr = dfc[t].dropna()
             if len(sr) >= 20:
                 pa = float(sr.iloc[-1])
-                if len(sr) >= 21: v1 = ((pa / float(sr.iloc[-21])) - 1) * 100
-                if len(sr) >= 126: v6 = ((pa / float(sr.iloc[-126])) - 1) * 100
-                if len(sr) >= 250: v12 = ((pa / float(sr.iloc[0])) - 1) * 100
+                if len(sr) >= 21: v1 = round(((pa / float(sr.iloc[-21])) - 1) * 100, 2)
+                if len(sr) >= 126: v6 = round(((pa / float(sr.iloc[-126])) - 1) * 100, 2)
+                if len(sr) >= 250: v12 = round(((pa / float(sr.iloc[0])) - 1) * 100, 2)
         sc = max(0, min(100, int(50.0 + (v6 * 1.5))))
         ds.append({"Sector": s, "ETF": t, "1M (%)": v1, "6M (%)": v6, "12M (%)": v12, "Score": sc})
     return sorted(ds, key=lambda x: x["Score"], reverse=True)
@@ -279,7 +278,9 @@ def obtener_datos_merval():
             
         res.append({
             "Ticker": tl, "Panel": panel, "Precio": round(p,2) if p else None, 
-            "P/E": pe, "P/BV": pb, "Vol_ARS_M": v_ars, 
+            "P/E": round(pe,2) if isinstance(pe, (int, float)) else None, 
+            "P/BV": round(pb,2) if isinstance(pb, (int, float)) else None, 
+            "Vol_ARS_M": round(v_ars,1) if isinstance(v_ars, (int, float)) else None, 
             "RSI": round(r, 2) if r else None, "Var_1M": v1m, "Var_1M_USD": v1m_usd, "Lectura": lec
         })
     return sorted(res, key=lambda x: x["RSI"] if isinstance(x["RSI"], (int, float)) else 999)
@@ -323,10 +324,14 @@ def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)",
         res_fecha = mc.get("reservas_fecha", "N/D")
         inf_fecha = mc.get("inflacion_fecha", "N/D")
         emae_fecha = mc.get("emae_fecha", "N/D")
-        al30_val = m_arg.get('bono_al30', {}).get('valor', 'N/D')
-        al30_v1m = m_arg.get('bono_al30', {}).get('var_1m', 'N/D')
         
-        def g(k, metric='valor'): return m_int.get(k, {}).get(metric, 'N/D')
+        al30_val = m_arg.get('bono_al30', {}).get('valor', 'N/D')
+        al30_v1m_raw = m_arg.get('bono_al30', {}).get('var_1m')
+        al30_v1m_str = f"{al30_v1m_raw:+.2f}%" if isinstance(al30_v1m_raw, (int, float)) else "N/D"
+        
+        def g(k, metric='valor'):
+            v = m_int.get(k, {}).get(metric)
+            return f"{v:.2f}" if isinstance(v, (int, float)) else "N/D"
         
         dols = m_arg.get("dolares", [])
         ccl = next((float(d['venta']) for d in dols if d['nombre']=='CCL'), None)
@@ -337,12 +342,12 @@ def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)",
             f"Actúa como CIO (Chief Investment Officer) para un fondo en Argentina. [Corte de Datos: {ts_corte}]\n"
             f"PERFIL DE ESTRATEGIA ACTIVO: {estrategia} | EXPOSICIÓN ACTUAL EN CARTERA DEL CLIENTE: [{cartera_str}]\n\n"
             "Redacta un Tablero de Decisiones basado EXCLUSIVAMENTE en los datos provistos. SIGUE ESTAS REGLAS ESTRICTAS:\n"
-            "1. DATA QUALITY GATE: Respeta las fechas de corte de cada variable. Nunca inventes datos, porcentajes o catalizadores.\n"
+            "1. DATA QUALITY GATE: Respeta las fechas de corte (As of) de cada variable. Nunca inventes datos, porcentajes o catalizadores.\n"
             "2. ALINEACIÓN CON CARTERA Y PERFIL: Ajusta el riesgo al perfil activo y señala explícitamente si una recomendación duplica exposición ya existente en la cartera del cliente.\n"
             "3. SEPARA HECHOS de INTERPRETACIONES. Un P/BV < 1 es un hecho contable sujeto a distorsiones inflacionarias, NO una recomendación automática (Value Trap).\n"
             "4. MONEY MANAGEMENT: Cada recomendación debe declarar explícitamente: (a) Nivel de Confianza [Alto/Medio/Bajo], (b) Horizonte Temporal, (c) Entrada Escalonada y (d) Condición de Invalidación/Salida.\n\n"
             f"**1. MACRO ARGENTINA (Pre-calculado | Corte: {ts_corte}):**\n"
-            f"| Merval: USD {m_arg.get('merval_usd',{}).get('valor','N/D')} | Bono AL30: ${al30_val} (Var 1M: {al30_v1m}%) | Brecha CCL: {brecha} | Reservas BCRA: USD {m_arg.get('reservas','N/D')} M (As of: {res_fecha}) |\n"
+            f"| Merval: USD {m_arg.get('merval_usd',{}).get('valor','N/D')} | Bono AL30: ${al30_val} (Var 1M: {al30_v1m_str}) | Brecha CCL: {brecha} | Reservas BCRA: USD {m_arg.get('reservas','N/D')} M (As of: {res_fecha}) |\n"
             f"| Riesgo País (As of: {rp_fecha}): {rp_act} pb | Var 1M: {rp_var_1m_pb} pb ({rp_var_1m_pct}%, base {rp_1m} pb) | Var 6M: {rp_var_6m_pb} pb ({rp_var_6m_pct}%, base {rp_6m} pb) |\n"
             f"| TNA PF 30D: {tna}% -> TEM (30/365): {f'{tem:.2f}%' if tem else 'N/D'} | Inflación Mensual (As of: {inf_fecha}): {inf}% | Tasa Real Efectiva: {f'{rend_real:.2f}%' if rend_real else 'N/D'} |\n"
             f"| Actividad EMAE (As of: {emae_fecha} - Dato estructural con rezago oficial): {m_arg.get('emae_ultimo','N/D')} |\n\n"
@@ -351,21 +356,27 @@ def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)",
             f"- Oro: USD {g('Oro (Refugio)')} (Var 1M: {g('Oro (Refugio)', 'var_1m')}% | Var 6M: {g('Oro (Refugio)', 'var_6m')}%) | VIX: {g('VIX (Miedo)')}\n\n"
         )
         if ev:
-            p += f"**3. CALENDARIO ESTADOS UNIDOS (Corte: {ts_corte}):**\n"
-            for e in ev[:4]: p += f"- {e['Evento']} ({e['Fecha/Hora']}): Actual {e['Actual']} vs Proy {e['Proyección']}\n"
+            p += f"**3. CALENDARIO DE EVENTOS EE.UU. (Agenda de Riesgo | Corte: {ts_corte}):**\n"
+            for e in ev[:4]: p += f"- {e['Evento']} ({e['Fecha/Hora']}): Estado/Actual {e.get('Actual_Raw','Pendiente')} vs Proy {e['Proyección']}\n"
 
-        p += f"\n**4. LÍDERES SECTORIALES (VALUACIÓN TRAIL/FWD + MOMENTUM | Corte: {ts_corte}):**\n"
+        if gics:
+            p += f"\n**4. ROTACIÓN SECTORIAL GICS EE.UU. (Ranking por Investment Score | Corte: {ts_corte}):**\n"
+            for s in gics[:6]:
+                p += f"- {s['Sector']} ({s['ETF']}): Score {s['Score']}/100 | 1M: {s['1M (%)']:+.2f}% | 6M: {s['6M (%)']:+.2f}% | 12M: {s['12M (%)']:+.2f}%\n"
+
+        p += f"\n**5. LÍDERES SECTORIALES (VALUACIÓN TRAIL/FWD + MOMENTUM | Corte: {ts_corte}):**\n"
         for v in val.get("USA", []):
             p += f"- USA: {v['Activo']} ({v['Sector']}) | P/E: {v['P/E']} | Fwd P/E: {v.get('Forward P/E','N/D')} | EV/EBITDA: {v.get('EV/EBITDA','N/D')} | FCF Yield: {v.get('FCF Yield','N/D')} | Debt/Eq: {v.get('Debt/Equity','N/D')} | ROE: {v['ROE (%)']} | 1M: {v['1M']}% | 1Y: {v['1Y']}%\n"
         for v in val.get("ARG", []):
             p += f"- ARG: {v['Activo']} ({v['Sector']}) | P/E: {v['P/E']} | Fwd P/E: {v.get('Forward P/E','N/D')} | EV/EBITDA: {v.get('EV/EBITDA','N/D')} | FCF Yield: {v.get('FCF Yield','N/D')} | Debt/Eq: {v.get('Debt/Equity','N/D')} | ROE: {v['ROE (%)']} | 1M: {v['1M']}% | 1Y: {v['1Y']}%\n"
             
-        p += f"\n**5. RADAR MERVAL (Volumen Promedio 20 Ruedas + Variación USD | Corte: {ts_corte}):**\n"
+        p += f"\n**6. RADAR MERVAL (Volumen Promedio 20 Ruedas + Variación USD | Corte: {ts_corte}):**\n"
         ti = [m for m in dm if (isinstance(m['RSI'], (int, float)) and m['RSI'] < 38) or (isinstance(m['P/BV'], (int, float)) and m['P/BV'] < 1)][:10]
         for m in ti:
-            p += f"- {m['Ticker']} ({m['Panel']}): Precio ${m['Precio']} | Var 1M ARS: {m.get('Var_1M', 'N/D')}% | Var 1M USD (CCL): {m.get('Var_1M_USD', 'N/D')}% | P/BV {m['P/BV']} | RSI {m['RSI']} | Vol 20d: ${round(m['Vol_ARS_M'],1) if m['Vol_ARS_M'] else 'N/D'} M ARS | {m['Lectura']}\n"
+            pe_str = f"{m['P/E']}" if m.get('P/E') is not None else "N/D"
+            p += f"- {m['Ticker']} ({m['Panel']}): Precio ${m['Precio']} | Var 1M ARS: {m.get('Var_1M', 'N/D')}% | Var 1M USD (CCL): {m.get('Var_1M_USD', 'N/D')}% | P/E {pe_str} | P/BV {m['P/BV']} | RSI {m['RSI']} | Vol 20d: ${m['Vol_ARS_M']} M ARS | {m['Lectura']}\n"
         
-        p += "\nESTRUCTURA TU RESPUESTA EN 4 BLOQUES:\n1. Macro Local e Internacional (Riesgo País 1M/6M, AL30, Tasa Real y Rezago EMAE)\n2. Valuación Sectorial Avanzada (Comparando P/E vs Forward P/E, EV/EBITDA, FCF Yield y Deuda en USA y ADRs)\n3. Matriz de Oportunidades Merval (Alerta sobre Value Traps, liquidez 20d y cruce con exposición actual de cartera)\n4. Escenarios (Bull/Base/Bear) y Plan Operativo (Confianza, Horizonte, Entrada Escalonada e Invalidación)."
+        p += "\nESTRUCTURA TU RESPUESTA EN 4 BLOQUES:\n1. Macro Local e Internacional (Riesgo País 1M/6M, AL30, Reservas BCRA al día, Tasa Real y Rezago EMAE)\n2. Rotación y Valuación Sectorial Avanzada (Sectores GICS + P/E vs Fwd P/E, EV/EBITDA, FCF Yield y Deuda)\n3. Matriz de Oportunidades Merval (Alerta sobre Value Traps, liquidez 20d y cruce con exposición actual de cartera)\n4. Escenarios (Bull/Base/Bear) y Plan Operativo (Confianza, Horizonte, Entrada Escalonada e Invalidación)."
         
         return f"<div style='background-color:#0d1117; padding:15px; border-radius:8px;'><pre style='color:#c9d1d9; font-family:monospace; white-space: pre-wrap;'>{p}</pre></div>"
     except Exception as e: return f"Error generador IA: {e}"
