@@ -1,11 +1,12 @@
 {
-    "timestamp": "2026-11-19 00:48:42",
+    "timestamp": "2026-11-19 01:12:09",
     "cotizaciones_merval": {
         "ALUA.BA": {
             "precio": 836.5,
             "pe": 9.03,
             "pbv": 0.91,
-            "volumen_pesos_m": 433.8,
+            "div_yield": 37.0,
+            "volumen_pesos_m": 433.76,
             "var_1m": 1.89,
             "var_1m_usd": -2.4,
             "var_6m": -8.03,
@@ -15,7 +16,8 @@
             "precio": 5590.0,
             "pe": 9.0,
             "pbv": 0.82,
-            "volumen_pesos_m": 1407.7,
+            "div_yield": 803.0,
+            "volumen_pesos_m": 1407.69,
             "var_1m": -17.61,
             "var_1m_usd": -21.08,
             "var_6m": -18.79,
@@ -25,7 +27,8 @@
             "precio": 9280.0,
             "pe": 13.6,
             "pbv": 0.94,
-            "volumen_pesos_m": 5364.6,
+            "div_yield": 993.0,
+            "volumen_pesos_m": 5364.63,
             "var_1m": -10.08,
             "var_1m_usd": -13.87,
             "var_6m": -8.82,
@@ -35,7 +38,8 @@
             "precio": 200.0,
             "pe": 8.12,
             "pbv": 2.09,
-            "volumen_pesos_m": 1246.0,
+            "div_yield": 1152.0,
+            "volumen_pesos_m": 1245.97,
             "var_1m": -14.8,
             "var_1m_usd": -18.39,
             "var_6m": -28.44,
@@ -45,6 +49,7 @@
             "precio": 1787.0,
             "pe": 5.65,
             "pbv": 0.9,
+            "div_yield": 935.0,
             "volumen_pesos_m": 1650.8,
             "var_1m": -10.34,
             "var_1m_usd": -14.12,
@@ -55,7 +60,8 @@
             "precio": 28.76,
             "pe": null,
             "pbv": 0.31,
-            "volumen_pesos_m": 256.9,
+            "div_yield": 0.0,
+            "volumen_pesos_m": 256.91,
             "var_1m": -23.67,
             "var_1m_usd": -26.89,
             "var_6m": -33.5,
@@ -65,7 +71,8 @@
             "precio": 1450.0,
             "pe": 6.48,
             "pbv": 0.67,
-            "volumen_pesos_m": 307.7,
+            "div_yield": 751.0,
+            "volumen_pesos_m": 307.71,
             "var_1m": -12.14,
             "var_1m_usd": -15.84,
             "var_6m": -0.85,
@@ -75,7 +82,8 @@
             "precio": 8550.0,
             "pe": 4.65,
             "pbv": 0.43,
-            "volumen_pesos_m": 185.9,
+            "div_yield": 35.0,
+            "volumen_pesos_m": 185.89,
             "var_1m": -6.46,
             "var_1m_usd": -10.4,
             "var_6m": 12.65,
@@ -85,7 +93,8 @@
             "precio": 1124.0,
             "pe": 3.65,
             "pbv": 0.33,
-            "volumen_pesos_m": 587.4,
+            "div_yield": 0.0,
+            "volumen_pesos_m": 587.36,
             "var_1m": -27.44,
             "var_1m_usd": -30.5,
             "var_6m": -35.29,
@@ -95,7 +104,8 @@
             "precio": 4772.5,
             "pe": 38.13,
             "pbv": 0.83,
-            "volumen_pesos_m": 13334.1,
+            "div_yield": 591.0,
+            "volumen_pesos_m": 13334.12,
             "var_1m": -17.22,
             "var_1m_usd": -20.71,
             "var_6m": -19.73,
@@ -105,7 +115,8 @@
             "precio": 1970.0,
             "pe": 7.93,
             "pbv": 0.69,
-            "volumen_pesos_m": 179.5,
+            "div_yield": 1260.0,
+            "volumen_pesos_m": 179.48,
             "var_1m": -3.13,
             "var_1m_usd": -7.21,
             "var_6m": 9.4,
@@ -115,6 +126,7 @@
             "precio": 2785.0,
             "pe": 21.19,
             "pbv": 1.17,
+            "div_yield": 0.0,
             "volumen_pesos_m": 640.1,
             "var_1m": -11.38,
             "var_1m_usd": -15.11,
@@ -125,7 +137,8 @@
             "precio": 1690.0,
             "pe": 54.83,
             "pbv": 0.75,
-            "volumen_pesos_m": 54.9,
+            "div_yield": 3.0,
+            "volumen_pesos_m": 54.87,
             "var_1m": -1.17,
             "var_1m_usd": -5.34,
             "var_6m": -89.74,
@@ -135,7 +148,8 @@
             "precio": 4297.5,
             "pe": 5.96,
             "pbv": 0.92,
-            "volumen_pesos_m": 4696.9,
+            "div_yield": 0.0,
+            "volumen_pesos_m": 4696.91,
             "var_1m": -15.4,
             "var_1m_usd": -18.97,
             "var_6m": -12.34,
@@ -145,7 +159,8 @@
             "precio": 1827.0,
             "pe": null,
             "pbv": 0.68,
-            "volumen_pesos_m": 1010.6,
+            "div_yield": 0.0,
+            "volumen_pesos_m": 1010.59,
             "var_1m": -21.69,
             "var_1m_usd": -24.99,
             "var_6m": -17.37,
@@ -155,7 +170,8 @@
             "precio": 3535.0,
             "pe": 7.96,
             "pbv": 0.86,
-            "volumen_pesos_m": 472.5,
+            "div_yield": 38.0,
+            "volumen_pesos_m": 472.55,
             "var_1m": -12.61,
             "var_1m_usd": -16.29,
             "var_6m": 2.09,
@@ -165,7 +181,8 @@
             "precio": 2343.0,
             "pe": 5.01,
             "pbv": 0.77,
-            "volumen_pesos_m": 433.5,
+            "div_yield": 1424.0,
+            "volumen_pesos_m": 433.54,
             "var_1m": -22.48,
             "var_1m_usd": -25.75,
             "var_6m": -38.59,
@@ -175,7 +192,8 @@
             "precio": 7020.0,
             "pe": 9.14,
             "pbv": 1.23,
-            "volumen_pesos_m": 1753.8,
+            "div_yield": 0.0,
+            "volumen_pesos_m": 1753.81,
             "var_1m": -16.78,
             "var_1m_usd": -20.29,
             "var_6m": -22.13,
@@ -185,7 +203,8 @@
             "precio": 1957.0,
             "pe": 2.92,
             "pbv": 0.84,
-            "volumen_pesos_m": 1594.3,
+            "div_yield": 3065.0,
+            "volumen_pesos_m": 1594.33,
             "var_1m": -18.73,
             "var_1m_usd": -22.16,
             "var_6m": -40.87,
@@ -195,7 +214,8 @@
             "precio": 715.5,
             "pe": 5.42,
             "pbv": 0.43,
-            "volumen_pesos_m": 1260.6,
+            "div_yield": 401.0,
+            "volumen_pesos_m": 1260.59,
             "var_1m": -0.28,
             "var_1m_usd": -4.48,
             "var_6m": 16.91,
@@ -205,7 +225,8 @@
             "precio": 524.5,
             "pe": 9.01,
             "pbv": 1.33,
-            "volumen_pesos_m": 686.6,
+            "div_yield": 743.0,
+            "volumen_pesos_m": 686.56,
             "var_1m": -0.47,
             "var_1m_usd": -4.66,
             "var_6m": -22.19,
@@ -215,7 +236,8 @@
             "precio": 6040.0,
             "pe": 7.75,
             "pbv": 1.14,
-            "volumen_pesos_m": 11524.2,
+            "div_yield": 0.0,
+            "volumen_pesos_m": 11524.23,
             "var_1m": -26.52,
             "var_1m_usd": -29.62,
             "var_6m": -15.26,
@@ -225,7 +247,8 @@
             "precio": 19.75,
             "pe": 14.96,
             "pbv": 0.36,
-            "volumen_pesos_m": 35.9,
+            "div_yield": 0.0,
+            "volumen_pesos_m": 35.85,
             "var_1m": -36.5,
             "var_1m_usd": -39.18,
             "var_6m": -52.29,
@@ -235,7 +258,8 @@
             "precio": 1910.0,
             "pe": 3.21,
             "pbv": 0.41,
-            "volumen_pesos_m": 34.6,
+            "div_yield": 0.0,
+            "volumen_pesos_m": 34.65,
             "var_1m": -30.29,
             "var_1m_usd": -33.23,
             "var_6m": -43.66,
@@ -245,7 +269,8 @@
             "precio": 172.5,
             "pe": 59.28,
             "pbv": 0.39,
-            "volumen_pesos_m": 77.8,
+            "div_yield": 2276.0,
+            "volumen_pesos_m": 77.76,
             "var_1m": -28.27,
             "var_1m_usd": -31.29,
             "var_6m": -42.0,
@@ -255,7 +280,8 @@
             "precio": 2600.0,
             "pe": 5.18,
             "pbv": 0.6,
-            "volumen_pesos_m": 10.1,
+            "div_yield": 0.0,
+            "volumen_pesos_m": 10.08,
             "var_1m": -17.33,
             "var_1m_usd": -20.81,
             "var_6m": -36.66,
@@ -265,7 +291,8 @@
             "precio": 1160.0,
             "pe": 12.31,
             "pbv": 1.87,
-            "volumen_pesos_m": 8.0,
+            "div_yield": 2168.0,
+            "volumen_pesos_m": 7.96,
             "var_1m": -25.88,
             "var_1m_usd": -29.0,
             "var_6m": -44.76,
@@ -275,7 +302,8 @@
             "precio": 1710.0,
             "pe": 11.03,
             "pbv": 0.41,
-            "volumen_pesos_m": 8.9,
+            "div_yield": 668.0,
+            "volumen_pesos_m": 8.86,
             "var_1m": -33.46,
             "var_1m_usd": -36.26,
             "var_6m": -55.47,
@@ -285,7 +313,8 @@
             "precio": 3305.0,
             "pe": 13.13,
             "pbv": 2.56,
-            "volumen_pesos_m": 7.1,
+            "div_yield": 843.0,
+            "volumen_pesos_m": 7.11,
             "var_1m": -18.29,
             "var_1m_usd": -21.73,
             "var_6m": -37.52,
@@ -295,7 +324,8 @@
             "precio": 17.85,
             "pe": null,
             "pbv": 0.55,
-            "volumen_pesos_m": 33.3,
+            "div_yield": 0.0,
+            "volumen_pesos_m": 33.32,
             "var_1m": -14.8,
             "var_1m_usd": -18.39,
             "var_6m": -32.39,
@@ -305,7 +335,8 @@
             "precio": 610.0,
             "pe": 8.71,
             "pbv": 0.41,
-            "volumen_pesos_m": 2.4,
+            "div_yield": 0.0,
+            "volumen_pesos_m": 2.36,
             "var_1m": -15.28,
             "var_1m_usd": -18.85,
             "var_6m": -11.98,
@@ -315,7 +346,8 @@
             "precio": 320.0,
             "pe": null,
             "pbv": 4.8,
-            "volumen_pesos_m": 11.6,
+            "div_yield": 0.0,
+            "volumen_pesos_m": 11.56,
             "var_1m": -19.4,
             "var_1m_usd": -22.8,
             "var_6m": -29.82,
@@ -382,6 +414,30 @@
         "al30_var_1m": -1.24
     },
     "valuaciones_usa": {
+        "SPY": {
+            "Sector": "S&P 500 ETF",
+            "P/E": "23.2",
+            "Forward P/E": "N/D",
+            "EV/EBITDA": "N/D",
+            "FCF Yield": "N/D",
+            "Debt/Equity": "N/D",
+            "ROE (%)": "N/D",
+            "1M": -4.76,
+            "6M": -0.69,
+            "1Y": 11.73
+        },
+        "QQQ": {
+            "Sector": "Nasdaq 100 ETF",
+            "P/E": "27.2",
+            "Forward P/E": "N/D",
+            "EV/EBITDA": "N/D",
+            "FCF Yield": "N/D",
+            "Debt/Equity": "N/D",
+            "ROE (%)": "N/D",
+            "1M": -8.46,
+            "6M": -7.68,
+            "1Y": 10.03
+        },
         "MSFT": {
             "Sector": "Tecnolog\u00eda",
             "P/E": "26.5",
@@ -390,9 +446,9 @@
             "FCF Yield": "0.1%",
             "Debt/Equity": "0.28",
             "ROE (%)": "34.2%",
-            "1M": -4.63,
-            "6M": 21.51,
-            "1Y": 5.2
+            "1M": -4.82,
+            "6M": 20.72,
+            "1Y": 4.78
         },
         "GOOGL": {
             "Sector": "Comunicaciones",
@@ -402,9 +458,9 @@
             "FCF Yield": "-0.0%",
             "Debt/Equity": "0.22",
             "ROE (%)": "44.3%",
-            "1M": -15.63,
-            "6M": -27.05,
-            "1Y": -3.29
+            "1M": -17.66,
+            "6M": -27.86,
+            "1Y": -4.06
         },
         "JPM": {
             "Sector": "Financiero",
@@ -414,9 +470,9 @@
             "FCF Yield": "N/D",
             "Debt/Equity": "N/D",
             "ROE (%)": "18.0%",
-            "1M": -3.31,
-            "6M": 7.98,
-            "1Y": 8.93
+            "1M": -1.58,
+            "6M": 10.31,
+            "1Y": 10.9
         },
         "XOM": {
             "Sector": "Energ\u00eda",
@@ -426,9 +482,9 @@
             "FCF Yield": "4.3%",
             "Debt/Equity": "0.13",
             "ROE (%)": "15.5%",
-            "1M": -9.26,
-            "6M": 4.73,
-            "1Y": 40.46
+            "1M": -5.39,
+            "6M": 8.37,
+            "1Y": 46.26
         },
         "LLY": {
             "Sector": "Salud",
@@ -438,9 +494,9 @@
             "FCF Yield": "0.8%",
             "Debt/Equity": "1.23",
             "ROE (%)": "86.0%",
-            "1M": 8.95,
-            "6M": 33.1,
-            "1Y": 32.54
+            "1M": 10.41,
+            "6M": 39.3,
+            "1Y": 35.68
         },
         "CAT": {
             "Sector": "Industriales",
@@ -450,9 +506,9 @@
             "FCF Yield": "1.6%",
             "Debt/Equity": "2.10",
             "ROE (%)": "56.1%",
-            "1M": -24.33,
-            "6M": -35.2,
-            "1Y": 1.88
+            "1M": -21.11,
+            "6M": -34.31,
+            "1Y": 4.07
         },
         "AMZN": {
             "Sector": "Cons. Discrecional",
@@ -462,9 +518,9 @@
             "FCF Yield": "-1.2%",
             "Debt/Equity": "0.50",
             "ROE (%)": "27.4%",
-            "1M": 2.05,
-            "6M": -0.27,
-            "1Y": 20.23
+            "1M": -1.8,
+            "6M": -2.69,
+            "1Y": 15.81
         },
         "PG": {
             "Sector": "Cons. B\u00e1sico",
@@ -474,9 +530,9 @@
             "FCF Yield": "3.2%",
             "Debt/Equity": "0.70",
             "ROE (%)": "29.6%",
-            "1M": 9.29,
-            "6M": 20.43,
-            "1Y": 19.21
+            "1M": 8.5,
+            "6M": 22.26,
+            "1Y": 20.22
         },
         "NEE": {
             "Sector": "Utilities",
@@ -486,9 +542,9 @@
             "FCF Yield": "-11.9%",
             "Debt/Equity": "1.53",
             "ROE (%)": "14.1%",
-            "1M": 8.3,
-            "6M": -4.07,
-            "1Y": 3.5
+            "1M": 7.05,
+            "6M": -2.94,
+            "1Y": 3.06
         },
         "LIN": {
             "Sector": "Materiales",
@@ -498,9 +554,9 @@
             "FCF Yield": "1.8%",
             "Debt/Equity": "0.65",
             "ROE (%)": "17.7%",
-            "1M": 2.32,
-            "6M": 0.19,
-            "1Y": 25.63
+            "1M": 2.63,
+            "6M": 2.33,
+            "1Y": 26.35
         },
         "PLD": {
             "Sector": "Real Estate",
@@ -510,9 +566,9 @@
             "FCF Yield": "4.7%",
             "Debt/Equity": "0.62",
             "ROE (%)": "7.7%",
-            "1M": -1.87,
-            "6M": -12.1,
-            "1Y": 5.52
+            "1M": -1.5,
+            "6M": -11.89,
+            "1Y": 5.8
         }
     },
     "valuaciones_arg": {
@@ -524,9 +580,9 @@
             "FCF Yield": "N/D",
             "Debt/Equity": "N/D",
             "ROE (%)": "1.1%",
-            "1M": -24.55,
-            "6M": -36.66,
-            "1Y": -41.98
+            "1M": -19.54,
+            "6M": -31.87,
+            "1Y": -40.42
         },
         "BMA": {
             "Sector": "Financiero",
@@ -536,9 +592,9 @@
             "FCF Yield": "N/D",
             "Debt/Equity": "N/D",
             "ROE (%)": "7.1%",
-            "1M": -16.2,
-            "6M": -30.37,
-            "1Y": -29.27
+            "1M": -13.92,
+            "6M": -23.56,
+            "1Y": -28.52
         },
         "YPF": {
             "Sector": "Energ\u00eda",
@@ -548,9 +604,9 @@
             "FCF Yield": "N/D (Descalce moneda)",
             "Debt/Equity": "0.79",
             "ROE (%)": "17.4%",
-            "1M": -30.32,
-            "6M": -26.78,
-            "1Y": -9.23
+            "1M": -28.3,
+            "6M": -22.65,
+            "1Y": -5.84
         },
         "PAM": {
             "Sector": "Energ\u00eda",
@@ -560,9 +616,9 @@
             "FCF Yield": "-15.7%",
             "Debt/Equity": "0.68",
             "ROE (%)": "18.0%",
-            "1M": -19.89,
-            "6M": -23.61,
-            "1Y": -30.11
+            "1M": -19.85,
+            "6M": -21.24,
+            "1Y": -29.94
         },
         "VIST": {
             "Sector": "Energ\u00eda",
@@ -572,9 +628,9 @@
             "FCF Yield": "13.5%",
             "Debt/Equity": "0.99",
             "ROE (%)": "26.8%",
-            "1M": -27.31,
-            "6M": -31.25,
-            "1Y": 1.66
+            "1M": -23.63,
+            "6M": -28.33,
+            "1Y": 5.64
         },
         "TGS": {
             "Sector": "Energ\u00eda",
@@ -584,9 +640,9 @@
             "FCF Yield": "N/D (Descalce moneda)",
             "Debt/Equity": "0.47",
             "ROE (%)": "13.7%",
-            "1M": -22.28,
-            "6M": -32.34,
-            "1Y": -34.1
+            "1M": -20.83,
+            "6M": -28.29,
+            "1Y": -33.26
         },
         "CEPU": {
             "Sector": "Utilities",
@@ -596,9 +652,9 @@
             "FCF Yield": "N/D (Descalce moneda)",
             "Debt/Equity": "0.34",
             "ROE (%)": "18.4%",
-            "1M": -13.97,
-            "6M": -27.64,
-            "1Y": -28.87
+            "1M": -14.94,
+            "6M": -25.36,
+            "1Y": -29.21
         },
         "EDN": {
             "Sector": "Utilities",
@@ -608,9 +664,9 @@
             "FCF Yield": "N/D",
             "Debt/Equity": "0.83",
             "ROE (%)": "8.4%",
-            "1M": -31.1,
-            "6M": -48.16,
-            "1Y": -60.05
+            "1M": -31.12,
+            "6M": -46.65,
+            "1Y": -59.96
         },
         "LOMA": {
             "Sector": "Materiales",
@@ -620,9 +676,9 @@
             "FCF Yield": "N/D (Descalce moneda)",
             "Debt/Equity": "0.21",
             "ROE (%)": "5.9%",
-            "1M": -15.77,
-            "6M": -28.08,
-            "1Y": -29.7
+            "1M": -14.82,
+            "6M": -23.89,
+            "1Y": -28.83
         },
         "CRESY": {
             "Sector": "Agro/Real Estate",
@@ -632,9 +688,9 @@
             "FCF Yield": "N/D (Descalce moneda)",
             "Debt/Equity": "0.65",
             "ROE (%)": "8.6%",
-            "1M": -19.3,
-            "6M": -18.93,
-            "1Y": -18.3
+            "1M": -13.44,
+            "6M": -11.05,
+            "1Y": -12.45
         },
         "IRS": {
             "Sector": "Real Estate",
@@ -644,9 +700,9 @@
             "FCF Yield": "N/D (Descalce moneda)",
             "Debt/Equity": "0.40",
             "ROE (%)": "8.8%",
-            "1M": -19.79,
-            "6M": -19.17,
-            "1Y": -31.92
+            "1M": -16.48,
+            "6M": -14.77,
+            "1Y": -30.26
         },
         "MELI": {
             "Sector": "Tecnolog\u00eda",
@@ -656,9 +712,9 @@
             "FCF Yield": "-3.6%",
             "Debt/Equity": "1.97",
             "ROE (%)": "26.2%",
-            "1M": -23.28,
-            "6M": -15.19,
-            "1Y": -31.49
+            "1M": -23.55,
+            "6M": -12.98,
+            "1Y": -30.83
         }
     }
 }
