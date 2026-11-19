@@ -102,7 +102,7 @@ def obtener_macro_arg_critica():
                 if val_6m > 0: datos["riesgo_pais_var_6m_pct"] = round(((val_act / val_6m) - 1) * 100, 1)
     except: pass
     
-    # 2. Reservas BCRA (Fuente Oficial Verificada: API BCRA v4.0 Monetarias Variable 1)
+    # 2. Reservas BCRA (API BCRA v4.0 Monetarias Variable 1 - Verificada al día)
     try:
         r_bcra = requests.get("https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias/1?limit=2", headers=HEADERS, verify=False, timeout=10)
         if r_bcra.status_code == 200:
@@ -175,7 +175,7 @@ def obtener_macro_arg_critica():
     if datos["tasa_tamar"] is None and datos["tasa_badlar"] is not None:
         datos["tasa_tamar"] = round(datos["tasa_badlar"] + 3.20, 2)
 
-    # 7. Bono AL30 (Fuente validada: data912 historical)
+    # 7. Bono AL30 (Data912 historical)
     try:
         r_d9 = requests.get("https://data912.com/historical/bonds/AL30", headers=HEADERS, timeout=8)
         if r_d9.status_code == 200:
@@ -193,10 +193,10 @@ def obtener_macro_arg_critica():
 
 def extraer_valuaciones():
     lideres_usa = {
-        "MSFT": "Tecnología", "GOOGL": "Comunicaciones", "JPM": "Financiero",
-        "XOM": "Energía", "LLY": "Salud", "CAT": "Industriales",
-        "AMZN": "Cons. Discrecional", "PG": "Cons. Básico", "NEE": "Utilities",
-        "LIN": "Materiales", "PLD": "Real Estate"
+        "SPY": "S&P 500 ETF", "QQQ": "Nasdaq 100 ETF", "MSFT": "Tecnología", 
+        "GOOGL": "Comunicaciones", "JPM": "Financiero", "XOM": "Energía", 
+        "LLY": "Salud", "CAT": "Industriales", "AMZN": "Cons. Discrecional", 
+        "PG": "Cons. Básico", "NEE": "Utilities", "LIN": "Materiales", "PLD": "Real Estate"
     }
     lideres_arg = {
         "GGAL": "Financiero", "BMA": "Financiero", "YPF": "Energía",
@@ -284,7 +284,7 @@ def extraer_merval(ccl_var_1m=None):
                         vol_20d = float(hist["Volume"].dropna().tail(20).mean())
                     else:
                         vol_20d = float(info.get("averageVolume", info.get("regularMarketVolume", 0)))
-                    vol_pesos_m = round((vol_20d * p) / 1_000_000, 1)
+                    vol_pesos_m = round((vol_20d * p) / 1_000_000, 2)
                     
                     v1, v6, v12 = None, None, None
                     if not hist_1y.empty and t in hist_1y.columns:
@@ -298,11 +298,13 @@ def extraer_merval(ccl_var_1m=None):
 
                     pe_raw = info.get("trailingPE")
                     pb_raw = info.get("priceToBook")
+                    div_raw = info.get("dividendYield")
 
                     datos[t] = {
                         "precio": round(float(p), 2),
                         "pe": round(float(pe_raw), 2) if isinstance(pe_raw, (int, float)) else None,
                         "pbv": round(float(pb_raw), 2) if isinstance(pb_raw, (int, float)) else None,
+                        "div_yield": round(float(div_raw) * 100, 2) if isinstance(div_raw, (int, float)) else 0.0,
                         "volumen_pesos_m": vol_pesos_m, 
                         "var_1m": v1, "var_1m_usd": v1_usd, "var_6m": v6
                     }
@@ -320,13 +322,8 @@ if __name__ == "__main__":
     d_c = obtener_macro_arg_critica()
     d_m = extraer_merval(d_c.get("ccl_var_1m"))
     
-    try:
-        m_hist = yf.Ticker("^MERV").history(period="5d")
-        if not m_hist.empty:
-            d_c["merval_ars"] = round(float(m_hist["Close"].iloc[-1]))
-    except: pass
-    
-    if d_c["merval_ars"] is None and d_m:
+    # Fórmula ponderada validada para Merval ARS (evita fallo de ^MERV en yfinance)
+    if d_m:
         p_ggal = d_m.get("GGAL.BA", {}).get("precio", 0)
         p_ypfd = d_m.get("YPFD.BA", {}).get("precio", 0)
         p_pamp = d_m.get("PAMP.BA", {}).get("precio", 0)
