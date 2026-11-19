@@ -12,14 +12,14 @@ from data.news import (
     obtener_macro_argentina, 
     obtener_macro_internacional, 
     obtener_noticias_acciones, 
-    generar_analisis_ia, 
+    generar_analisis_ia_fundamental, 
     obtener_valuaciones_mercado, 
     obtener_datos_gics,
     obtener_datos_merval,
     obtener_eventos_macro_eeuu
 )
 
-APP_VERSION = "v16.0 - CIO Engine (4-Block Portfolio + Full Valuation)"
+APP_VERSION = "v16.1 - Fundamental Research Engine"
 
 inyectar_css()
 
@@ -314,20 +314,15 @@ def render_nivel4_merval():
 
 @st.fragment
 def render_nivel5_ia():
-    st.markdown("### 🤖 Nivel 5: Motor de Recomendación IA (Asesor Copilot)")
-    st.write("El Asesor Financiero evaluará la Macro, las Valuaciones, los Sectores GICS y tu Tablero Merval para entregarte recomendaciones prácticas y operables.")
+    st.markdown("### 🤖 Nivel 5: Informe de Investigación Fundamental")
+    st.write("Compila el contexto macroeconómico, sectorial y de valuación de compañías para generar un análisis 100% fundamental.")
     
-    if st.button("Generar Recomendaciones Automáticas", type="primary"):
-        with st.spinner("La IA Cuantitativa está compilando el contexto geopolítico y financiero..."):
+    if st.button("Generar Informe Fundamental", type="primary"):
+        with st.spinner("Compilando datos macroeconómicos, sectoriales y fundamentales..."):
             macro_arg = obtener_macro_argentina()
             macro_int = obtener_macro_internacional()
             gics = obtener_datos_gics()
-            tickers_activos = st.session_state.get("tickers", []) if st.session_state.get("datos_cargados") else []
-            analisis_texto = generar_analisis_ia(
-                macro_arg, macro_int, gics,
-                estrategia=modo_estrategia,
-                tickers_cartera=tickers_activos
-            )
+            analisis_texto = generar_analisis_ia_fundamental(macro_arg, macro_int, gics)
             st.markdown((
                 f"<div style='background-color: #12161f; padding: 25px 30px; border-radius: 12px; border-left: 5px solid #2ecca6; border-top: 1px solid #2a2e39; border-right: 1px solid #2a2e39; border-bottom: 1px solid #2a2e39; box-shadow: 0px 4px 15px rgba(0,0,0,0.2);'>"
                 f"<div style='font-size: 1.05rem; line-height: 1.8; color: #e2e8f0;'>{analisis_texto}</div>"
