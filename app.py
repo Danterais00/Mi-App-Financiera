@@ -19,7 +19,7 @@ from data.news import (
     obtener_eventos_macro_eeuu
 )
 
-APP_VERSION = "v15.3 - CIO Engine (Full Advisors Alignment)"
+APP_VERSION = "v15.5 - CIO Engine (BCRA v4.0 & Full Verified)"
 inyectar_css()
 
 if 'datos_cargados' not in st.session_state:
