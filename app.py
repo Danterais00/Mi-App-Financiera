@@ -19,7 +19,7 @@ from data.news import (
     obtener_eventos_macro_eeuu
 )
 
-APP_VERSION = "v15.8 - Quant Engine (GICS 12M + BCRA v4.0)"
+APP_VERSION = "v16.0 - CIO Engine (4-Block Portfolio + Full Valuation)"
 
 inyectar_css()
 
@@ -135,7 +135,7 @@ def render_nivel1_macro():
             f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TASA TAMAR</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_tamar}</h4></div>"
             f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TASA BADLAR</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_badlar}</h4></div>"
             f"<div style='width: 24%; padding-top: 10px; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; padding-left: 8px;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>TNA (PF 30D)</p><h4 style='margin:5px 0; color:#ffd54f; font-size: 0.95rem;'>{texto_tna}</h4></div>"
-            f"<div style='width: 100%; padding-top: 10px; margin-top: 10px; border-top: 1px solid #2a2e39; display: flex; justify-content: space-between; align-items: center;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>RESERVAS INTERNACIONALES (BCRA)</p><h4 style='margin:0; color:#2ecca6; font-size: 0.95rem;'>{texto_reservas}</h4></div>"
+            f"<div style='width: 100%; padding-top: 10px; margin-top: 10px; border-top: 1px solid #2a2e39; display: flex; justify-content: space-between; align-items: center;'><p style='margin:0; color:#a3a8b8; font-size:0.7rem; font-weight:bold;'>RESERVAS INTERNACIONALES BRUTAS (BCRA)</p><h4 style='margin:0; color:#2ecca6; font-size: 0.95rem;'>{texto_reservas}</h4></div>"
             f"</div>"
         )
         st.markdown(html_caja, unsafe_allow_html=True)
@@ -188,7 +188,7 @@ def render_nivel1_macro():
 @st.fragment
 def render_nivel2_valuaciones():
     st.markdown("### Mercado y Valuaciones Relativas")
-    with st.spinner("Descargando métricas de valuación institucional (P/E, Fwd P/E, EV/EBITDA, ROE)..."):
+    with st.spinner("Descargando métricas de valuación institucional (Precio, Target, Upside, PEG, P/E, ROE)..."):
         val_data = obtener_valuaciones_mercado()
         col_v1, col_v2 = st.columns(2)
         with col_v1:
@@ -235,14 +235,14 @@ def render_nivel3_gics():
 @st.fragment
 def render_nivel4_merval():
     st.markdown("### 📈 Nivel 4: Screener Dinámico (Merval y Panel General)")
-    st.write("Datos extraídos en vivo. Evaluación integral de liquidez (20 ruedas), valuación y momento técnico.")
+    st.write("Datos extraídos en vivo. Evaluación integral de liquidez (20 ruedas en ARS y USD), valuación y momento técnico.")
     
     with st.spinner("Analizando mercado y calculando RSI en vivo..."):
         merval_data = obtener_datos_merval()
         df_completo = pd.DataFrame(merval_data)
         
     if not df_completo.empty:
-        cols_visibles = ["Ticker", "Precio (ARS)", "P/E", "P/BV", "Div Yield (%)", "Vol. 20d (M ARS)", "RSI", "Lectura"]
+        cols_visibles = ["Ticker", "Precio (ARS)", "P/E", "P/BV", "Div Yield (%)", "Vol. 20d (M ARS)", "Vol. 20d (K USD)", "RSI", "Lectura"]
         cols_visibles = [c for c in cols_visibles if c in df_completo.columns]
 
         tab_lider, tab_general = st.tabs(["🏛️ Panel Principal (Alta Liquidez)", "🏢 Panel General (Mayor Riesgo/Retorno)"])
@@ -274,6 +274,7 @@ def render_nivel4_merval():
                 "P/BV": lambda x: f"{x:.2f}" if pd.notna(x) else "N/D",
                 "Div Yield (%)": "{:.2f}%",
                 "Vol. 20d (M ARS)": "{:,.2f}",
+                "Vol. 20d (K USD)": lambda x: f"{x:,.1f}" if pd.notna(x) else "N/D",
                 "RSI": lambda x: f"{x:.2f}" if pd.notna(x) else "N/D"
             }
             
@@ -297,9 +298,9 @@ def render_nivel4_merval():
 
     with st.expander("💡 ¿Cómo leer esta tabla para tomar decisiones? (Manual del Asesor)", expanded=False):
         st.markdown("""
-        ### 1. El Riesgo Invisible: El Volumen (En Millones de Pesos Reales)
--   **La regla:** Mira la columna `Vol. 20d (M ARS)`. Representa el monto promedio operado en pesos en las últimas 20 ruedas (en millones).
--   Si entras al Panel General y ves volúmenes menores a **$100M ARS**, entrar con mucho dinero es una trampa mortal. Te costará meses vender sin derrumbar el precio de tu propia acción. La aplicación colorea estos números en naranja.
+        ### 1. El Riesgo Invisible: El Volumen (En Pesos y Dólares Reales)
+-   **La regla:** Mira las columnas `Vol. 20d (M ARS)` y `Vol. 20d (K USD)`. Representan el monto promedio diario operado en las últimas 20 ruedas.
+-   Si entras al Panel General y ves volúmenes menores a **$100M ARS** (menos de USD 60K diarios), entrar con mucho dinero es una trampa mortal. Te costará meses vender sin derrumbar el precio de tu propia acción. La aplicación colorea estos números en naranja.
 
         ### 2. Buscar "Valor" y "Renta" (Filtro Fundamental)
 -   **La regla:** Mira la columna `P/BV` y `Div Yield (%)`.
@@ -370,7 +371,6 @@ if menu_seccion == "Noticias de Mercado":
     with tab_n5: render_nivel5_ia()
     with tab_noticias: render_noticias_cartera()
 else:
-    # --- RESTO DEL DASHBOARD (Intacto y blindado) ---
     if st.session_state.get("datos_cargados"):
         dft = st.session_state.df_total
         if menu_seccion == "Datos y Valuación":
