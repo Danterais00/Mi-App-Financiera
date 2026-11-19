@@ -76,7 +76,7 @@ def obtener_macro_argentina():
         if mc.get("al30_var_1m") is not None: dUI["bono_al30"]["var_1m"] = mc["al30_var_1m"]
         if mc.get("riesgo_pais_actual"): dUI["riesgo_pais"] = mc["riesgo_pais_actual"]
 
-    # 1. Dólares
+    # 1. Dólares en vivo
     if len(dUI["dolares"]) < 5:
         try:
             rd = requests.get("https://dolarapi.com/v1/dolares", timeout=6)
@@ -94,13 +94,20 @@ def obtener_macro_argentina():
                 dUI["dolares"] = sorted(lista_d, key=lambda x: orden.index(x["nombre"]) if x["nombre"] in orden else 99)
         except: pass
 
-    # 2. Merval ARS y USD
+    # 2. Merval ARS y USD (Cálculo ponderado en vivo si no está en el JSON)
     if dUI["merval"]["valor"] is None:
         try:
-            m_hist = yf.Ticker("^MERV").history(period="5d")
-            if not m_hist.empty:
-                dUI["merval"]["valor"] = round(float(m_hist["Close"].iloc[-1]))
+            hd_m = yf.download(["GGAL.BA", "YPFD.BA", "PAMP.BA", "BMA.BA"], period="5d", progress=False)
+            if not hd_m.empty and 'Close' in hd_m:
+                dc = hd_m['Close']
+                p_ggal = float(dc["GGAL.BA"].dropna().iloc[-1])
+                p_ypfd = float(dc["YPFD.BA"].dropna().iloc[-1])
+                p_pamp = float(dc["PAMP.BA"].dropna().iloc[-1])
+                p_bma = float(dc["BMA.BA"].dropna().iloc[-1])
+                if p_ggal and p_ypfd and p_pamp and p_bma:
+                    dUI["merval"]["valor"] = round((p_ggal * 165) + (p_ypfd * 145) + (p_pamp * 110) + (p_bma * 75))
         except: pass
+
     if dUI["merval"]["valor"] and dUI["merval_usd"]["valor"] is None:
         ccl_v = next((float(d['venta']) for d in dUI["dolares"] if d['nombre'] == 'CCL'), None)
         if ccl_v and ccl_v > 0:
@@ -143,7 +150,7 @@ def obtener_macro_argentina():
     if dUI["tasa_tamar"] is None and dUI["tasa_badlar"] is not None:
         dUI["tasa_tamar"] = round(dUI["tasa_badlar"] + 3.20, 2)
 
-    # 5. Bono AL30 (Data912 historical fallback en vivo)
+    # 5. Bono AL30
     if dUI["bono_al30"]["valor"] is None or dUI["bono_al30"]["var_1m"] is None:
         try:
             r_d9 = requests.get("https://data912.com/historical/bonds/AL30", headers=HEADERS, timeout=6)
@@ -215,25 +222,56 @@ def obtener_eventos_macro_eeuu():
 def obtener_valuaciones_mercado():
     dp = obtener_datos_criticos_puente()
     val = {"ARG": [], "USA": []}
-    if dp:
+    if dp and dp.get("valuaciones_usa") and dp.get("valuaciones_arg"):
         for t, i in dp.get("valuaciones_arg", {}).items():
             val["ARG"].append({
                 "Activo": t, "Sector": i.get("Sector", "N/D"), 
-                "P/E": str(i.get("P/E", "N/D")), "Forward P/E": str(i.get("Forward P/E", "N/D")),
+                "P/E": str(i.get("P/E", "N/D")), "Fwd P/E": str(i.get("Forward P/E", "N/D")),
                 "EV/EBITDA": str(i.get("EV/EBITDA", "N/D")),
-                "FCF Yield": str(i.get("FCF Yield", "N/D")), "Debt/Equity": str(i.get("Debt/Equity", "N/D")),
-                "ROE (%)": str(i.get("ROE (%)", "N/D")), 
-                "1M": i.get("1M"), "6M": i.get("6M"), "1Y": i.get("1Y")
+                "FCF Yield": str(i.get("FCF Yield", "N/D")), "Debt/Eq": str(i.get("Debt/Equity", "N/D")),
+                "ROE (%)": str(i.get("ROE (%)", "N/D"))
             })
         for t, i in dp.get("valuaciones_usa", {}).items():
             val["USA"].append({
                 "Activo": t, "Sector": i.get("Sector", "N/D"), 
-                "P/E": str(i.get("P/E", "N/D")), "Forward P/E": str(i.get("Forward P/E", "N/D")),
+                "P/E": str(i.get("P/E", "N/D")), "Fwd P/E": str(i.get("Forward P/E", "N/D")),
                 "EV/EBITDA": str(i.get("EV/EBITDA", "N/D")),
-                "FCF Yield": str(i.get("FCF Yield", "N/D")), "Debt/Equity": str(i.get("Debt/Equity", "N/D")),
-                "ROE (%)": str(i.get("ROE (%)", "N/D")), 
-                "1M": i.get("1M"), "6M": i.get("6M"), "1Y": i.get("1Y")
+                "FCF Yield": str(i.get("FCF Yield", "N/D")), "Debt/Eq": str(i.get("Debt/Equity", "N/D")),
+                "ROE (%)": str(i.get("ROE (%)", "N/D"))
             })
+        return val
+
+    # Fallback en vivo si el JSON de GitHub aún no se actualizó
+    lideres_usa = {"SPY": "S&P 500 ETF", "QQQ": "Nasdaq 100 ETF", "MSFT": "Tecnología", "GOOGL": "Comunicaciones", "JPM": "Financiero", "XOM": "Energía", "LLY": "Salud"}
+    lideres_arg = {"GGAL": "Financiero", "BMA": "Financiero", "YPF": "Energía", "PAM": "Energía", "VIST": "Energía", "TGS": "Energía", "MELI": "Tecnología"}
+    for t, sec in lideres_usa.items():
+        try:
+            inf = yf.Ticker(t).info
+            pe = inf.get("trailingPE")
+            fpe = inf.get("forwardPE")
+            roe = inf.get("returnOnEquity")
+            val["USA"].append({
+                "Activo": t, "Sector": sec,
+                "P/E": f"{pe:.1f}" if isinstance(pe, (int, float)) else "N/D",
+                "Fwd P/E": f"{fpe:.1f}" if isinstance(fpe, (int, float)) else "N/D",
+                "EV/EBITDA": f"{inf.get('enterpriseToEbitda'):.1f}" if isinstance(inf.get('enterpriseToEbitda'), (int, float)) else "N/D",
+                "ROE (%)": f"{roe*100:.1f}%" if isinstance(roe, (int, float)) else "N/D"
+            })
+        except: pass
+    for t, sec in lideres_arg.items():
+        try:
+            inf = yf.Ticker(t).info
+            pe = inf.get("trailingPE")
+            fpe = inf.get("forwardPE")
+            roe = inf.get("returnOnEquity")
+            val["ARG"].append({
+                "Activo": t, "Sector": sec,
+                "P/E": f"{pe:.1f}" if isinstance(pe, (int, float)) else "N/D",
+                "Fwd P/E": f"{fpe:.1f}" if isinstance(fpe, (int, float)) else "N/D",
+                "EV/EBITDA": f"{inf.get('enterpriseToEbitda'):.1f}" if isinstance(inf.get('enterpriseToEbitda'), (int, float)) else "N/D",
+                "ROE (%)": f"{roe*100:.1f}%" if isinstance(roe, (int, float)) else "N/D"
+            })
+        except: pass
     return val
 
 @st.cache_data(ttl=3600)
@@ -246,6 +284,11 @@ def obtener_datos_gics():
     except: dfc = pd.DataFrame()
     for s, t in etfs.items():
         v1, v6, v12 = 0.0, 0.0, 0.0
+        pe_val = None
+        try:
+            pe_raw = yf.Ticker(t).info.get("trailingPE")
+            if isinstance(pe_raw, (int, float)): pe_val = round(float(pe_raw), 2)
+        except: pass
         if not dfc.empty and t in dfc.columns:
             sr = dfc[t].dropna()
             if len(sr) >= 20:
@@ -254,35 +297,75 @@ def obtener_datos_gics():
                 if len(sr) >= 126: v6 = round(((pa / float(sr.iloc[-126])) - 1) * 100, 2)
                 if len(sr) >= 250: v12 = round(((pa / float(sr.iloc[0])) - 1) * 100, 2)
         sc = max(0, min(100, int(50.0 + (v6 * 1.5))))
-        ds.append({"Sector": s, "ETF": t, "1M (%)": v1, "6M (%)": v6, "12M (%)": v12, "Score": sc})
+        ds.append({"Sector": s, "ETF": t, "P/E": pe_val, "1M (%)": v1, "6M (%)": v6, "12M (%)": v12, "Score": sc})
     return sorted(ds, key=lambda x: x["Score"], reverse=True)
 
 @st.cache_data(ttl=3600)
 def obtener_datos_merval():
     lider = ["ALUA.BA", "BBAR.BA", "BMA.BA", "BYMA.BA", "CEPU.BA", "COME.BA", "CRES.BA", "CVH.BA", "EDN.BA", "GGAL.BA", "IRSA.BA", "LOMA.BA", "MIRG.BA", "PAMP.BA", "SUPV.BA", "TECO2.BA", "TGNO4.BA", "TGSU2.BA", "TRAN.BA", "TXAR.BA", "VALO.BA", "YPFD.BA"]
+    general = ["AGRO.BA", "AUSO.BA", "BHIP.BA", "CAPX.BA", "CGPA2.BA", "GCLA.BA", "HAVA.BA", "MORI.BA", "OEST.BA", "SAMI.BA"]
     dp = obtener_datos_criticos_puente()
     cot = dp.get("cotizaciones_merval", {}) if dp else {}
     res = []
-    for tf, d in cot.items():
-        tl = tf.replace(".BA", "")
-        panel = "Principal" if tf in lider else "General"
-        p = d.get("precio"); r = d.get("rsi"); v_ars = d.get("volumen_pesos_m"); pe = d.get("pe"); pb = d.get("pbv")
-        v1m = d.get("var_1m"); v1m_usd = d.get("var_1m_usd")
-        
-        lec = "Lateralizando en zona de equilibrio."
-        if v_ars is not None and v_ars < 100 and panel == "General": lec = "🔴 RIESGO DE ILIQUIDEZ EXTREMO."
-        elif r is not None:
-            if r > 70: lec = "¡Precaución! RSI en sobrecompra (>70)."
-            elif r < 35: lec = "Señal de Sobreventa (RSI < 35)."
-            elif pb and pb < 1: lec = "Subvaluada por fundamentales contables."
+
+    if cot:
+        for tf, d in cot.items():
+            tl = tf.replace(".BA", "")
+            panel = "Principal" if tf in lider else "General"
+            p = d.get("precio"); r = d.get("rsi"); v_ars = d.get("volumen_pesos_m"); pe = d.get("pe"); pb = d.get("pbv")
+            div_y = d.get("div_yield", 0.0)
+            v1m = d.get("var_1m"); v1m_usd = d.get("var_1m_usd")
             
-        res.append({
-            "Ticker": tl, "Panel": panel, "Precio": round(p,2) if p else None, 
-            "P/E": round(pe,2) if isinstance(pe, (int, float)) else None, 
-            "P/BV": round(pb,2) if isinstance(pb, (int, float)) else None, 
-            "Vol_ARS_M": round(v_ars,1) if isinstance(v_ars, (int, float)) else None, 
-            "RSI": round(r, 2) if r else None, "Var_1M": v1m, "Var_1M_USD": v1m_usd, "Lectura": lec
-        })
+            lec = "Lateralizando en zona de equilibrio."
+            if v_ars is not None and v_ars < 100 and panel == "General": lec = "🔴 RIESGO DE ILIQUIDEZ EXTREMO."
+            elif r is not None:
+                if r > 70: lec = "¡Precaución! RSI en sobrecompra (>70)."
+                elif r < 35: lec = "Señal de Sobreventa (RSI < 35)."
+                elif pb and pb < 1: lec = "Subvaluada por fundamentales contables."
+                
+            res.append({
+                "Ticker": tl, "Panel": panel, "Precio (ARS)": round(p,2) if p else None, 
+                "P/E": round(pe,2) if isinstance(pe, (int, float)) else None, 
+                "P/BV": round(pb,2) if isinstance(pb, (int, float)) else None, 
+                "Div Yield (%)": round(div_y, 2) if isinstance(div_y, (int, float)) else 0.0,
+                "Vol. 20d (M ARS)": round(v_ars,2) if isinstance(v_ars, (int, float)) else None, 
+                "RSI": round(r, 2) if r else None, "Var_1M": v1m, "Var_1M_USD": v1m_usd, "Lectura": lec
+            })
+        return sorted(res, key=lambda x: x["RSI"] if isinstance(x["RSI"], (int, float)) else 999)
+
+    # Fallback en vivo si el JSON aún no tiene cotizaciones_merval
+    tkrs = lider + general
+    try:
+        ts = yf.Tickers(" ".join(tkrs))
+        for tf in tkrs:
+            ti = ts.tickers[tf]
+            hist = ti.history(period="2mo")
+            if not hist.empty:
+                p = float(hist["Close"].iloc[-1])
+                vol_20d = float(hist["Volume"].dropna().tail(20).mean())
+                v_ars = round((vol_20d * p) / 1_000_000, 2)
+                r = None
+                if len(hist) >= 14:
+                    delta = hist['Close'].diff()
+                    g = delta.where(delta > 0, 0.0).rolling(14).mean()
+                    l = -delta.where(delta < 0, 0.0).rolling(14).mean()
+                    rs = g / l
+                    r = round(float(100 - (100 / (1 + rs.iloc[-1]))), 2) if l.iloc[-1] != 0 else 100.0
+                inf = ti.info
+                pe = inf.get("trailingPE")
+                pb = inf.get("priceToBook")
+                panel = "Principal" if tf in lider else "General"
+                lec = "Lateralizando en zona de equilibrio."
+                if v_ars < 100 and panel == "General": lec = "🔴 RIESGO DE ILIQUIDEZ EXTREMO."
+                elif r and r > 70: lec = "¡Precaución! RSI en sobrecompra (>70)."
+                elif r and r < 35: lec = "Señal de Sobreventa (RSI < 35)."
+                res.append({
+                    "Ticker": tf.replace(".BA", ""), "Panel": panel, "Precio (ARS)": round(p, 2),
+                    "P/E": round(float(pe), 2) if isinstance(pe, (int, float)) else None,
+                    "P/BV": round(float(pb), 2) if isinstance(pb, (int, float)) else None,
+                    "Div Yield (%)": 0.0, "Vol. 20d (M ARS)": v_ars, "RSI": r, "Lectura": lec
+                })
+    except: pass
     return sorted(res, key=lambda x: x["RSI"] if isinstance(x["RSI"], (int, float)) else 999)
 
 @st.cache_data(ttl=1800)
@@ -366,17 +449,17 @@ def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)",
 
         p += f"\n**5. LÍDERES SECTORIALES (VALUACIÓN TRAIL/FWD + MOMENTUM | Corte: {ts_corte}):**\n"
         for v in val.get("USA", []):
-            p += f"- USA: {v['Activo']} ({v['Sector']}) | P/E: {v['P/E']} | Fwd P/E: {v.get('Forward P/E','N/D')} | EV/EBITDA: {v.get('EV/EBITDA','N/D')} | FCF Yield: {v.get('FCF Yield','N/D')} | Debt/Eq: {v.get('Debt/Equity','N/D')} | ROE: {v['ROE (%)']} | 1M: {v['1M']}% | 1Y: {v['1Y']}%\n"
+            p += f"- USA: {v['Activo']} ({v['Sector']}) | P/E: {v['P/E']} | Fwd P/E: {v.get('Fwd P/E','N/D')} | EV/EBITDA: {v.get('EV/EBITDA','N/D')} | FCF Yield: {v.get('FCF Yield','N/D')} | Debt/Eq: {v.get('Debt/Eq','N/D')} | ROE: {v['ROE (%)']}\n"
         for v in val.get("ARG", []):
-            p += f"- ARG: {v['Activo']} ({v['Sector']}) | P/E: {v['P/E']} | Fwd P/E: {v.get('Forward P/E','N/D')} | EV/EBITDA: {v.get('EV/EBITDA','N/D')} | FCF Yield: {v.get('FCF Yield','N/D')} | Debt/Eq: {v.get('Debt/Equity','N/D')} | ROE: {v['ROE (%)']} | 1M: {v['1M']}% | 1Y: {v['1Y']}%\n"
+            p += f"- ARG: {v['Activo']} ({v['Sector']}) | P/E: {v['P/E']} | Fwd P/E: {v.get('Fwd P/E','N/D')} | EV/EBITDA: {v.get('EV/EBITDA','N/D')} | FCF Yield: {v.get('FCF Yield','N/D')} | Debt/Eq: {v.get('Debt/Eq','N/D')} | ROE: {v['ROE (%)']}\n"
             
         p += f"\n**6. RADAR MERVAL (Volumen Promedio 20 Ruedas + Variación USD | Corte: {ts_corte}):**\n"
         ti = [m for m in dm if (isinstance(m['RSI'], (int, float)) and m['RSI'] < 38) or (isinstance(m['P/BV'], (int, float)) and m['P/BV'] < 1)][:10]
         for m in ti:
             pe_str = f"{m['P/E']}" if m.get('P/E') is not None else "N/D"
-            p += f"- {m['Ticker']} ({m['Panel']}): Precio ${m['Precio']} | Var 1M ARS: {m.get('Var_1M', 'N/D')}% | Var 1M USD (CCL): {m.get('Var_1M_USD', 'N/D')}% | P/E {pe_str} | P/BV {m['P/BV']} | RSI {m['RSI']} | Vol 20d: ${m['Vol_ARS_M']} M ARS | {m['Lectura']}\n"
+            p += f"- {m['Ticker']} ({m['Panel']}): Precio ${m.get('Precio (ARS)','N/D')} | Var 1M ARS: {m.get('Var_1M', 'N/D')}% | Var 1M USD (CCL): {m.get('Var_1M_USD', 'N/D')}% | P/E {pe_str} | P/BV {m['P/BV']} | RSI {m['RSI']} | Vol 20d: ${m.get('Vol. 20d (M ARS)','N/D')} M ARS | {m['Lectura']}\n"
         
         p += "\nESTRUCTURA TU RESPUESTA EN 4 BLOQUES:\n1. Macro Local e Internacional (Riesgo País 1M/6M, AL30, Reservas BCRA al día, Tasa Real y Rezago EMAE)\n2. Rotación y Valuación Sectorial Avanzada (Sectores GICS + P/E vs Fwd P/E, EV/EBITDA, FCF Yield y Deuda)\n3. Matriz de Oportunidades Merval (Alerta sobre Value Traps, liquidez 20d y cruce con exposición actual de cartera)\n4. Escenarios (Bull/Base/Bear) y Plan Operativo (Confianza, Horizonte, Entrada Escalonada e Invalidación)."
         
-        return f"<div style='background-color:#0d1117; padding:15px; border-radius:8px;'><pre style='color:#c9d1d9; font-family:monospace; white-space: pre-wrap;'>{p}</pre></div>"
+        return f"<pre style='color:#e2e8f0; font-family:monospace; white-space: pre-wrap; margin:0;'>{p}</pre>"
     except Exception as e: return f"Error generador IA: {e}"
