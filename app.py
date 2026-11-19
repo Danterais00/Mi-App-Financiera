@@ -92,7 +92,7 @@ def get_val(df, metric, ticker):
     except: return None
 
 
-# --- DEFINICIÓN DE FRAGMENTOS UX CON LAZY LOADING (ORIGINAL RESTAURADO) ---
+# --- DEFINICIÓN DE FRAGMENTOS UX CON LAZY LOADING ---
 
 @st.fragment
 def render_nivel1_macro():
@@ -234,38 +234,15 @@ def render_nivel3_gics():
 @st.fragment
 def render_nivel4_merval():
     st.markdown("### 📈 Nivel 4: Screener Dinámico (Merval y Panel General)")
-    st.write("Datos extraídos en vivo. Filtra el mercado para encontrar oportunidades ocultas respetando el volumen y los dividendos.")
+    st.write("Datos extraídos en vivo. Evaluación integral de liquidez (20 ruedas), valuación y momento técnico.")
     
     with st.spinner("Analizando mercado y calculando RSI en vivo..."):
         merval_data = obtener_datos_merval()
         df_completo = pd.DataFrame(merval_data)
         
     if not df_completo.empty:
-        st.write("🎯 **Filtros Inteligentes (Puedes marcar varios a la vez):**")
-        col_f1, col_f2, col_f3 = st.columns(3)
-        with col_f1: chk_sobreventa = st.checkbox("🔥 Sobrevendidas (RSI < 35)")
-        with col_f2: chk_valor = st.checkbox("💎 Valor / Baratas (P/BV < 1)")
-        with col_f3: chk_peligro = st.checkbox("⚠️ Peligro / Euforia (RSI > 70)")
-        
-        df_mostrar = df_completo.copy()
-        mask = pd.Series(True, index=df_mostrar.index)
-        filtro_aplicado = False
-        
-        if chk_sobreventa: 
-            mask = mask & (df_mostrar["RSI"] < 35)
-            filtro_aplicado = True
-        if chk_valor: 
-            mask = mask & (df_mostrar["P/BV"] < 1.0)
-            filtro_aplicado = True
-        if chk_peligro: 
-            mask = mask & (df_mostrar["RSI"] > 70)
-            filtro_aplicado = True
-            
-        if filtro_aplicado:
-            df_mostrar = df_mostrar[mask]
-
         cols_visibles = ["Ticker", "Precio (ARS)", "P/E", "P/BV", "Div Yield (%)", "Vol. 20d (M ARS)", "RSI", "Lectura"]
-        cols_visibles = [c for c in cols_visibles if c in df_mostrar.columns]
+        cols_visibles = [c for c in cols_visibles if c in df_completo.columns]
 
         tab_lider, tab_general = st.tabs(["🏛️ Panel Principal (Alta Liquidez)", "🏢 Panel General (Mayor Riesgo/Retorno)"])
         
@@ -290,19 +267,32 @@ def render_nivel4_merval():
                     return ''
                 except: return ''
             
-            return df.style.map(color_rsi, subset=['RSI']).map(color_pbv, subset=['P/BV']).map(alert_vol, subset=['Vol. 20d (M ARS)'])
+            formatos = {
+                "Precio (ARS)": "{:,.2f}",
+                "P/E": lambda x: f"{x:.2f}" if pd.notna(x) else "N/D",
+                "P/BV": lambda x: f"{x:.2f}" if pd.notna(x) else "N/D",
+                "Div Yield (%)": "{:.2f}%",
+                "Vol. 20d (M ARS)": "{:,.2f}",
+                "RSI": lambda x: f"{x:.2f}" if pd.notna(x) else "N/D"
+            }
+            
+            return (df.style
+                    .format(formatos)
+                    .map(color_rsi, subset=['RSI'])
+                    .map(color_pbv, subset=['P/BV'])
+                    .map(alert_vol, subset=['Vol. 20d (M ARS)']))
 
         with tab_lider:
-            df_l = df_mostrar[df_mostrar["Panel"] == "Principal"][cols_visibles]
+            df_l = df_completo[df_completo["Panel"] == "Principal"][cols_visibles]
             if not df_l.empty:
                 st.dataframe(aplicar_estilos_merval(df_l), hide_index=True, use_container_width=True)
-            else: st.info("Ninguna acción del Panel Principal cumple con tu combinación de filtros.")
+            else: st.info("Sin datos disponibles para el Panel Principal.")
             
         with tab_general:
-            df_g = df_mostrar[df_mostrar["Panel"] == "General"][cols_visibles]
+            df_g = df_completo[df_completo["Panel"] == "General"][cols_visibles]
             if not df_g.empty:
                 st.dataframe(aplicar_estilos_merval(df_g), hide_index=True, use_container_width=True)
-            else: st.info("Ninguna acción del Panel General cumple con tu combinación de filtros.")
+            else: st.info("Sin datos disponibles para el Panel General.")
 
     with st.expander("💡 ¿Cómo leer esta tabla para tomar decisiones? (Manual del Asesor)", expanded=False):
         st.markdown("""
