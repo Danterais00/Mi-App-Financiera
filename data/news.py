@@ -392,7 +392,7 @@ def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)",
         ev = obtener_eventos_macro_eeuu()
         
         ts_corte = dp.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S")) if dp else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cartera_str = ", ".join(tickers_cartera) if tickers_cartera else "Ninguna cargada aún (Evaluar universo completo)"
+        cartera_str = ", ".join(tickers_cartera) if tickers_cartera else "Ninguna cargada aún"
         
         tna = m_arg.get('tasa_tna')
         inf = m_arg.get('inflacion')
@@ -427,44 +427,51 @@ def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)",
         brecha = f"{((ccl/ofi)-1)*100:.1f}%" if ccl and ofi else "N/D"
         
         p = (
-            f"Actúa como CIO (Chief Investment Officer) para un fondo en Argentina. [Corte de Datos: {ts_corte}]\n"
-            f"PERFIL DE ESTRATEGIA ACTIVO: {estrategia} | EXPOSICIÓN ACTUAL EN CARTERA DEL CLIENTE: [{cartera_str}]\n\n"
-            "Redacta un Tablero de Decisiones basado EXCLUSIVAMENTE en los datos provistos. SIGUE ESTAS REGLAS ESTRICTAS:\n"
-            "1. DATA QUALITY GATE: Respeta las fechas de corte (As of) de cada variable. Nunca inventes datos, porcentajes o catalizadores.\n"
-            "2. ALINEACIÓN CON CARTERA Y PERFIL: Ajusta el riesgo al perfil activo y señala explícitamente si una recomendación duplica exposición ya existente en la cartera del cliente.\n"
-            "3. SEPARA HECHOS de INTERPRETACIONES. Un P/BV < 1 es un hecho contable sujeto a distorsiones inflacionarias, NO una recomendación automática (Value Trap).\n"
-            "4. MONEY MANAGEMENT: Cada recomendación debe declarar explícitamente: (a) Nivel de Confianza [Alto/Medio/Bajo], (b) Horizonte Temporal, (c) Entrada Escalonada y (d) Condición de Invalidación/Salida.\n\n"
-            f"**1. MACRO ARGENTINA (Pre-calculado | Corte: {ts_corte}):**\n"
-            f"- Merval: USD {m_arg.get('merval_usd',{}).get('valor','N/D')} | Bono AL30: ${al30_val} (Var 1M: {al30_v1m_str}) | Brecha CCL: {brecha} | Reservas BCRA: USD {m_arg.get('reservas','N/D')} M (As of: {res_fecha})\n"
-            f"- Riesgo País (As of: {rp_fecha}): {rp_act} pb | Var 1M: {rp_var_1m_pb} pb ({rp_var_1m_pct}%, base {rp_1m} pb) | Var 6M: {rp_var_6m_pb} pb ({rp_var_6m_pct}%, base {rp_6m} pb)\n"
-            f"- TNA PF 30D: {tna}% -> TEM (30/365): {f'{tem:.2f}%' if tem else 'N/D'} | Inflación Mensual (As of: {inf_fecha}): {inf}% | Tasa Real Efectiva: {f'{rend_real:.2f}%' if rend_real else 'N/D'}\n"
-            f"- Actividad EMAE (As of: {emae_fecha} - Dato estructural con rezago oficial): {m_arg.get('emae_ultimo','N/D')}\n\n"
-            f"**2. MACRO GLOBAL (Momentum Real 1M y 6M | Corte: {ts_corte}):**\n"
-            f"- Tasas EE.UU 10Y: {g('Bono 10Y EE.UU (%)')}% (Var 1M: {g('Bono 10Y EE.UU (%)', 'var_1m')}% | Var 6M: {g('Bono 10Y EE.UU (%)', 'var_6m')}%) | DXY: {g('DXY (Índice Dólar)')} (Var 1M: {g('DXY (Índice Dólar)', 'var_1m')}%)\n"
-            f"- Oro: USD {g('Oro (Refugio)')} (Var 1M: {g('Oro (Refugio)', 'var_1m')}% | Var 6M: {g('Oro (Refugio)', 'var_6m')}%) | VIX: {g('VIX (Miedo)')}\n\n"
+            f"Actúa como un Asesor Financiero Senior en Argentina hablando directamente con tu cliente. [Corte de Datos: {ts_corte}]\n"
+            f"PERFIL DE ESTRATEGIA ACTIVO: {estrategia} | CARTERA ACTUAL DEL CLIENTE: [{cartera_str}]\n\n"
+            "Redacta un informe de decisiones claro, directo, en español llano y sin jerga innecesaria en inglés, basado EXCLUSIVAMENTE en los datos de abajo.\n"
+            "REGLAS ESTRICTAS DE ESTILO Y PRECISIÓN:\n"
+            "1. PROHIBIDO REPETIR TABLAS O LISTAR TODOS LOS DATOS CRUDOS: No copies los números de entrada en bloques repetitivos. Ve directo a explicar qué significa cada dato y cómo afecta al bolsillo.\n"
+            "2. FORMATO DE CAUSA Y EFECTO: Para cada variable clave usa el estilo: 'El indicador X está en Y, lo que significa que [explicación sencilla], e impacta en [consecuencia para las inversiones]'.\n"
+            "3. VEREDICTO DIRECTO (SÍ vs. NO): Indica explícitamente qué sectores y acciones SÍ convienen hoy y cuáles NO convienen (alertando sobre acciones con poco volumen diario donde cuesta salir, o empresas que parecen baratas por valor contable pero cuyas ganancias futuras caen).\n"
+            "4. PLAN OPERATIVO CONCRETO: Para cada inversión recomendada indica: (a) Nivel de Confianza [Alto/Medio/Bajo], (b) Plazo sugerido, (c) Cómo entrar en etapas y (d) Cuándo vender si sale mal (Stop-Loss). Si el cliente ya tiene acciones cargadas, aclara si la recomendación suma o duplica lo que ya posee.\n\n"
+            f"--- DATOS DE REFERENCIA (NO COPIAR EN BLOQUE, SOLO INTERPRETAR) ---\n"
+            f"1. MACRO ARGENTINA:\n"
+            f"- Merval: USD {m_arg.get('merval_usd',{}).get('valor','N/D')} | Bono AL30: ${al30_val} (Var 1M: {al30_v1m_str}) | Brecha CCL: {brecha} | Reservas BCRA: USD {m_arg.get('reservas','N/D')} M (al {res_fecha})\n"
+            f"- Riesgo País (al {rp_fecha}): {rp_act} pb | Var 1M: {rp_var_1m_pb} pb ({rp_var_1m_pct}%, base {rp_1m} pb) | Var 6M: {rp_var_6m_pb} pb ({rp_var_6m_pct}%, base {rp_6m} pb)\n"
+            f"- Plazo Fijo 30D: TNA {tna}% (Rinde {f'{tem:.2f}%' if tem else 'N/D'} mensual) vs Inflación Mensual (al {inf_fecha}): {inf}% -> Rendimiento Real: {f'{rend_real:.2f}%' if rend_real else 'N/D'}\n"
+            f"- Actividad Económica EMAE (al {emae_fecha}, dato con rezago oficial): {m_arg.get('emae_ultimo','N/D')}\n\n"
+            f"2. MACRO GLOBAL:\n"
+            f"- Tasa Bono EE.UU 10Y: {g('Bono 10Y EE.UU (%)')}% (1M: {g('Bono 10Y EE.UU (%)', 'var_1m')}% | 6M: {g('Bono 10Y EE.UU (%)', 'var_6m')}%) | DXY (Dólar global): {g('DXY (Índice Dólar)')} (1M: {g('DXY (Índice Dólar)', 'var_1m')}%)\n"
+            f"- Oro: USD {g('Oro (Refugio)')} (1M: {g('Oro (Refugio)', 'var_1m')}% | 6M: {g('Oro (Refugio)', 'var_6m')}%) | VIX (Volatilidad): {g('VIX (Miedo)')}\n\n"
         )
         if ev:
-            p += f"**3. CALENDARIO DE EVENTOS EE.UU. (Agenda de Riesgo | Corte: {ts_corte}):**\n"
-            for e in ev[:4]: p += f"- {e['Evento']} ({e['Fecha/Hora']}): Estado/Actual {e.get('Actual_Raw','Pendiente')} vs Proy {e['Proyección']}\n"
+            p += "3. EVENTOS DE EE.UU. ESTA SEMANA:\n"
+            for e in ev[:4]: p += f"- {e['Evento']} ({e['Fecha/Hora']}): Estado {e.get('Actual_Raw','Pendiente')} vs Proy {e['Proyección']}\n"
 
         if gics:
-            p += f"\n**4. ROTACIÓN SECTORIAL GICS EE.UU. (Ranking por Investment Score | Corte: {ts_corte}):**\n"
+            p += "\n4. SECTORES EE.UU. (Ranking de fortaleza):\n"
             for s in gics[:6]:
-                p += f"- {s['Sector']} ({s['ETF']}): Score {s['Score']}/100 | 1M: {s['1M (%)']:+.2f}% | 6M: {s['6M (%)']:+.2f}% | 12M: {s['12M (%)']:+.2f}%\n"
+                p += f"- {s['Sector']} ({s['ETF']}): Puntaje {s['Score']}/100 | 1M: {s['1M (%)']:+.2f}% | 6M: {s['6M (%)']:+.2f}% | 12M: {s['12M (%)']:+.2f}%\n"
 
-        p += f"\n**5. LÍDERES SECTORIALES (VALUACIÓN TRAIL/FWD + MOMENTUM | Corte: {ts_corte}):**\n"
+        p += "\n5. EMPRESAS LÍDERES (EE.UU. y ADRs Argentinos):\n"
         for v in val.get("USA", []):
-            p += f"- USA: {v['Activo']} ({v['Sector']}) | P/E: {v['P/E']} | Fwd P/E: {v.get('Fwd P/E','N/D')} | P/BV: {v.get('P/BV','N/D')} | EV/EBITDA: {v.get('EV/EBITDA','N/D')} | FCF Yield: {v.get('FCF Yield','N/D')} | Debt/Eq: {v.get('Debt/Eq','N/D')} | ROE: {v['ROE (%)']}\n"
+            p += f"- USA {v['Activo']} ({v['Sector']}): P/E {v['P/E']} | Fwd P/E {v.get('Fwd P/E','N/D')} | P/BV {v.get('P/BV','N/D')} | EV/EBITDA {v.get('EV/EBITDA','N/D')} | FCF Yield {v.get('FCF Yield','N/D')} | Deuda/Patrimonio {v.get('Debt/Eq','N/D')} | ROE {v['ROE (%)']}\n"
         for v in val.get("ARG", []):
-            p += f"- ARG: {v['Activo']} ({v['Sector']}) | P/E: {v['P/E']} | Fwd P/E: {v.get('Fwd P/E','N/D')} | P/BV: {v.get('P/BV','N/D')} | EV/EBITDA: {v.get('EV/EBITDA','N/D')} | FCF Yield: {v.get('FCF Yield','N/D')} | Debt/Eq: {v.get('Debt/Eq','N/D')} | ROE: {v['ROE (%)']}\n"
+            p += f"- ARG {v['Activo']} ({v['Sector']}): P/E {v['P/E']} | Fwd P/E {v.get('Fwd P/E','N/D')} | P/BV {v.get('P/BV','N/D')} | EV/EBITDA {v.get('EV/EBITDA','N/D')} | FCF Yield {v.get('FCF Yield','N/D')} | Deuda/Patrimonio {v.get('Debt/Eq','N/D')} | ROE {v['ROE (%)']}\n"
             
-        p += f"\n**6. RADAR MERVAL (Volumen Promedio 20 Ruedas + Variación USD | Corte: {ts_corte}):**\n"
+        p += "\n6. RADAR MERVAL (Las 10 acciones locales más castigadas hoy):\n"
         ti = [m for m in dm if (isinstance(m['RSI'], (int, float)) and m['RSI'] < 38) or (isinstance(m['P/BV'], (int, float)) and m['P/BV'] < 1)][:10]
         for m in ti:
             pe_str = f"{m['P/E']}" if m.get('P/E') is not None else "N/D"
-            p += f"- {m['Ticker']} ({m['Panel']}): Precio ${m.get('Precio (ARS)','N/D')} | Var 1M ARS: {m.get('Var_1M', 'N/D')}% | Var 1M USD (CCL): {m.get('Var_1M_USD', 'N/D')}% | P/E {pe_str} | P/BV {m['P/BV']} | RSI {m['RSI']} | Vol 20d: ${m.get('Vol. 20d (M ARS)','N/D')} M ARS | {m['Lectura']}\n"
+            p += f"- {m['Ticker']} ({m['Panel']}): Precio ${m.get('Precio (ARS)','N/D')} | Var 1M USD: {m.get('Var_1M_USD', 'N/D')}% | P/E {pe_str} | P/BV {m['P/BV']} | RSI {m['RSI']} | Volumen diario promedio: ${m.get('Vol. 20d (M ARS)','N/D')} M ARS | {m['Lectura']}\n"
         
-        p += "\nESTRUCTURA TU RESPUESTA EN 4 BLOQUES:\n1. Macro Local e Internacional (Riesgo País 1M/6M, AL30, Reservas BCRA al día, Tasa Real y Rezago EMAE)\n2. Rotación y Valuación Sectorial Avanzada (Sectores GICS + P/E vs Fwd P/E, P/BV en bancos, EV/EBITDA, FCF Yield y Deuda)\n3. Matriz de Oportunidades Merval (Alerta sobre Value Traps, liquidez 20d y cruce con exposición actual de cartera)\n4. Escenarios (Bull/Base/Bear) y Plan Operativo (Confianza, Horizonte, Entrada Escalonada e Invalidación)."
+        p += (
+            "\n--- ESTRUCTURA EXACTA DE TU RESPUESTA ---\n"
+            "1. Qué está pasando hoy (Diagnóstico rápido de Riesgo País, Reservas, Brecha, Plazo Fijo vs Inflación y Tasas de EE.UU. usando causa y efecto).\n"
+            "2. Dónde SÍ conviene invertir y dónde NO (Comparativa clara entre sectores de EE.UU. y acciones argentinas, descartando acciones con poco volumen o trampas contables).\n"
+            "3. Plan de Acción Concreto (3 a 4 ideas claras adaptadas al perfil activo, indicando Confianza, Plazo, Entrada escalonada y Precio de salida/Stop-Loss)."
+        )
         
         return f"<pre style='color:#e2e8f0; font-family:monospace; white-space: pre-wrap; margin:0;'>{p}</pre>"
     except Exception as e: return f"Error generador IA: {e}"
