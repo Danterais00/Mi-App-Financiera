@@ -398,7 +398,7 @@ def obtener_noticias_acciones(tickers):
     return n
 
 @st.cache_data(ttl=3600)
-def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)", tickers_cartera=None):
+def generar_analisis_ia(m_arg, m_int, gics, estrategia=None, tickers_cartera=None):
     try:
         dp = obtener_datos_criticos_puente()
         val = obtener_valuaciones_mercado()
@@ -406,7 +406,7 @@ def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)",
         ev = obtener_eventos_macro_eeuu()
         
         ts_corte = dp.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S")) if dp else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cartera_str = ", ".join(tickers_cartera) if tickers_cartera else "Ninguna cargada aún (Cartera nueva desde cero)"
+        cartera_str = ", ".join(tickers_cartera) if tickers_cartera else "Ninguna cargada aún"
         
         tna = m_arg.get('tasa_tna')
         inf = m_arg.get('inflacion')
@@ -445,59 +445,61 @@ def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)",
         brecha = f"{((ccl/ofi)-1)*100:.1f}%" if ccl and ofi else "N/D"
         
         p = (
-            f"Actúa como un Gestor de Carteras Senior (CIO) asesorando directamente a tu cliente en Argentina. [Corte: {ts_corte}]\n"
-            f"PERFIL ACTIVO: {estrategia} | CARTERA ACTUAL DEL CLIENTE: [{cartera_str}]\n\n"
-            "Redacta un Plan de Inversión Profesional en español claro, directo y sin jerga innecesaria en inglés, basado EXCLUSIVAMENTE en los datos de abajo.\n"
-            "REGLAS ESTRICTAS DE GESTIÓN PROFESIONAL:\n"
-            "1. PROHIBIDO REPETIR TABLAS CRUDAS: No transcribas listas de números de entrada; interpreta qué significa cada indicador y cómo impacta en la cartera.\n"
-            "2. RIGOR MACRO: Distingue Reservas Brutas (que incluyen encajes y swaps, no libre disponibilidad neta) y analiza su tendencia 30d; evalúa no solo la brecha cambiaria sino la velocidad de suba del Dólar CCL (1M y 3M) frente a la inflación; no uses indicadores macro (como el Riesgo País) como gatillo mecánico para comprar acciones.\n"
-            "3. PRECIO VS. VALOR (PROHIBIDO COMPRAR SOLO POR CAÍDA O RSI): Una acción que cayó mucho o tiene RSI bajo NO está automáticamente barata. Evalúa siempre Precio Actual vs. Target Price (Upside %), PEG Ratio, FCF Yield y Deuda.\n"
-            "4. ARQUITECTURA DE CARTERA POR 4 BLOQUES (ASIGNANDO EL 100% DEL CAPITAL) Y CONTROL DE CONCENTRACIÓN:\n"
-            "   - Bloque 1: Núcleo Global (30%-40% en ETFs amplios como SPY/QQQ o sector líder para capturar mercado sin riesgo individual).\n"
-            "   - Bloque 2: Crecimiento Selectivo EE.UU. (25%-35% en empresas de calidad con margen de seguridad real).\n"
-            "   - Bloque 3: Apuesta Táctica Argentina (15%-25% máximo total). ALERTA DE CONCENTRACIÓN: No dupliques riesgo temático (ej. YPF y VIST comparten riesgo petróleo + Vaca Muerta + Argentina; elige la mejor o reparte el cupo).\n"
-            "   - Bloque 4: Reserva Estratégica de Liquidez (10%-20% en instrumentos de corto plazo: Letras/CER/Money Market en pesos o T-Bills en USD para aprovechar caídas).\n"
-            "5. GESTIÓN DEL RIESGO REAL: No uses stop-loss porcentuales arbitrarios (ej. -8%) en inversiones de largo plazo. Diferencia horizonte estructural (12+ meses, salida por deterioro de tesis/valuación) de operación táctica (15-60 días, salida técnica).\n\n"
-            f"--- DATOS DE REFERENCIA ---\n"
+            f"Actúa como un Analista Fundamental Senior (Equity & Macro Research) presentando un informe objetivo y claro en español llano. [Corte de Datos: {ts_corte}]\n"
+            f"CARTERA ACTUAL DEL CLIENTE (solo para detectar superposiciones temáticas si hay activos cargados): [{cartera_str}]\n\n"
+            "Redacta un Informe de Investigación Fundamental basado EXCLUSIVAMENTE en los datos provistos abajo.\n"
+            "REGLAS ESTRICTAS DE ALCANCE Y RIGOR:\n"
+            "1. ENFOQUE 100% FUNDAMENTAL: NO menciones perfiles de riesgo (agresivo, moderado, conservador), NO asignes porcentajes de cartera, NO des órdenes de entrada escalonada y NO fijes precios de Stop-Loss ni gatillos técnicos por RSI. Evalúa únicamente la salud del negocio, la generación de caja, el endeudamiento y la valuación respecto al precio actual.\n"
+            "2. PROHIBIDO REPETIR TABLAS CRUDAS: No transcribas listas de números de entrada; explica de forma directa qué significa cada indicador y cómo impacta en el valor de las empresas.\n"
+            "3. RIGOR MACROECONÓMICO:\n"
+            "   - Aclara que el saldo del BCRA corresponde a Reservas Brutas (que incluyen encajes y swaps, no libre disponibilidad neta) y analiza su tendencia de acumulación/caída en 30 días.\n"
+            "   - Evalúa no solo la brecha cambiaria, sino la velocidad de suba del Dólar CCL (1M y 3M) frente a la inflación mensual, y menciona que más allá del Plazo Fijo tradicional existen instrumentos de corto plazo en pesos (Letras/CER/Money Market).\n"
+            "   - Explica correctamente la macro global: una tasa del Bono del Tesoro EE.UU. a 10 años arriba del 5% implica caída en el precio de los bonos y mayor exigencia de descuento sobre las ganancias futuras de las acciones.\n"
+            "4. PRECIO VS. VALOR Y CALIDAD OPERATIVA:\n"
+            "   - Separa calidad de negocio de precio de compra: compara siempre Precio Actual vs. Target Price (Upside %), PEG Ratio, EV/EBITDA, FCF Yield (flujo de caja libre sobre valor de mercado) y Deuda/Patrimonio.\n"
+            "   - En bancos (JPM, GGAL, BMA), evalúa P/BV junto con ROE y aclara que sus ganancias proyectadas dependen del ciclo de tasas, crédito y morosidad.\n"
+            "   - En empresas reguladas (TGNO4, EDN, CEPU), aclara que su flujo depende de cuadros tarifarios y capex, no solo de múltiplos contables.\n"
+            "   - Alerta explícitamente sobre trampas de valor (múltiplos contables bajos pero con deterioro en ganancias proyectadas o caja negativa) y sobre acciones del Panel General con liquidez diaria mínima (en pesos y dólares).\n\n"
+            f"--- DATOS DE REFERENCIA (NO COPIAR EN BLOQUE, SOLO INTERPRETAR) ---\n"
             f"1. MACRO ARGENTINA:\n"
             f"- Merval: USD {m_arg.get('merval_usd',{}).get('valor','N/D')} | Bono AL30: ${al30_val} (Var 1M: {al30_v1m_str})\n"
             f"- Dólar CCL: ${ccl if ccl else 'N/D'} (Var 1M: {ccl_v1m}% | Var 3M: {ccl_v3m}%) | Brecha CCL vs Oficial: {brecha}\n"
             f"- Reservas Brutas BCRA (al {res_fecha}): USD {m_arg.get('reservas','N/D')} M (Var 30d: {res_v30_m} M / {res_v30_pct}%)\n"
             f"- Riesgo País (al {rp_fecha}): {rp_act} pb (Var 1M: {rp_var_1m_pb} pb / {rp_var_1m_pct}%, base {rp_1m} pb | Var 6M: {rp_var_6m_pb} pb / {rp_var_6m_pct}%, base {rp_6m} pb)\n"
             f"- Plazo Fijo 30D: TNA {tna}% ({f'{tem:.2f}%' if tem else 'N/D'} mensual) vs Inflación Mensual (al {inf_fecha}): {inf}% -> Rendimiento Real PF: {f'{rend_real:.2f}%' if rend_real else 'N/D'}\n"
-            f"- Actividad EMAE (al {emae_fecha}, rezago oficial): {m_arg.get('emae_ultimo','N/D')}\n\n"
+            f"- Actividad Económica EMAE (al {emae_fecha}, rezago oficial): {m_arg.get('emae_ultimo','N/D')}\n\n"
             f"2. MACRO GLOBAL:\n"
             f"- Bono EE.UU 10Y: {g('Bono 10Y EE.UU (%)')}% (1M: {g('Bono 10Y EE.UU (%)', 'var_1m')}% | 6M: {g('Bono 10Y EE.UU (%)', 'var_6m')}%) | DXY: {g('DXY (Índice Dólar)')} (1M: {g('DXY (Índice Dólar)', 'var_1m')}%)\n"
             f"- Oro: USD {g('Oro (Refugio)')} (1M: {g('Oro (Refugio)', 'var_1m')}% | 6M: {g('Oro (Refugio)', 'var_6m')}%) | VIX: {g('VIX (Miedo)')}\n"
-            f"- Índices Núcleo (1M / 6M / 12M): S&P 500 ({g('S&P 500 (Global)', 'var_1m')}% / {g('S&P 500 (Global)', 'var_6m')}% / {g('S&P 500 (Global)', 'var_1y')}%) | Nasdaq ({g('Nasdaq (Tech)', 'var_1m')}% / {g('Nasdaq (Tech)', 'var_6m')}% / {g('Nasdaq (Tech)', 'var_1y')}%)\n\n"
+            f"- Índices de Referencia (1M / 6M / 12M): S&P 500 ({g('S&P 500 (Global)', 'var_1m')}% / {g('S&P 500 (Global)', 'var_6m')}% / {g('S&P 500 (Global)', 'var_1y')}%) | Nasdaq ({g('Nasdaq (Tech)', 'var_1m')}% / {g('Nasdaq (Tech)', 'var_6m')}% / {g('Nasdaq (Tech)', 'var_1y')}%)\n\n"
         )
         if ev:
-            p += "3. AGENDA EE.UU. ESTA SEMANA:\n"
+            p += "3. AGENDA ECONÓMICA EE.UU. ESTA SEMANA:\n"
             for e in ev[:4]: p += f"- {e['Evento']} ({e['Fecha/Hora']}): Estado {e.get('Actual_Raw','Pendiente')} vs Proy {e['Proyección']}\n"
 
         if gics:
-            p += "\n4. SECTORES EE.UU. (Ranking de fortaleza):\n"
+            p += "\n4. FORTALEZA SECTORIAL EE.UU. (GICS):\n"
             for s in gics[:6]:
                 p += f"- {s['Sector']} ({s['ETF']}): Puntaje {s['Score']}/100 | 1M: {s['1M (%)']:+.2f}% | 6M: {s['6M (%)']:+.2f}% | 12M: {s['12M (%)']:+.2f}%\n"
 
-        p += "\n5. EMPRESAS LÍDERES (Precio vs Target, PEG, Múltiplos y Caja):\n"
+        p += "\n5. EMPRESAS LÍDERES (Precio vs Target, PEG, Múltiplos y Generación de Caja):\n"
         for v in val.get("USA", []):
             p += f"- USA {v['Activo']} ({v['Sector']}): Precio {v.get('Precio','N/D')} | Target {v.get('Target','N/D')} (Upside {v.get('Upside','N/D')}) | PEG {v.get('PEG','N/D')} | P/E {v['P/E']} | Fwd P/E {v.get('Fwd P/E','N/D')} | P/BV {v.get('P/BV','N/D')} | EV/EBITDA {v.get('EV/EBITDA','N/D')} | FCF Yield {v.get('FCF Yield','N/D')} | Deuda/Patr {v.get('Debt/Eq','N/D')} | ROE {v['ROE (%)']}\n"
         for v in val.get("ARG", []):
             p += f"- ARG {v['Activo']} ({v['Sector']}): Precio {v.get('Precio','N/D')} | Target {v.get('Target','N/D')} (Upside {v.get('Upside','N/D')}) | PEG {v.get('PEG','N/D')} | P/E {v['P/E']} | Fwd P/E {v.get('Fwd P/E','N/D')} | P/BV {v.get('P/BV','N/D')} | EV/EBITDA {v.get('EV/EBITDA','N/D')} | FCF Yield {v.get('FCF Yield','N/D')} | Deuda/Patr {v.get('Debt/Eq','N/D')} | ROE {v['ROE (%)']}\n"
             
-        p += "\n6. RADAR MERVAL (Liquidez en ARS y USD + Sobreventa/Valuación):\n"
+        p += "\n6. UNIVERSO LOCAL MERVAL (Liquidez diaria en ARS y USD + Múltiplos Contables):\n"
         ti = [m for m in dm if (isinstance(m['RSI'], (int, float)) and m['RSI'] < 38) or (isinstance(m['P/BV'], (int, float)) and m['P/BV'] < 1)][:10]
         for m in ti:
             pe_str = f"{m['P/E']}" if m.get('P/E') is not None else "N/D"
-            p += f"- {m['Ticker']} ({m['Panel']}): Precio ${m.get('Precio (ARS)','N/D')} | Var 1M USD: {m.get('Var_1M_USD', 'N/D')}% | P/E {pe_str} | P/BV {m['P/BV']} | RSI {m['RSI']} | Vol. diario: ${m.get('Vol. 20d (M ARS)','N/D')} M ARS (USD {m.get('Vol. 20d (K USD)','N/D')} K) | {m['Lectura']}\n"
+            p += f"- {m['Ticker']} ({m['Panel']}): Precio ${m.get('Precio (ARS)','N/D')} | Var 1M USD: {m.get('Var_1M_USD', 'N/D')}% | P/E {pe_str} | P/BV {m['P/BV']} | Vol. diario: ${m.get('Vol. 20d (M ARS)','N/D')} M ARS (USD {m.get('Vol. 20d (K USD)','N/D')} K) | {m['Lectura']}\n"
         
         p += (
-            "\n--- ESTRUCTURA EXACTA DE TU RESPUESTA ---\n"
-            "1. Diagnóstico Macro y Cambiario (Riesgo País, Reservas Brutas vs Netas y tendencia 30d, velocidad del CCL vs Inflación, Plazo Fijo vs alternativas en pesos y Tasas de EE.UU.).\n"
-            "2. Filtro de Calidad y Trampas de Mercado (Qué sectores/activos SÍ pasan el filtro de Precio vs Valor y liquidez en USD, y cuáles quedan descartados por iliquidez o caída de ganancias proyectadas).\n"
-            "3. Arquitectura de Cartera por 4 Bloques (Asignación porcentual sumando 100%: Bloque 1 Núcleo Global, Bloque 2 Crecimiento Selectivo EE.UU., Bloque 3 Apuesta Táctica Argentina sin duplicar riesgo petrolero/bancario, Bloque 4 Reserva Estratégica de Liquidez).\n"
-            "4. Escenarios (Optimista / Base / Pesimista) y Reglas de Ejecución (Confianza, Horizonte, Entrada por rangos de valuación y Criterio de salida/revisión de tesis)."
+            "\n--- ESTRUCTURA EXACTA DE TU INFORME FUNDAMENTAL ---\n"
+            "1. Diagnóstico Macroeconómico y Cambiario (Riesgo País y trayectoria 1M/6M, Reservas Brutas vs Netas y tendencia 30d, velocidad del CCL vs Inflación, alternativas de corto plazo en pesos y Tasas de EE.UU. 10Y).\n"
+            "2. Dinámica Sectorial (Qué sectores muestran fundamentos y tracción relativa a 1M/6M/12M y cuáles sufren por el costo del dinero).\n"
+            "3. Auditoría Fundamental de Compañías (Clasificación clara en tres grupos: [A] Fundamentos sólidos con margen de seguridad atractivo según Precio vs Target, FCF Yield y Deuda; [B] Buenas compañías pero con valuación exigente o bajo Upside; [C] Descartadas por deterioro operativo proyectado, caja negativa o iliquidez severa).\n"
+            "4. Escenarios Fundamentales y Variables a Monitorear (Escenario Optimista, Base y Pesimista según evolución de petróleo, tarifas, tasas de la Fed y reservas, sin incluir órdenes de compra, porcentajes ni stop-loss)."
         )
         
         return f"<pre style='color:#e2e8f0; font-family:monospace; white-space: pre-wrap; margin:0;'>{p}</pre>"
