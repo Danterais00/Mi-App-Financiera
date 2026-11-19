@@ -1,52 +1,98 @@
 {
-    "timestamp": "2026-11-19 00:29:07",
-    "test_1_reservas_actualizadas": {},
-    "test_2_al30_historico": {
-        "data912_hist": {
+    "timestamp": "2026-11-19 00:36:59",
+    "fuentes": {
+        "1_catalogo_datos_gob": {
             "status": "OK",
-            "ultimo": 84100.0,
-            "hace_21d": 85160.0,
-            "var_1m_pct": -1.24
+            "series": [
+                {
+                    "id": "182.1_VARIACION_LES_0_M_43",
+                    "titulo": "variacion_contable_reservas_internacionales",
+                    "ultimo_dato_fecha": "2026-08-01",
+                    "frecuencia": "R/P1M"
+                },
+                {
+                    "id": "300.1_AP_ACT_RESTER_0_M_21",
+                    "titulo": "ap_act_reservas_inter",
+                    "ultimo_dato_fecha": "2025-10-01",
+                    "frecuencia": "R/P1M"
+                },
+                {
+                    "id": "300.2_AP_ACT_RESTER_0_A_21",
+                    "titulo": "ap_act_reservas_inter",
+                    "ultimo_dato_fecha": "2024-01-01",
+                    "frecuencia": "R/P1Y"
+                },
+                {
+                    "id": "86.1_RIB_1991_A_22",
+                    "titulo": "reservas_internac_bcra",
+                    "ultimo_dato_fecha": "2001-01-01",
+                    "frecuencia": "R/P1Y"
+                },
+                {
+                    "id": "300.1_AP_ACT_RESTER_0_M_59",
+                    "titulo": "ap_act_reservas_inter_instrumentos_derivados_reservas_inter",
+                    "ultimo_dato_fecha": "2025-10-01",
+                    "frecuencia": "R/P1M"
+                },
+                {
+                    "id": "174.1_RRVAS_IDOS_0_0_36",
+                    "titulo": "reservas_internacionales_bcra_saldos",
+                    "ultimo_dato_fecha": "2026-04-01",
+                    "frecuencia": "R/P1M"
+                },
+                {
+                    "id": "182.1_VARIACION_NES_0_M_48",
+                    "titulo": "variacion_reservas_internacionales_transacciones",
+                    "ultimo_dato_fecha": "2026-08-01",
+                    "frecuencia": "R/P1M"
+                },
+                {
+                    "id": "300.2_AP_ACT_RESTER_0_A_59",
+                    "titulo": "ap_act_reservas_inter_instrumentos_derivados_reservas_inter",
+                    "ultimo_dato_fecha": "2024-01-01",
+                    "frecuencia": "R/P1Y"
+                },
+                {
+                    "id": "335.1_VARIACION_VAS__18",
+                    "titulo": "variacion_reservas",
+                    "ultimo_dato_fecha": "2009-01-01",
+                    "frecuencia": "R/P1Y"
+                },
+                {
+                    "id": "300.2_AP_ACT_RESSAS_0_A_29",
+                    "titulo": "ap_act_reservas_inter_divisas",
+                    "ultimo_dato_fecha": "2024-01-01",
+                    "frecuencia": "R/P1Y"
+                }
+            ]
         },
-        "AL30.BA": {
-            "status": "SIN_DATOS_SUFICIENTES",
-            "filas": 0
+        "2_bcra_0": {
+            "status": 410,
+            "body": "{\"status\":410,\"errorMessages\":[\"Método correspondiente a la v2 ha sido deprecado.\"]}"
         },
-        "AL30D.BA": {
-            "status": "SIN_DATOS_SUFICIENTES",
-            "filas": 0
+        "2_bcra_1": {
+            "status": 410,
+            "body": "{\"status\":410,\"errorMessages\":[\"Método correspondiente a la v3 ha sido deprecado.\"]}"
+        },
+        "3_alt_0": {
+            "url": "https://api.argentinadatos.com/v1/finanzas/indices/reservas",
+            "status": 404,
+            "body": "{\"error\":\"Not found\"}"
+        },
+        "3_alt_1": {
+            "url": "https://api.argentinadatos.com/v1/bcra/reservas",
+            "status": 404,
+            "body": "{\"error\":\"Not found\"}"
+        },
+        "3_alt_2": {
+            "url": "https://mercados.ambito.com//reservas/variacion-diaria",
+            "status": 404,
+            "body": "{\"error\":\"404\",\"trace\":\"#0 \\/var\\/www\\/html.mercados.indalo\\/vendor\\/slim\\/slim\\/Slim\\/Handlers\\/Strategies\\/RequestResponse.php(43): Closure->{closure}(Object(Slim\\\\Http\\\\ServerRequest), Object(Slim\\\\Http\\\\Response), Array)\\n#1 \\/var\\/www\\/html.mercados.indalo\\/vendor\\/slim\\/slim\\/Slim\\/Routing\\/Ro"
+        },
+        "3_alt_3": {
+            "url": "https://mercados.ambito.com//variaciones-mercado/general",
+            "status": 404,
+            "body": "{\"error\":\"404\",\"trace\":\"#0 \\/var\\/www\\/html.mercados.indalo\\/vendor\\/slim\\/slim\\/Slim\\/Handlers\\/Strategies\\/RequestResponse.php(43): Closure->{closure}(Object(Slim\\\\Http\\\\ServerRequest), Object(Slim\\\\Http\\\\Response), Array)\\n#1 \\/var\\/www\\/html.mercados.indalo\\/vendor\\/slim\\/slim\\/Slim\\/Routing\\/Ro"
         }
-    },
-    "test_3_saneamiento_adrs": {
-        "YPF": {
-            "currency_cotizacion": "USD",
-            "currency_balance": "ARS",
-            "raw_fcf_yield_pct": 6116.97,
-            "resultado_saneado": "N/D (Descalce moneda)"
-        },
-        "VIST": {
-            "currency_cotizacion": "USD",
-            "currency_balance": "USD",
-            "raw_fcf_yield_pct": 13.48,
-            "resultado_saneado": "13.48%"
-        },
-        "PAM": {
-            "currency_cotizacion": "USD",
-            "currency_balance": "USD",
-            "raw_fcf_yield_pct": -15.72,
-            "resultado_saneado": "-15.72%"
-        },
-        "LOMA": {
-            "currency_cotizacion": "USD",
-            "currency_balance": "ARS",
-            "raw_fcf_yield_pct": 3106.25,
-            "resultado_saneado": "N/D (Descalce moneda)"
-        }
-    },
-    "test_4_pe_merval_local": {
-        "GGAL.BA": 38.13,
-        "YPFD.BA": 7.75,
-        "EDN.BA": 3.65,
-        "SUPV.BA": "N/D"
     }
 }
