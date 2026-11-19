@@ -19,7 +19,7 @@ from data.news import (
     obtener_eventos_macro_eeuu
 )
 
-APP_VERSION = "v15.6 - Quant Engine (Original UI + BCRA v4.0)"
+APP_VERSION = "v15.8 - Quant Engine (GICS 12M + BCRA v4.0)"
 
 inyectar_css()
 
@@ -207,16 +207,17 @@ def render_nivel3_gics():
         datos_sectores = obtener_datos_gics()
         if datos_sectores:
             html_gics = '<div class="table-container"><table class="custom-table" style="width: 100%;">'
-            html_gics += '<tr><th style="text-align: left;">Sector (ETF)</th><th>P/E Ratio</th><th>Rend. 1 Mes</th><th>Rend. 6 Meses</th><th>Investment Score</th></tr>'
+            html_gics += '<tr><th style="text-align: left;">Sector (ETF)</th><th>P/E Ratio</th><th>Rend. 1 Mes</th><th>Rend. 6 Meses</th><th>Rend. 12 Meses</th><th>Investment Score</th></tr>'
             for s in datos_sectores:
                 pe_str = f"{s['P/E']:.2f}" if s.get('P/E') is not None else "N/D"
                 v1m_c = "#2ecca6" if s['1M (%)'] > 0 else "#ff6b6b"
                 v6m_c = "#2ecca6" if s['6M (%)'] > 0 else "#ff6b6b"
+                v12m_c = "#2ecca6" if s.get('12M (%)', 0) > 0 else "#ff6b6b"
                 sc = s['Score']
                 if sc >= 75: sc_color = "#2ecca6" 
                 elif sc >= 50: sc_color = "#ffd54f" 
                 else: sc_color = "#ff6b6b"
-                html_gics += f"<tr><td class='col-header' style='text-align: left;'>{s['Sector']} ({s['ETF']})</td><td>{pe_str}</td><td style='color:{v1m_c}; font-weight:bold;'>{s['1M (%)']:+.2f}%</td><td style='color:{v6m_c}; font-weight:bold;'>{s['6M (%)']:+.2f}%</td><td><span style='background-color: {sc_color}20; color: {sc_color}; padding: 4px 10px; border-radius: 12px; font-weight: bold;'>{sc} / 100</span></td></tr>"
+                html_gics += f"<tr><td class='col-header' style='text-align: left;'>{s['Sector']} ({s['ETF']})</td><td>{pe_str}</td><td style='color:{v1m_c}; font-weight:bold;'>{s['1M (%)']:+.2f}%</td><td style='color:{v6m_c}; font-weight:bold;'>{s['6M (%)']:+.2f}%</td><td style='color:{v12m_c}; font-weight:bold;'>{s.get('12M (%)', 0):+.2f}%</td><td><span style='background-color: {sc_color}20; color: {sc_color}; padding: 4px 10px; border-radius: 12px; font-weight: bold;'>{sc} / 100</span></td></tr>"
             html_gics += '</table></div>'
             st.markdown(html_gics, unsafe_allow_html=True)
             st.write("")
