@@ -76,7 +76,6 @@ def obtener_macro_argentina():
         if mc.get("al30_var_1m") is not None: dUI["bono_al30"]["var_1m"] = mc["al30_var_1m"]
         if mc.get("riesgo_pais_actual"): dUI["riesgo_pais"] = mc["riesgo_pais_actual"]
 
-    # 1. Dólares en vivo
     if len(dUI["dolares"]) < 5:
         try:
             rd = requests.get("https://dolarapi.com/v1/dolares", timeout=6)
@@ -94,7 +93,6 @@ def obtener_macro_argentina():
                 dUI["dolares"] = sorted(lista_d, key=lambda x: orden.index(x["nombre"]) if x["nombre"] in orden else 99)
         except: pass
 
-    # 2. Merval ARS y USD
     if dUI["merval"]["valor"] is None:
         try:
             hd_m = yf.download(["GGAL.BA", "YPFD.BA", "PAMP.BA", "BMA.BA"], period="5d", progress=False)
@@ -113,7 +111,6 @@ def obtener_macro_argentina():
         if ccl_v and ccl_v > 0:
             dUI["merval_usd"]["valor"] = round(dUI["merval"]["valor"] / ccl_v)
 
-    # 3. Inflación, Riesgo País y Reservas
     if dUI["inflacion"] is None:
         try:
             ri = requests.get("https://api.argentinadatos.com/v1/finanzas/indices/inflacion", headers=HEADERS, timeout=6)
@@ -133,7 +130,6 @@ def obtener_macro_argentina():
                     dUI["reservas"] = round(float(results[0]["detalle"][0]["valor"]))
         except: pass
 
-    # 4. Tasas
     if dUI["tasa_badlar"] is None:
         try:
             rb = requests.get("https://apis.datos.gob.ar/series/api/series/?ids=89.2_TS_INTELAR_0_D_20&limit=5&sort=desc&format=json", timeout=6)
@@ -150,7 +146,6 @@ def obtener_macro_argentina():
     if dUI["tasa_tamar"] is None and dUI["tasa_badlar"] is not None:
         dUI["tasa_tamar"] = round(dUI["tasa_badlar"] + 3.20, 2)
 
-    # 5. Bono AL30
     if dUI["bono_al30"]["valor"] is None or dUI["bono_al30"]["var_1m"] is None:
         try:
             r_d9 = requests.get("https://data912.com/historical/bonds/AL30", headers=HEADERS, timeout=6)
@@ -226,6 +221,8 @@ def obtener_valuaciones_mercado():
         for t, i in dp.get("valuaciones_arg", {}).items():
             val["ARG"].append({
                 "Activo": t, "Sector": i.get("Sector", "N/D"), 
+                "Precio": str(i.get("Precio", "N/D")), "Target": str(i.get("Target", "N/D")),
+                "Upside": str(i.get("Upside", "N/D")), "PEG": str(i.get("PEG", "N/D")),
                 "P/E": str(i.get("P/E", "N/D")), "Fwd P/E": str(i.get("Forward P/E", "N/D")),
                 "P/BV": str(i.get("P/BV", "N/D")),
                 "EV/EBITDA": str(i.get("EV/EBITDA", "N/D")),
@@ -235,6 +232,8 @@ def obtener_valuaciones_mercado():
         for t, i in dp.get("valuaciones_usa", {}).items():
             val["USA"].append({
                 "Activo": t, "Sector": i.get("Sector", "N/D"), 
+                "Precio": str(i.get("Precio", "N/D")), "Target": str(i.get("Target", "N/D")),
+                "Upside": str(i.get("Upside", "N/D")), "PEG": str(i.get("PEG", "N/D")),
                 "P/E": str(i.get("P/E", "N/D")), "Fwd P/E": str(i.get("Forward P/E", "N/D")),
                 "P/BV": str(i.get("P/BV", "N/D")),
                 "EV/EBITDA": str(i.get("EV/EBITDA", "N/D")),
@@ -243,18 +242,24 @@ def obtener_valuaciones_mercado():
             })
         return val
 
-    # Fallback en vivo
     lideres_usa = {"SPY": "S&P 500 ETF", "QQQ": "Nasdaq 100 ETF", "MSFT": "Tecnología", "GOOGL": "Comunicaciones", "JPM": "Financiero", "XOM": "Energía", "LLY": "Salud"}
     lideres_arg = {"GGAL": "Financiero", "BMA": "Financiero", "YPF": "Energía", "PAM": "Energía", "VIST": "Energía", "TGS": "Energía", "MELI": "Tecnología"}
     for t, sec in lideres_usa.items():
         try:
             inf = yf.Ticker(t).info
+            p = inf.get("currentPrice") or inf.get("regularMarketPrice")
+            tg = inf.get("targetMeanPrice")
+            peg = inf.get("pegRatio") or inf.get("trailingPegRatio")
             pe = inf.get("trailingPE")
             fpe = inf.get("forwardPE")
             pb = inf.get("priceToBook")
             roe = inf.get("returnOnEquity")
             val["USA"].append({
                 "Activo": t, "Sector": sec,
+                "Precio": f"${p:.2f}" if p else "N/D",
+                "Target": f"${tg:.2f}" if tg else "N/D",
+                "Upside": f"{((tg/p)-1)*100:+.1f}%" if (p and tg) else "N/D",
+                "PEG": f"{peg:.2f}" if isinstance(peg, (int, float)) else "N/D",
                 "P/E": f"{pe:.1f}" if isinstance(pe, (int, float)) else "N/D",
                 "Fwd P/E": f"{fpe:.1f}" if isinstance(fpe, (int, float)) else "N/D",
                 "P/BV": f"{pb:.2f}" if isinstance(pb, (int, float)) else "N/D",
@@ -265,12 +270,19 @@ def obtener_valuaciones_mercado():
     for t, sec in lideres_arg.items():
         try:
             inf = yf.Ticker(t).info
+            p = inf.get("currentPrice") or inf.get("regularMarketPrice")
+            tg = inf.get("targetMeanPrice")
+            peg = inf.get("pegRatio") or inf.get("trailingPegRatio")
             pe = inf.get("trailingPE")
             fpe = inf.get("forwardPE")
             pb = inf.get("priceToBook")
             roe = inf.get("returnOnEquity")
             val["ARG"].append({
                 "Activo": t, "Sector": sec,
+                "Precio": f"${p:.2f}" if p else "N/D",
+                "Target": f"${tg:.2f}" if tg else "N/D",
+                "Upside": f"{((tg/p)-1)*100:+.1f}%" if (p and tg) else "N/D",
+                "PEG": f"{peg:.2f}" if isinstance(peg, (int, float)) else "N/D",
                 "P/E": f"{pe:.1f}" if isinstance(pe, (int, float)) else "N/D",
                 "Fwd P/E": f"{fpe:.1f}" if isinstance(fpe, (int, float)) else "N/D",
                 "P/BV": f"{pb:.2f}" if isinstance(pb, (int, float)) else "N/D",
@@ -318,7 +330,8 @@ def obtener_datos_merval():
         for tf, d in cot.items():
             tl = tf.replace(".BA", "")
             panel = "Principal" if tf in lider else "General"
-            p = d.get("precio"); r = d.get("rsi"); v_ars = d.get("volumen_pesos_m"); pe = d.get("pe"); pb = d.get("pbv")
+            p = d.get("precio"); r = d.get("rsi"); v_ars = d.get("volumen_pesos_m"); v_usd = d.get("volumen_usd_k")
+            pe = d.get("pe"); pb = d.get("pbv")
             div_y = d.get("div_yield", 0.0)
             v1m = d.get("var_1m"); v1m_usd = d.get("var_1m_usd")
             
@@ -335,6 +348,7 @@ def obtener_datos_merval():
                 "P/BV": round(pb,2) if isinstance(pb, (int, float)) else None, 
                 "Div Yield (%)": round(div_y, 2) if isinstance(div_y, (int, float)) else 0.0,
                 "Vol. 20d (M ARS)": round(v_ars,2) if isinstance(v_ars, (int, float)) else None, 
+                "Vol. 20d (K USD)": round(v_usd,1) if isinstance(v_usd, (int, float)) else None,
                 "RSI": round(r, 2) if r else None, "Var_1M": v1m, "Var_1M_USD": v1m_usd, "Lectura": lec
             })
         return sorted(res, key=lambda x: x["RSI"] if isinstance(x["RSI"], (int, float)) else 999)
@@ -368,7 +382,7 @@ def obtener_datos_merval():
                     "Ticker": tf.replace(".BA", ""), "Panel": panel, "Precio (ARS)": round(p, 2),
                     "P/E": round(float(pe), 2) if isinstance(pe, (int, float)) else None,
                     "P/BV": round(float(pb), 2) if isinstance(pb, (int, float)) else None,
-                    "Div Yield (%)": 0.0, "Vol. 20d (M ARS)": v_ars, "RSI": r, "Lectura": lec
+                    "Div Yield (%)": 0.0, "Vol. 20d (M ARS)": v_ars, "Vol. 20d (K USD)": None, "RSI": r, "Lectura": lec
                 })
     except: pass
     return sorted(res, key=lambda x: x["RSI"] if isinstance(x["RSI"], (int, float)) else 999)
@@ -392,7 +406,7 @@ def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)",
         ev = obtener_eventos_macro_eeuu()
         
         ts_corte = dp.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S")) if dp else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cartera_str = ", ".join(tickers_cartera) if tickers_cartera else "Ninguna cargada aún"
+        cartera_str = ", ".join(tickers_cartera) if tickers_cartera else "Ninguna cargada aún (Cartera nueva desde cero)"
         
         tna = m_arg.get('tasa_tna')
         inf = m_arg.get('inflacion')
@@ -410,6 +424,10 @@ def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)",
         rp_var_6m_pct = mc.get("riesgo_pais_var_6m_pct", "N/D")
         
         res_fecha = mc.get("reservas_fecha", "N/D")
+        res_v30_m = mc.get("reservas_var_30d_m", "N/D")
+        res_v30_pct = mc.get("reservas_var_30d_pct", "N/D")
+        ccl_v1m = mc.get("ccl_var_1m", "N/D")
+        ccl_v3m = mc.get("ccl_var_3m", "N/D")
         inf_fecha = mc.get("inflacion_fecha", "N/D")
         emae_fecha = mc.get("emae_fecha", "N/D")
         
@@ -427,26 +445,34 @@ def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)",
         brecha = f"{((ccl/ofi)-1)*100:.1f}%" if ccl and ofi else "N/D"
         
         p = (
-            f"Actúa como un Asesor Financiero Senior en Argentina hablando directamente con tu cliente. [Corte de Datos: {ts_corte}]\n"
-            f"PERFIL DE ESTRATEGIA ACTIVO: {estrategia} | CARTERA ACTUAL DEL CLIENTE: [{cartera_str}]\n\n"
-            "Redacta un informe de decisiones claro, directo, en español llano y sin jerga innecesaria en inglés, basado EXCLUSIVAMENTE en los datos de abajo.\n"
-            "REGLAS ESTRICTAS DE ESTILO Y PRECISIÓN:\n"
-            "1. PROHIBIDO REPETIR TABLAS O LISTAR TODOS LOS DATOS CRUDOS: No copies los números de entrada en bloques repetitivos. Ve directo a explicar qué significa cada dato y cómo afecta al bolsillo.\n"
-            "2. FORMATO DE CAUSA Y EFECTO: Para cada variable clave usa el estilo: 'El indicador X está en Y, lo que significa que [explicación sencilla], e impacta en [consecuencia para las inversiones]'.\n"
-            "3. VEREDICTO DIRECTO (SÍ vs. NO): Indica explícitamente qué sectores y acciones SÍ convienen hoy y cuáles NO convienen (alertando sobre acciones con poco volumen diario donde cuesta salir, o empresas que parecen baratas por valor contable pero cuyas ganancias futuras caen).\n"
-            "4. PLAN OPERATIVO CONCRETO: Para cada inversión recomendada indica: (a) Nivel de Confianza [Alto/Medio/Bajo], (b) Plazo sugerido, (c) Cómo entrar en etapas y (d) Cuándo vender si sale mal (Stop-Loss). Si el cliente ya tiene acciones cargadas, aclara si la recomendación suma o duplica lo que ya posee.\n\n"
-            f"--- DATOS DE REFERENCIA (NO COPIAR EN BLOQUE, SOLO INTERPRETAR) ---\n"
+            f"Actúa como un Gestor de Carteras Senior (CIO) asesorando directamente a tu cliente en Argentina. [Corte: {ts_corte}]\n"
+            f"PERFIL ACTIVO: {estrategia} | CARTERA ACTUAL DEL CLIENTE: [{cartera_str}]\n\n"
+            "Redacta un Plan de Inversión Profesional en español claro, directo y sin jerga innecesaria en inglés, basado EXCLUSIVAMENTE en los datos de abajo.\n"
+            "REGLAS ESTRICTAS DE GESTIÓN PROFESIONAL:\n"
+            "1. PROHIBIDO REPETIR TABLAS CRUDAS: No transcribas listas de números de entrada; interpreta qué significa cada indicador y cómo impacta en la cartera.\n"
+            "2. RIGOR MACRO: Distingue Reservas Brutas (que incluyen encajes y swaps, no libre disponibilidad neta) y analiza su tendencia 30d; evalúa no solo la brecha cambiaria sino la velocidad de suba del Dólar CCL (1M y 3M) frente a la inflación; no uses indicadores macro (como el Riesgo País) como gatillo mecánico para comprar acciones.\n"
+            "3. PRECIO VS. VALOR (PROHIBIDO COMPRAR SOLO POR CAÍDA O RSI): Una acción que cayó mucho o tiene RSI bajo NO está automáticamente barata. Evalúa siempre Precio Actual vs. Target Price (Upside %), PEG Ratio, FCF Yield y Deuda.\n"
+            "4. ARQUITECTURA DE CARTERA POR 4 BLOQUES (ASIGNANDO EL 100% DEL CAPITAL) Y CONTROL DE CONCENTRACIÓN:\n"
+            "   - Bloque 1: Núcleo Global (30%-40% en ETFs amplios como SPY/QQQ o sector líder para capturar mercado sin riesgo individual).\n"
+            "   - Bloque 2: Crecimiento Selectivo EE.UU. (25%-35% en empresas de calidad con margen de seguridad real).\n"
+            "   - Bloque 3: Apuesta Táctica Argentina (15%-25% máximo total). ALERTA DE CONCENTRACIÓN: No dupliques riesgo temático (ej. YPF y VIST comparten riesgo petróleo + Vaca Muerta + Argentina; elige la mejor o reparte el cupo).\n"
+            "   - Bloque 4: Reserva Estratégica de Liquidez (10%-20% en instrumentos de corto plazo: Letras/CER/Money Market en pesos o T-Bills en USD para aprovechar caídas).\n"
+            "5. GESTIÓN DEL RIESGO REAL: No uses stop-loss porcentuales arbitrarios (ej. -8%) en inversiones de largo plazo. Diferencia horizonte estructural (12+ meses, salida por deterioro de tesis/valuación) de operación táctica (15-60 días, salida técnica).\n\n"
+            f"--- DATOS DE REFERENCIA ---\n"
             f"1. MACRO ARGENTINA:\n"
-            f"- Merval: USD {m_arg.get('merval_usd',{}).get('valor','N/D')} | Bono AL30: ${al30_val} (Var 1M: {al30_v1m_str}) | Brecha CCL: {brecha} | Reservas BCRA: USD {m_arg.get('reservas','N/D')} M (al {res_fecha})\n"
-            f"- Riesgo País (al {rp_fecha}): {rp_act} pb | Var 1M: {rp_var_1m_pb} pb ({rp_var_1m_pct}%, base {rp_1m} pb) | Var 6M: {rp_var_6m_pb} pb ({rp_var_6m_pct}%, base {rp_6m} pb)\n"
-            f"- Plazo Fijo 30D: TNA {tna}% (Rinde {f'{tem:.2f}%' if tem else 'N/D'} mensual) vs Inflación Mensual (al {inf_fecha}): {inf}% -> Rendimiento Real: {f'{rend_real:.2f}%' if rend_real else 'N/D'}\n"
-            f"- Actividad Económica EMAE (al {emae_fecha}, dato con rezago oficial): {m_arg.get('emae_ultimo','N/D')}\n\n"
+            f"- Merval: USD {m_arg.get('merval_usd',{}).get('valor','N/D')} | Bono AL30: ${al30_val} (Var 1M: {al30_v1m_str})\n"
+            f"- Dólar CCL: ${ccl if ccl else 'N/D'} (Var 1M: {ccl_v1m}% | Var 3M: {ccl_v3m}%) | Brecha CCL vs Oficial: {brecha}\n"
+            f"- Reservas Brutas BCRA (al {res_fecha}): USD {m_arg.get('reservas','N/D')} M (Var 30d: {res_v30_m} M / {res_v30_pct}%)\n"
+            f"- Riesgo País (al {rp_fecha}): {rp_act} pb (Var 1M: {rp_var_1m_pb} pb / {rp_var_1m_pct}%, base {rp_1m} pb | Var 6M: {rp_var_6m_pb} pb / {rp_var_6m_pct}%, base {rp_6m} pb)\n"
+            f"- Plazo Fijo 30D: TNA {tna}% ({f'{tem:.2f}%' if tem else 'N/D'} mensual) vs Inflación Mensual (al {inf_fecha}): {inf}% -> Rendimiento Real PF: {f'{rend_real:.2f}%' if rend_real else 'N/D'}\n"
+            f"- Actividad EMAE (al {emae_fecha}, rezago oficial): {m_arg.get('emae_ultimo','N/D')}\n\n"
             f"2. MACRO GLOBAL:\n"
-            f"- Tasa Bono EE.UU 10Y: {g('Bono 10Y EE.UU (%)')}% (1M: {g('Bono 10Y EE.UU (%)', 'var_1m')}% | 6M: {g('Bono 10Y EE.UU (%)', 'var_6m')}%) | DXY (Dólar global): {g('DXY (Índice Dólar)')} (1M: {g('DXY (Índice Dólar)', 'var_1m')}%)\n"
-            f"- Oro: USD {g('Oro (Refugio)')} (1M: {g('Oro (Refugio)', 'var_1m')}% | 6M: {g('Oro (Refugio)', 'var_6m')}%) | VIX (Volatilidad): {g('VIX (Miedo)')}\n\n"
+            f"- Bono EE.UU 10Y: {g('Bono 10Y EE.UU (%)')}% (1M: {g('Bono 10Y EE.UU (%)', 'var_1m')}% | 6M: {g('Bono 10Y EE.UU (%)', 'var_6m')}%) | DXY: {g('DXY (Índice Dólar)')} (1M: {g('DXY (Índice Dólar)', 'var_1m')}%)\n"
+            f"- Oro: USD {g('Oro (Refugio)')} (1M: {g('Oro (Refugio)', 'var_1m')}% | 6M: {g('Oro (Refugio)', 'var_6m')}%) | VIX: {g('VIX (Miedo)')}\n"
+            f"- Índices Núcleo (1M / 6M / 12M): S&P 500 ({g('S&P 500 (Global)', 'var_1m')}% / {g('S&P 500 (Global)', 'var_6m')}% / {g('S&P 500 (Global)', 'var_1y')}%) | Nasdaq ({g('Nasdaq (Tech)', 'var_1m')}% / {g('Nasdaq (Tech)', 'var_6m')}% / {g('Nasdaq (Tech)', 'var_1y')}%)\n\n"
         )
         if ev:
-            p += "3. EVENTOS DE EE.UU. ESTA SEMANA:\n"
+            p += "3. AGENDA EE.UU. ESTA SEMANA:\n"
             for e in ev[:4]: p += f"- {e['Evento']} ({e['Fecha/Hora']}): Estado {e.get('Actual_Raw','Pendiente')} vs Proy {e['Proyección']}\n"
 
         if gics:
@@ -454,23 +480,24 @@ def generar_analisis_ia(m_arg, m_int, gics, estrategia="Crecimiento (Agresivo)",
             for s in gics[:6]:
                 p += f"- {s['Sector']} ({s['ETF']}): Puntaje {s['Score']}/100 | 1M: {s['1M (%)']:+.2f}% | 6M: {s['6M (%)']:+.2f}% | 12M: {s['12M (%)']:+.2f}%\n"
 
-        p += "\n5. EMPRESAS LÍDERES (EE.UU. y ADRs Argentinos):\n"
+        p += "\n5. EMPRESAS LÍDERES (Precio vs Target, PEG, Múltiplos y Caja):\n"
         for v in val.get("USA", []):
-            p += f"- USA {v['Activo']} ({v['Sector']}): P/E {v['P/E']} | Fwd P/E {v.get('Fwd P/E','N/D')} | P/BV {v.get('P/BV','N/D')} | EV/EBITDA {v.get('EV/EBITDA','N/D')} | FCF Yield {v.get('FCF Yield','N/D')} | Deuda/Patrimonio {v.get('Debt/Eq','N/D')} | ROE {v['ROE (%)']}\n"
+            p += f"- USA {v['Activo']} ({v['Sector']}): Precio {v.get('Precio','N/D')} | Target {v.get('Target','N/D')} (Upside {v.get('Upside','N/D')}) | PEG {v.get('PEG','N/D')} | P/E {v['P/E']} | Fwd P/E {v.get('Fwd P/E','N/D')} | P/BV {v.get('P/BV','N/D')} | EV/EBITDA {v.get('EV/EBITDA','N/D')} | FCF Yield {v.get('FCF Yield','N/D')} | Deuda/Patr {v.get('Debt/Eq','N/D')} | ROE {v['ROE (%)']}\n"
         for v in val.get("ARG", []):
-            p += f"- ARG {v['Activo']} ({v['Sector']}): P/E {v['P/E']} | Fwd P/E {v.get('Fwd P/E','N/D')} | P/BV {v.get('P/BV','N/D')} | EV/EBITDA {v.get('EV/EBITDA','N/D')} | FCF Yield {v.get('FCF Yield','N/D')} | Deuda/Patrimonio {v.get('Debt/Eq','N/D')} | ROE {v['ROE (%)']}\n"
+            p += f"- ARG {v['Activo']} ({v['Sector']}): Precio {v.get('Precio','N/D')} | Target {v.get('Target','N/D')} (Upside {v.get('Upside','N/D')}) | PEG {v.get('PEG','N/D')} | P/E {v['P/E']} | Fwd P/E {v.get('Fwd P/E','N/D')} | P/BV {v.get('P/BV','N/D')} | EV/EBITDA {v.get('EV/EBITDA','N/D')} | FCF Yield {v.get('FCF Yield','N/D')} | Deuda/Patr {v.get('Debt/Eq','N/D')} | ROE {v['ROE (%)']}\n"
             
-        p += "\n6. RADAR MERVAL (Las 10 acciones locales más castigadas hoy):\n"
+        p += "\n6. RADAR MERVAL (Liquidez en ARS y USD + Sobreventa/Valuación):\n"
         ti = [m for m in dm if (isinstance(m['RSI'], (int, float)) and m['RSI'] < 38) or (isinstance(m['P/BV'], (int, float)) and m['P/BV'] < 1)][:10]
         for m in ti:
             pe_str = f"{m['P/E']}" if m.get('P/E') is not None else "N/D"
-            p += f"- {m['Ticker']} ({m['Panel']}): Precio ${m.get('Precio (ARS)','N/D')} | Var 1M USD: {m.get('Var_1M_USD', 'N/D')}% | P/E {pe_str} | P/BV {m['P/BV']} | RSI {m['RSI']} | Volumen diario promedio: ${m.get('Vol. 20d (M ARS)','N/D')} M ARS | {m['Lectura']}\n"
+            p += f"- {m['Ticker']} ({m['Panel']}): Precio ${m.get('Precio (ARS)','N/D')} | Var 1M USD: {m.get('Var_1M_USD', 'N/D')}% | P/E {pe_str} | P/BV {m['P/BV']} | RSI {m['RSI']} | Vol. diario: ${m.get('Vol. 20d (M ARS)','N/D')} M ARS (USD {m.get('Vol. 20d (K USD)','N/D')} K) | {m['Lectura']}\n"
         
         p += (
             "\n--- ESTRUCTURA EXACTA DE TU RESPUESTA ---\n"
-            "1. Qué está pasando hoy (Diagnóstico rápido de Riesgo País, Reservas, Brecha, Plazo Fijo vs Inflación y Tasas de EE.UU. usando causa y efecto).\n"
-            "2. Dónde SÍ conviene invertir y dónde NO (Comparativa clara entre sectores de EE.UU. y acciones argentinas, descartando acciones con poco volumen o trampas contables).\n"
-            "3. Plan de Acción Concreto (3 a 4 ideas claras adaptadas al perfil activo, indicando Confianza, Plazo, Entrada escalonada y Precio de salida/Stop-Loss)."
+            "1. Diagnóstico Macro y Cambiario (Riesgo País, Reservas Brutas vs Netas y tendencia 30d, velocidad del CCL vs Inflación, Plazo Fijo vs alternativas en pesos y Tasas de EE.UU.).\n"
+            "2. Filtro de Calidad y Trampas de Mercado (Qué sectores/activos SÍ pasan el filtro de Precio vs Valor y liquidez en USD, y cuáles quedan descartados por iliquidez o caída de ganancias proyectadas).\n"
+            "3. Arquitectura de Cartera por 4 Bloques (Asignación porcentual sumando 100%: Bloque 1 Núcleo Global, Bloque 2 Crecimiento Selectivo EE.UU., Bloque 3 Apuesta Táctica Argentina sin duplicar riesgo petrolero/bancario, Bloque 4 Reserva Estratégica de Liquidez).\n"
+            "4. Escenarios (Optimista / Base / Pesimista) y Reglas de Ejecución (Confianza, Horizonte, Entrada por rangos de valuación y Criterio de salida/revisión de tesis)."
         )
         
         return f"<pre style='color:#e2e8f0; font-family:monospace; white-space: pre-wrap; margin:0;'>{p}</pre>"
