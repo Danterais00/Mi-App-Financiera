@@ -14,7 +14,7 @@ def _buscar_fila(df, candidatos):
     return None
 
 @st.cache_data(ttl=21600)
-def descargar_datos_mercado(lista_tickers, _schema_version="v2_fallback"):
+def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
     datos_fundamentales = []
     datos_tecnicos = []
     datos_revenue = []
@@ -249,5 +249,25 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v2_fallback"):
             "beta_val": beta_val if beta_val is not None else 99, "rsi_val": rsi_val, "dist_sma": dist_sma,
             "logo_url": logo_url
         }
+
+    # --- DIAGNÓSTICO QUIRÚRGICO TEMPORAL (ELIMINAR TRAS EL TEST) ---
+    if lista_tickers:
+        try:
+            t_diag = lista_tickers[0]
+            acc_diag = yf.Ticker(t_diag)
+            inf_diag = acc_diag.info or {}
+            qf_diag = acc_diag.quarterly_financials
+            bs_diag = acc_diag.quarterly_balance_sheet
+            cf_diag = acc_diag.quarterly_cashflow
+            with st.expander(f"🔬 Diagnóstico Técnico en Vivo ({t_diag})", expanded=True):
+                st.write("**1. Versión yfinance:**", yf.__version__)
+                st.write("**2. Claves recibidas en `ticker.info`:**", len(inf_diag), list(inf_diag.keys())[:15])
+                st.write("**3. `quarterly_financials` vacío?:**", qf_diag is None or qf_diag.empty, "| Filas:", list(qf_diag.index)[:10] if qf_diag is not None and not qf_diag.empty else [])
+                st.write("**4. `quarterly_balance_sheet` vacío?:**", bs_diag is None or bs_diag.empty, "| Filas:", list(bs_diag.index)[:10] if bs_diag is not None and not bs_diag.empty else [])
+                st.write("**5. `quarterly_cashflow` vacío?:**", cf_diag is None or cf_diag.empty, "| Filas:", list(cf_diag.index)[:10] if cf_diag is not None and not cf_diag.empty else [])
+                if datos_fundamentales:
+                    st.write("**6. Diccionario calculado por extractor.py:**", datos_fundamentales[0])
+        except Exception as e_diag:
+            st.error(f"Error en diagnóstico: {e_diag}")
 
     return datos_fundamentales, datos_tecnicos, datos_revenue, datos_eps, analisis_completo
