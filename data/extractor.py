@@ -13,8 +13,7 @@ def _buscar_fila(df, candidatos):
                 return s
     return None
 
-@st.cache_data(ttl=21600)
-def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
+def descargar_datos_mercado(lista_tickers):
     datos_fundamentales = []
     datos_tecnicos = []
     datos_revenue = []
@@ -22,7 +21,6 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
     analisis_completo = {}
     fechas_headers = []
 
-    # Descargar SPY 1y una sola vez para calcular Beta de respaldo si info falla
     retornos_spy = None
     try:
         hist_spy = yf.Ticker("SPY").history(period="1y")['Close']
@@ -41,7 +39,6 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
             accion = yf.Ticker(ticker)
             info = {}
 
-        # Historial completo (sirve para precio, técnico, volumen y beta)
         try:
             hist = accion.history(period="max")
         except:
@@ -54,7 +51,6 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
         if not p_actual or pd.isna(p_actual):
             continue
 
-        # Estados contables trimestrales (respaldo matemático si info viene bloqueado)
         try:
             df_q = accion.quarterly_financials
         except:
@@ -68,7 +64,6 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
         except:
             df_cf = pd.DataFrame()
 
-        # Series contables TTM (últimos 4 trimestres) y último balance
         rev_s_ttm = _buscar_fila(df_q, ["Total Revenue", "Operating Revenue"])
         gp_s_ttm = _buscar_fila(df_q, ["Gross Profit"])
         ni_s_ttm = _buscar_fila(df_q, ["Net Income", "Net Income Common Stockholders"])
@@ -97,16 +92,13 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
         inventory = float(inv_s.iloc[0]) if inv_s is not None else 0.0
         shares = float(shares_s.iloc[0]) if shares_s is not None else None
 
-        # --- MÉTRICAS CON FALLBACK AUTOMÁTICO ---
         v_justo = info.get('targetMeanPrice')
         upside = ((v_justo / p_actual) - 1) if p_actual and v_justo else None
 
-        # Volumen promedio
         vol_prom = info.get('averageVolume')
         if not vol_prom and not hist.empty and 'Volume' in hist.columns:
             vol_prom = float(hist['Volume'].tail(20).mean())
 
-        # Beta
         beta_val = info.get('beta')
         if beta_val is None and retornos_spy is not None and len(hist) > 60:
             try:
@@ -120,12 +112,10 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
             except:
                 pass
 
-        # PER
         per_val = info.get('trailingPE')
         if per_val is None and eps_ttm and eps_ttm > 0:
             per_val = p_actual / eps_ttm
 
-        # Márgenes
         margen_neto = info.get('profitMargins')
         if margen_neto is None and ni_ttm is not None and rev_ttm and rev_ttm > 0:
             margen_neto = ni_ttm / rev_ttm
@@ -136,7 +126,6 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
         if gross_margin is None and gp_ttm is not None and rev_ttm and rev_ttm > 0:
             gross_margin = gp_ttm / rev_ttm
 
-        # ROE y ROA
         roe_val = info.get('returnOnEquity')
         if roe_val is None and ni_ttm is not None and equity and equity > 0:
             roe_val = ni_ttm / equity
@@ -145,12 +134,10 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
         if roa_val is None and ni_ttm is not None and assets and assets > 0:
             roa_val = ni_ttm / assets
 
-        # FCF Yield
         fcf = info.get('freeCashflow') or fcf_ttm
         mcap = info.get('marketCap') or (shares * p_actual if shares and p_actual else None)
         fcf_yield = (fcf / mcap) if (fcf is not None and mcap and mcap > 0) else None
 
-        # Solvencia y Liquidez
         de_val = (info.get('debtToEquity') / 100) if info.get('debtToEquity') is not None else None
         if de_val is None and debt is not None and equity and equity > 0:
             de_val = debt / equity
@@ -163,7 +150,6 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
         if qr_val is None and curr_assets is not None and curr_liab and curr_liab > 0:
             qr_val = (curr_assets - inventory) / curr_liab
 
-        # --- EXTRACCIÓN DE LOGO (MOTOR DE GOOGLE) ---
         website = info.get('website')
         domain = None
         if website and isinstance(website, str):
@@ -185,7 +171,6 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
             "Current Ratio": cr_val, "Quick Ratio": qr_val
         })
 
-        # --- ANÁLISIS TÉCNICO ---
         rsi_val, dist_sma, dist_ath, estado_rsi = None, None, None, "Neutral"
         try:
             if len(hist) >= 14:
@@ -210,7 +195,6 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
         
         datos_tecnicos.append({"Ticker": ticker, "Dist. Máx Histórico": dist_ath, "RSI (14d)": rsi_val, "Estado RSI": estado_rsi, "Dist. Media 200d": dist_sma})
 
-        # --- EVOLUCIÓN FINANCIERA TRIMESTRAL ---
         icon_r, icon_e = '●', '●'
         try:
             if df_q is not None and not df_q.empty:
@@ -250,7 +234,7 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
             "logo_url": logo_url
         }
 
-    # --- DIAGNÓSTICO QUIRÚRGICO TEMPORAL (ELIMINAR TRAS EL TEST) ---
+    # --- DIAGNÓSTICO QUIRÚRGICO TEMPORAL ---
     if lista_tickers:
         try:
             t_diag = lista_tickers[0]
@@ -258,15 +242,13 @@ def descargar_datos_mercado(lista_tickers, _schema_version="v3_diag"):
             inf_diag = acc_diag.info or {}
             qf_diag = acc_diag.quarterly_financials
             bs_diag = acc_diag.quarterly_balance_sheet
-            cf_diag = acc_diag.quarterly_cashflow
             with st.expander(f"🔬 Diagnóstico Técnico en Vivo ({t_diag})", expanded=True):
                 st.write("**1. Versión yfinance:**", yf.__version__)
-                st.write("**2. Claves recibidas en `ticker.info`:**", len(inf_diag), list(inf_diag.keys())[:15])
-                st.write("**3. `quarterly_financials` vacío?:**", qf_diag is None or qf_diag.empty, "| Filas:", list(qf_diag.index)[:10] if qf_diag is not None and not qf_diag.empty else [])
-                st.write("**4. `quarterly_balance_sheet` vacío?:**", bs_diag is None or bs_diag.empty, "| Filas:", list(bs_diag.index)[:10] if bs_diag is not None and not bs_diag.empty else [])
-                st.write("**5. `quarterly_cashflow` vacío?:**", cf_diag is None or cf_diag.empty, "| Filas:", list(cf_diag.index)[:10] if cf_diag is not None and not cf_diag.empty else [])
+                st.write("**2. Claves en `ticker.info`:**", len(inf_diag), list(inf_diag.keys())[:10])
+                st.write("**3. `quarterly_financials` vacío?:**", qf_diag is None or qf_diag.empty, "| Filas:", list(qf_diag.index)[:8] if qf_diag is not None and not qf_diag.empty else [])
+                st.write("**4. `quarterly_balance_sheet` vacío?:**", bs_diag is None or bs_diag.empty, "| Filas:", list(bs_diag.index)[:8] if bs_diag is not None and not bs_diag.empty else [])
                 if datos_fundamentales:
-                    st.write("**6. Diccionario calculado por extractor.py:**", datos_fundamentales[0])
+                    st.write("**5. Valores calculados:**", datos_fundamentales[0])
         except Exception as e_diag:
             st.error(f"Error en diagnóstico: {e_diag}")
 
